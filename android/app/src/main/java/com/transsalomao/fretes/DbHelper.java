@@ -42,7 +42,7 @@ public class DbHelper extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Primeira versão. Migrações futuras serão adicionadas aqui.
+        // Estrutura preservada para manter compatibilidade com os dados já existentes.
     }
 
     public long addDriver(String name, String cpf, String phone, String cnh, String category, String status, double commission) {
@@ -108,15 +108,14 @@ public class DbHelper extends SQLiteOpenHelper {
         return String.format("V-%04d", n);
     }
 
-    public long addTrip(String tripCode, String date, String freightMode, String company, String origin,
-                        String destination, String driverName, String setName, String ticket,
-                        double netWeight, double pricePerTon, double tripValue, double kmInitial,
-                        double kmFinal, double kmRodados, double dieselLiters, double dieselPrice,
-                        double freightValue, double kmL, double dieselCost, double grossResult,
-                        double commissionPct, double commissionValue, double afterCommission,
-                        String operator, String notes) {
+    private ContentValues tripValues(String date, String freightMode, String company, String origin,
+                                     String destination, String driverName, String setName, String ticket,
+                                     double netWeight, double pricePerTon, double tripValue, double kmInitial,
+                                     double kmFinal, double kmRodados, double dieselLiters, double dieselPrice,
+                                     double freightValue, double kmL, double dieselCost, double grossResult,
+                                     double commissionPct, double commissionValue, double afterCommission,
+                                     String operator, String notes) {
         ContentValues v = new ContentValues();
-        v.put("trip_code", tripCode);
         v.put("date", date);
         v.put("freight_mode", freightMode);
         v.put("company", company);
@@ -142,7 +141,48 @@ public class DbHelper extends SQLiteOpenHelper {
         v.put("after_commission", afterCommission);
         v.put("operator", operator);
         v.put("notes", notes);
+        return v;
+    }
+
+    public long addTrip(String tripCode, String date, String freightMode, String company, String origin,
+                        String destination, String driverName, String setName, String ticket,
+                        double netWeight, double pricePerTon, double tripValue, double kmInitial,
+                        double kmFinal, double kmRodados, double dieselLiters, double dieselPrice,
+                        double freightValue, double kmL, double dieselCost, double grossResult,
+                        double commissionPct, double commissionValue, double afterCommission,
+                        String operator, String notes) {
+        ContentValues v = tripValues(date, freightMode, company, origin, destination, driverName, setName, ticket,
+                netWeight, pricePerTon, tripValue, kmInitial, kmFinal, kmRodados, dieselLiters, dieselPrice,
+                freightValue, kmL, dieselCost, grossResult, commissionPct, commissionValue, afterCommission,
+                operator, notes);
+        v.put("trip_code", tripCode);
         return getWritableDatabase().insert("trips", null, v);
+    }
+
+    public int updateTrip(String tripCode, String date, String freightMode, String company, String origin,
+                          String destination, String driverName, String setName, String ticket,
+                          double netWeight, double pricePerTon, double tripValue, double kmInitial,
+                          double kmFinal, double kmRodados, double dieselLiters, double dieselPrice,
+                          double freightValue, double kmL, double dieselCost, double grossResult,
+                          double commissionPct, double commissionValue, double afterCommission,
+                          String operator, String notes) {
+        ContentValues v = tripValues(date, freightMode, company, origin, destination, driverName, setName, ticket,
+                netWeight, pricePerTon, tripValue, kmInitial, kmFinal, kmRodados, dieselLiters, dieselPrice,
+                freightValue, kmL, dieselCost, grossResult, commissionPct, commissionValue, afterCommission,
+                operator, notes);
+        return getWritableDatabase().update("trips", v, "trip_code=?", new String[]{tripCode});
+    }
+
+    public Cursor tripByCode(String tripCode) {
+        return getReadableDatabase().rawQuery(
+                "SELECT trip_code, date, freight_mode, company, origin, destination, driver_name, set_name, ticket, net_weight, price_per_ton, trip_value, km_initial, km_final, diesel_liters, diesel_price, operator, notes FROM trips WHERE trip_code=? LIMIT 1",
+                new String[]{tripCode});
+    }
+
+    public Cursor editableTripsCursor(int limit) {
+        return getReadableDatabase().rawQuery(
+                "SELECT trip_code, date, freight_mode, driver_name, set_name, ticket, net_weight, freight_value, km_rodados, operator FROM trips ORDER BY id DESC LIMIT " + Math.max(1, limit),
+                null);
     }
 
     public Cursor driversCursor() {
