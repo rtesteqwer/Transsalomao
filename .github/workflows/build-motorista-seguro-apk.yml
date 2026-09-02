@@ -1,5 +1,5 @@
 name: Build Transporte Seguro Vix APK
-# Build v2.6 with resilient destination suggestions through Vercel API + Photon fallback
+# Build v3.0 with redesigned rider/driver ride lifecycle
 on:
   push:
     branches: [motorista-seguro-apk-build]
@@ -20,16 +20,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Patch destination search v2.6
-        working-directory: motorista-seguro-android
-        run: python3 patch_v26.py
       - name: Build APK
         working-directory: motorista-seguro-android
         run: gradle :app:assembleDebug --stacktrace
       - name: Rename APK
-        run: cp motorista-seguro-android/app/build/outputs/apk/debug/app-debug.apk Transporte_Seguro_Vix_v2.6.apk
+        run: cp motorista-seguro-android/app/build/outputs/apk/debug/app-debug.apk Transporte_Seguro_Vix_v3.0.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Transporte_Seguro_Vix_v2.6_APK
-          path: Transporte_Seguro_Vix_v2.6.apk
+          name: Transporte_Seguro_Vix_v3.0_APK
+          path: Transporte_Seguro_Vix_v3.0.apk
           if-no-files-found: error
