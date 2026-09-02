@@ -78,6 +78,8 @@ public class MainActivity extends Activity {
             }
             @Override public void onPageFinished(WebView view, String url) {
                 progress.setVisibility(View.GONE);
+                String js = "(function(){try{var k='msdb3';var d=JSON.parse(localStorage.getItem(k)||'null')||{u:[],v:[],c:[],rt:[]};if(!d.u.some(function(x){return x.e==='admin@motoristaseguro.app'})){d.u.push({id:'adm_ms',n:'Administrador Motorista Seguro',e:'admin@motoristaseguro.app',p:'Admin@2026!',r:'admin'});localStorage.setItem(k,JSON.stringify(d));}}catch(e){}})();";
+                view.evaluateJavascript(js, null);
             }
             @Override public void onReceivedError(WebView view, android.webkit.WebResourceRequest req, android.webkit.WebResourceError err) {
                 if (req.isForMainFrame()) offline.setVisibility(View.VISIBLE);
