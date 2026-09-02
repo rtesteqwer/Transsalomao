@@ -1,5 +1,5 @@
 name: Build Transporte Seguro Vix APK
-# Build v1.2 with embedded Google Maps view and direct live GPS updates
+# Build v2.0 with dark mobility interface, live GPS and test logins
 on:
   push:
     branches: [motorista-seguro-apk-build]
@@ -24,9 +24,9 @@ jobs:
         working-directory: motorista-seguro-android
         run: gradle :app:assembleDebug --stacktrace
       - name: Rename APK
-        run: cp motorista-seguro-android/app/build/outputs/apk/debug/app-debug.apk Transporte_Seguro_Vix_v1.2.apk
+        run: cp motorista-seguro-android/app/build/outputs/apk/debug/app-debug.apk Transporte_Seguro_Vix_v2.0.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Transporte_Seguro_Vix_v1.2_APK
-          path: Transporte_Seguro_Vix_v1.2.apk
+          name: Transporte_Seguro_Vix_v2.0_APK
+          path: Transporte_Seguro_Vix_v2.0.apk
           if-no-files-found: error
