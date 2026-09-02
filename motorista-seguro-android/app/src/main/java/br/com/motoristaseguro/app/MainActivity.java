@@ -7,7 +7,6 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
-import android.view.View;
 import android.webkit.GeolocationPermissions;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -20,7 +19,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class MainActivity extends Activity {
-    private static final String APP_URL = "https://motorista-seguro-v02-transsalomao.vercel.app/";
+    private static final String APP_URL = "https://transportesegurovix-transsalomao.vercel.app/";
     private static final int LOCATION_REQUEST = 3001;
     private WebView webView;
     private String selectedUserId = null;
@@ -68,7 +67,7 @@ public class MainActivity extends Activity {
     private void showRoleChooser() {
         selectedUserId = null;
         LinearLayout root = baseLayout();
-        TextView brand = title("MS  Motorista Seguro", 22);
+        TextView brand = title("TSV  Transporte Seguro Vix", 22);
         brand.setTextColor(0xff111111);
         TextView h = title("Como você quer entrar?", 30);
         TextView sub = title("Escolha seu perfil para abrir a área correta.", 15);
@@ -95,9 +94,9 @@ public class MainActivity extends Activity {
         String label = role.equals("client") ? "Cliente" : role.equals("driver") ? "Motorista" : "Gerência";
         String email = role.equals("client") ? "cliente@motoristaseguro.app" : role.equals("driver") ? "motorista@motoristaseguro.app" : "admin@motoristaseguro.app";
         String pass = role.equals("client") ? "Cliente@2026!" : role.equals("driver") ? "Motorista@2026!" : "Admin@2026!";
-        String id = role.equals("client") ? "cli_demo" : role.equals("driver") ? "drv_demo" : "adm_ms";
+        String id = role.equals("client") ? "cli_demo" : role.equals("driver") ? "drv_demo" : "adm";
 
-        root.addView(title("Motorista Seguro", 20));
+        root.addView(title("Transporte Seguro Vix", 20));
         root.addView(title("Entrar como " + label, 28));
         TextView demo = title("Login de teste\n" + email + "\n" + pass, 14);
         demo.setTextColor(0xff555555);
@@ -141,15 +140,15 @@ public class MainActivity extends Activity {
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " MotoristaSeguroAndroid/0.5");
+        s.setUserAgentString(s.getUserAgentString() + " TransporteSeguroVixAndroid/0.6");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView view, String url) {
                 String sid = selectedUserId == null ? "" : selectedUserId;
                 String js = "(function(){try{" +
-                    "var k='msdb3',s='mss3';var d=JSON.parse(localStorage.getItem(k)||'null')||{u:[],v:[],c:[],rt:[]};" +
+                    "var k='msdb5',s='mss5';var d=JSON.parse(localStorage.getItem(k)||'null')||{u:[],v:[],c:[],rt:[]};" +
                     "function up(o){var i=d.u.findIndex(function(x){return x.id===o.id||x.e===o.e});if(i>=0)d.u[i]=Object.assign(d.u[i],o);else d.u.push(o);}" +
-                    "up({id:'adm_ms',n:'Gerência Motorista Seguro',e:'admin@motoristaseguro.app',p:'Admin@2026!',r:'admin'});" +
+                    "up({id:'adm',n:'Gerência Transporte Seguro Vix',e:'admin@motoristaseguro.app',p:'Admin@2026!',r:'admin'});" +
                     "up({id:'cli_demo',n:'Cliente Teste',e:'cliente@motoristaseguro.app',p:'Cliente@2026!',r:'client',cpf:'00000000000',phone:'(27) 99999-0001'});" +
                     "up({id:'drv_demo',n:'Motorista Teste',e:'motorista@motoristaseguro.app',p:'Motorista@2026!',r:'driver',cpf:'11111111111',phone:'(27) 99999-0002',cnh:'12345678900',cat:'B',exp:'2030-12-31',ear:true,ap:'approved',on:false,lat:null,lng:null});" +
                     "if(!d.v.some(function(x){return x.id==='veh_demo'}))d.v.push({id:'veh_demo',cid:'cli_demo',pl:'ABC1D23',mo:'Veículo de Teste',cat:'B'});" +
