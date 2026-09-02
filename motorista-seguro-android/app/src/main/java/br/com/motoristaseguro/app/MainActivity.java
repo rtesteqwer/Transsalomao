@@ -1,30 +1,30 @@
 package br.com.motoristaseguro.app;
 
-import android.Manifest;
 import android.app.Activity;
-import android.content.pm.PackageManager;
+import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
-import android.webkit.GeolocationPermissions;
-import android.webkit.WebChromeClient;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class MainActivity extends Activity {
-    private static final String APP_URL = "https://transportesegurovix-transsalomao.vercel.app/";
-    private static final int LOCATION_REQUEST = 3001;
-    private WebView webView;
-    private String selectedUserId = null;
-    private String pendingGeoOrigin;
-    private GeolocationPermissions.Callback pendingGeoCallback;
+    private String role = "";
+    private boolean driverOnline = false;
+    private double driverEarnings = 0;
+    private final List<String> clientTrips = new ArrayList<>();
+    private final List<String> driverTrips = new ArrayList<>();
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -33,161 +33,226 @@ public class MainActivity extends Activity {
         showRoleChooser();
     }
 
-    private TextView title(String text, int size) {
-        TextView v = new TextView(this);
-        v.setText(text);
-        v.setTextColor(Color.rgb(20,20,20));
-        v.setTextSize(size);
-        v.setGravity(Gravity.CENTER_HORIZONTAL);
-        v.setPadding(0, 16, 0, 16);
-        return v;
-    }
-
-    private Button action(String text) {
-        Button b = new Button(this);
-        b.setText(text);
-        b.setTextSize(17);
-        b.setAllCaps(false);
-        b.setPadding(20, 14, 20, 14);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 8, 0, 8);
-        b.setLayoutParams(lp);
-        return b;
-    }
-
-    private LinearLayout baseLayout() {
+    private LinearLayout column() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-        root.setPadding(28, 42, 28, 42);
+        root.setPadding(22, 30, 22, 30);
         root.setBackgroundColor(0xfff6f6f6);
         return root;
     }
 
-    private void showRoleChooser() {
-        selectedUserId = null;
-        LinearLayout root = baseLayout();
-        TextView brand = title("TSV  Transporte Seguro Vix", 22);
-        brand.setTextColor(0xff111111);
-        TextView h = title("Como você quer entrar?", 30);
-        TextView sub = title("Escolha seu perfil para abrir a área correta.", 15);
-        sub.setTextColor(0xff666666);
-
-        Button client = action("👤  Entrar como Cliente");
-        client.setOnClickListener(v -> showLogin("client"));
-        Button driver = action("🚗  Entrar como Motorista");
-        driver.setOnClickListener(v -> showLogin("driver"));
-        Button admin = action("🛡  Entrar como Gerência");
-        admin.setOnClickListener(v -> showLogin("admin"));
-
-        root.addView(brand);
-        root.addView(h);
-        root.addView(sub);
-        root.addView(client);
-        root.addView(driver);
-        root.addView(admin);
-        setContentView(root);
+    private TextView text(String s, int size, boolean bold) {
+        TextView v = new TextView(this);
+        v.setText(s);
+        v.setTextSize(size);
+        v.setTextColor(0xff161616);
+        if (bold) v.setTypeface(null, android.graphics.Typeface.BOLD);
+        v.setPadding(4, 8, 4, 8);
+        return v;
     }
 
-    private void showLogin(String role) {
-        LinearLayout root = baseLayout();
-        String label = role.equals("client") ? "Cliente" : role.equals("driver") ? "Motorista" : "Gerência";
-        String email = role.equals("client") ? "cliente@motoristaseguro.app" : role.equals("driver") ? "motorista@motoristaseguro.app" : "admin@motoristaseguro.app";
-        String pass = role.equals("client") ? "Cliente@2026!" : role.equals("driver") ? "Motorista@2026!" : "Admin@2026!";
-        String id = role.equals("client") ? "cli_demo" : role.equals("driver") ? "drv_demo" : "adm";
+    private Button button(String label) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(16);
+        b.setPadding(16, 12, 16, 12);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, 7, 0, 7);
+        b.setLayoutParams(lp);
+        return b;
+    }
 
-        root.addView(title("Transporte Seguro Vix", 20));
-        root.addView(title("Entrar como " + label, 28));
-        TextView demo = title("Login de teste\n" + email + "\n" + pass, 14);
-        demo.setTextColor(0xff555555);
-        root.addView(demo);
+    private View mapCard(String title, String sub) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(18, 26, 18, 26);
+        box.setBackgroundColor(0xffdce6d7);
+        TextView pin = text("📍  MAPA / GPS", 24, true);
+        pin.setGravity(Gravity.CENTER);
+        TextView a = text(title, 19, true); a.setGravity(Gravity.CENTER);
+        TextView b = text(sub, 14, false); b.setGravity(Gravity.CENTER); b.setTextColor(0xff666666);
+        box.addView(pin); box.addView(a); box.addView(b);
+        return box;
+    }
 
-        EditText e = new EditText(this);
-        e.setHint("E-mail");
-        e.setText(email);
-        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        EditText p = new EditText(this);
-        p.setHint("Senha");
-        p.setText(pass);
-        p.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        Button enter = action("Entrar");
-        Button back = action("Voltar");
+    private ScrollView scroll(LinearLayout content) {
+        ScrollView s = new ScrollView(this);
+        s.addView(content);
+        return s;
+    }
 
+    private void showRoleChooser() {
+        role = "";
+        LinearLayout root = column();
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.addView(text("TSV  Transporte Seguro Vix", 23, true));
+        root.addView(text("Como você quer entrar?", 30, true));
+        TextView sub = text("Escolha uma área. Agora cada botão abre uma página real do aplicativo.", 15, false);
+        sub.setTextColor(0xff666666); root.addView(sub);
+        Button c = button("👤  Entrar como Cliente"); c.setOnClickListener(v -> showLogin("client"));
+        Button d = button("🚗  Entrar como Motorista"); d.setOnClickListener(v -> showLogin("driver"));
+        Button a = button("🛡  Entrar como Gerência"); a.setOnClickListener(v -> showLogin("admin"));
+        root.addView(c); root.addView(d); root.addView(a);
+        setContentView(scroll(root));
+    }
+
+    private void showLogin(String r) {
+        String label = r.equals("client") ? "Cliente" : r.equals("driver") ? "Motorista" : "Gerência";
+        String email = r.equals("client") ? "cliente@motoristaseguro.app" : r.equals("driver") ? "motorista@motoristaseguro.app" : "admin@motoristaseguro.app";
+        String pass = r.equals("client") ? "Cliente@2026!" : r.equals("driver") ? "Motorista@2026!" : "Admin@2026!";
+        LinearLayout root = column();
+        root.addView(text("Entrar como " + label, 28, true));
+        TextView demo = text("Conta de teste\n" + email + "\n" + pass, 14, false); demo.setTextColor(0xff555555); root.addView(demo);
+        EditText e = new EditText(this); e.setHint("E-mail"); e.setText(email); e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText p = new EditText(this); p.setHint("Senha"); p.setText(pass); p.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        Button enter = button("Entrar");
         enter.setOnClickListener(v -> {
             if (!e.getText().toString().trim().equalsIgnoreCase(email) || !p.getText().toString().equals(pass)) {
-                Toast.makeText(this, "Login inválido para a área de " + label, Toast.LENGTH_SHORT).show();
-                return;
+                Toast.makeText(this, "Login inválido para " + label, Toast.LENGTH_SHORT).show(); return;
             }
-            selectedUserId = id;
-            openApp();
+            role = r;
+            if (r.equals("client")) showClientHome(); else if (r.equals("driver")) showDriverHome(); else showAdminHome();
         });
-        back.setOnClickListener(v -> showRoleChooser());
-
-        root.addView(e);
-        root.addView(p);
-        root.addView(enter);
-        root.addView(back);
-        setContentView(root);
+        Button back = button("Voltar"); back.setOnClickListener(v -> showRoleChooser());
+        root.addView(e); root.addView(p); root.addView(enter); root.addView(back);
+        setContentView(scroll(root));
     }
 
-    private void openApp() {
-        webView = new WebView(this);
-        WebSettings s = webView.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setDatabaseEnabled(true);
-        s.setGeolocationEnabled(true);
-        s.setLoadWithOverviewMode(true);
-        s.setUseWideViewPort(true);
-        s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " TransporteSeguroVixAndroid/0.6");
-
-        webView.setWebViewClient(new WebViewClient() {
-            @Override public void onPageFinished(WebView view, String url) {
-                String sid = selectedUserId == null ? "" : selectedUserId;
-                String js = "(function(){try{" +
-                    "var k='msdb5',s='mss5';var d=JSON.parse(localStorage.getItem(k)||'null')||{u:[],v:[],c:[],rt:[]};" +
-                    "function up(o){var i=d.u.findIndex(function(x){return x.id===o.id||x.e===o.e});if(i>=0)d.u[i]=Object.assign(d.u[i],o);else d.u.push(o);}" +
-                    "up({id:'adm',n:'Gerência Transporte Seguro Vix',e:'admin@motoristaseguro.app',p:'Admin@2026!',r:'admin'});" +
-                    "up({id:'cli_demo',n:'Cliente Teste',e:'cliente@motoristaseguro.app',p:'Cliente@2026!',r:'client',cpf:'00000000000',phone:'(27) 99999-0001'});" +
-                    "up({id:'drv_demo',n:'Motorista Teste',e:'motorista@motoristaseguro.app',p:'Motorista@2026!',r:'driver',cpf:'11111111111',phone:'(27) 99999-0002',cnh:'12345678900',cat:'B',exp:'2030-12-31',ear:true,ap:'approved',on:false,lat:null,lng:null});" +
-                    "if(!d.v.some(function(x){return x.id==='veh_demo'}))d.v.push({id:'veh_demo',cid:'cli_demo',pl:'ABC1D23',mo:'Veículo de Teste',cat:'B'});" +
-                    "localStorage.setItem(k,JSON.stringify(d));localStorage.setItem(s,'" + sid + "');location.hash='dash';if(typeof render==='function')render();" +
-                    "}catch(e){console.log(e)}})();";
-                view.evaluateJavascript(js, null);
-            }
-        });
-
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    callback.invoke(origin, true, false);
-                } else {
-                    pendingGeoOrigin = origin;
-                    pendingGeoCallback = callback;
-                    requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_REQUEST);
-                }
-            }
-        });
-        setContentView(webView);
-        webView.loadUrl(APP_URL);
+    private void addHeader(LinearLayout root, String title, String sub) {
+        root.addView(text(title, 26, true));
+        TextView s = text(sub, 14, false); s.setTextColor(0xff666666); root.addView(s);
     }
 
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_REQUEST && pendingGeoCallback != null) {
-            boolean ok = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-            pendingGeoCallback.invoke(pendingGeoOrigin, ok, false);
-            pendingGeoCallback = null;
-            pendingGeoOrigin = null;
+    private void addClientNav(LinearLayout root) {
+        Button h = button("⌂ Início"); h.setOnClickListener(v -> showClientHome());
+        Button t = button("▣ Viagens"); t.setOnClickListener(v -> showClientTrips());
+        Button f = button("♡ Favoritos"); f.setOnClickListener(v -> showClientFavorites());
+        Button a = button("☻ Conta"); a.setOnClickListener(v -> showAccount());
+        root.addView(h); root.addView(t); root.addView(f); root.addView(a);
+    }
+
+    private void showClientHome() {
+        LinearLayout root = column(); addHeader(root, "Olá, Cliente", "Solicite um motorista para dirigir seu próprio veículo.");
+        root.addView(mapCard("Motoristas próximos", "Localização de demonstração ativa"));
+        Button dest = button("🔎 Para onde você vai?"); dest.setOnClickListener(v -> requestRide()); root.addView(dest);
+        Button casa = button("⌂ Casa"); casa.setOnClickListener(v -> requestRideWith("Casa")); root.addView(casa);
+        Button trab = button("▣ Trabalho"); trab.setOnClickListener(v -> requestRideWith("Trabalho")); root.addView(trab);
+        Button sos = button("🛡 Central de segurança"); sos.setOnClickListener(v -> showSafety()); root.addView(sos);
+        addClientNav(root); setContentView(scroll(root));
+    }
+
+    private void requestRideWith(String dest) {
+        clientTrips.add("Minha localização → " + dest + " • buscando motorista");
+        Toast.makeText(this, "Corrida solicitada para " + dest, Toast.LENGTH_LONG).show();
+        showClientTrips();
+    }
+
+    private void requestRide() {
+        EditText input = new EditText(this); input.setHint("Destino"); input.setText("Praia da Costa, Vila Velha");
+        new AlertDialog.Builder(this).setTitle("Escolher destino").setView(input)
+            .setPositiveButton("Solicitar motorista", (d,w) -> requestRideWith(input.getText().toString().trim().isEmpty()?"Destino informado":input.getText().toString().trim()))
+            .setNegativeButton("Cancelar", null).show();
+    }
+
+    private void showClientTrips() {
+        LinearLayout root = column(); addHeader(root, "Minhas viagens", "Histórico e solicitações atuais");
+        if (clientTrips.isEmpty()) root.addView(text("Nenhuma viagem ainda.", 17, false));
+        for (String trip : clientTrips) { LinearLayout card = column(); card.setPadding(14,14,14,14); card.setBackgroundColor(Color.WHITE); card.addView(text(trip,16,true)); root.addView(card); }
+        addClientNav(root); setContentView(scroll(root));
+    }
+
+    private void showClientFavorites() {
+        LinearLayout root = column(); addHeader(root, "Favoritos", "Toque em um destino para solicitar uma corrida");
+        Button a = button("⌂ Casa"); a.setOnClickListener(v -> requestRideWith("Casa"));
+        Button b = button("▣ Trabalho"); b.setOnClickListener(v -> requestRideWith("Trabalho"));
+        Button c = button("＋ Adicionar favorito"); c.setOnClickListener(v -> Toast.makeText(this,"Favorito salvo em modo de teste",Toast.LENGTH_SHORT).show());
+        root.addView(a); root.addView(b); root.addView(c); addClientNav(root); setContentView(scroll(root));
+    }
+
+    private void addDriverNav(LinearLayout root) {
+        Button h = button("⌂ Início"); h.setOnClickListener(v -> showDriverHome());
+        Button t = button("▣ Viagens"); t.setOnClickListener(v -> showDriverTrips());
+        Button g = button("R$ Ganhos"); g.setOnClickListener(v -> showDriverEarnings());
+        Button a = button("☻ Conta"); a.setOnClickListener(v -> showAccount());
+        root.addView(h); root.addView(t); root.addView(g); root.addView(a);
+    }
+
+    private void showDriverHome() {
+        LinearLayout root = column(); addHeader(root, "Modo motorista", "CNH B • EAR ativo • cadastro aprovado");
+        root.addView(mapCard(driverOnline?"Você está ONLINE":"Você está OFFLINE", driverOnline?"Recebendo solicitações próximas":"Ative para receber chamadas"));
+        Button on = button(driverOnline?"🟢 Ficar Offline":"⚫ Ficar Online"); on.setOnClickListener(v -> {driverOnline=!driverOnline; showDriverHome();}); root.addView(on);
+        if (driverOnline) {
+            TextView req = text("Nova chamada\nCliente Teste • 8 km • 18 min\nPraia da Costa → Itapuã\nValor: R$ 32,50", 17, true); root.addView(req);
+            Button accept = button("Aceitar corrida"); accept.setOnClickListener(v -> {driverTrips.add("Praia da Costa → Itapuã • concluída"); driverEarnings += 26.00; Toast.makeText(this,"Corrida aceita",Toast.LENGTH_SHORT).show(); showDriverTrips();}); root.addView(accept);
+            Button decline = button("Recusar"); decline.setOnClickListener(v -> Toast.makeText(this,"Chamada recusada",Toast.LENGTH_SHORT).show()); root.addView(decline);
         }
+        Button nav = button("🗺 Abrir navegação"); nav.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps")))); root.addView(nav);
+        Button sos = button("🛡 Central de segurança"); sos.setOnClickListener(v -> showSafety()); root.addView(sos);
+        addDriverNav(root); setContentView(scroll(root));
+    }
+
+    private void showDriverTrips() {
+        LinearLayout root = column(); addHeader(root, "Viagens do motorista", "Chamadas aceitas e concluídas");
+        if (driverTrips.isEmpty()) root.addView(text("Nenhuma viagem ainda. Fique online para receber chamadas.", 17, false));
+        for (String trip: driverTrips) root.addView(text("🚗 " + trip, 16, true));
+        addDriverNav(root); setContentView(scroll(root));
+    }
+
+    private void showDriverEarnings() {
+        LinearLayout root = column(); addHeader(root, "Ganhos", "Resumo financeiro do motorista");
+        root.addView(text(String.format("R$ %.2f", driverEarnings), 34, true));
+        root.addView(text(driverTrips.size() + " viagem(ns) concluída(s)", 16, false));
+        root.addView(text("Repasse de teste: 80% do valor da corrida", 14, false));
+        addDriverNav(root); setContentView(scroll(root));
+    }
+
+    private void showAdminHome() {
+        LinearLayout root = column(); addHeader(root, "Painel da Gerência", "Controle de clientes, motoristas e corridas");
+        root.addView(text("Clientes: 1", 20, true));
+        root.addView(text("Motoristas: 1", 20, true));
+        root.addView(text("Motoristas online: " + (driverOnline?1:0), 20, true));
+        root.addView(text("Corridas: " + (clientTrips.size()+driverTrips.size()), 20, true));
+        Button drivers = button("🚗 Gerenciar motoristas"); drivers.setOnClickListener(v -> showAdminDrivers()); root.addView(drivers);
+        Button rides = button("▣ Ver corridas"); rides.setOnClickListener(v -> showAdminRides()); root.addView(rides);
+        Button web = button("🌐 Abrir plataforma online"); web.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://transportesegurovix-transsalomao.vercel.app/")))); root.addView(web);
+        Button out = button("Sair"); out.setOnClickListener(v -> showRoleChooser()); root.addView(out);
+        setContentView(scroll(root));
+    }
+
+    private void showAdminDrivers() {
+        LinearLayout root = column(); addHeader(root, "Motoristas", "Aprovação e status");
+        root.addView(text("Motorista Teste\nCNH B • EAR Sim • APROVADO", 18, true));
+        Button block = button("Bloquear motorista"); block.setOnClickListener(v -> Toast.makeText(this,"Motorista bloqueado em modo de teste",Toast.LENGTH_SHORT).show()); root.addView(block);
+        Button back = button("Voltar ao painel"); back.setOnClickListener(v -> showAdminHome()); root.addView(back); setContentView(scroll(root));
+    }
+
+    private void showAdminRides() {
+        LinearLayout root = column(); addHeader(root, "Corridas", "Movimentação da plataforma");
+        if (clientTrips.isEmpty() && driverTrips.isEmpty()) root.addView(text("Nenhuma corrida registrada neste aparelho.",16,false));
+        for(String s: clientTrips) root.addView(text("Cliente: " + s,15,false));
+        for(String s: driverTrips) root.addView(text("Motorista: " + s,15,false));
+        Button back = button("Voltar ao painel"); back.setOnClickListener(v -> showAdminHome()); root.addView(back); setContentView(scroll(root));
+    }
+
+    private void showAccount() {
+        LinearLayout root = column(); String label = role.equals("client")?"Cliente":"Motorista";
+        addHeader(root, "Minha conta", label + " • Transporte Seguro Vix");
+        root.addView(text(role.equals("client")?"cliente@motoristaseguro.app":"motorista@motoristaseguro.app",16,true));
+        Button sec = button("🛡 Segurança"); sec.setOnClickListener(v -> showSafety()); root.addView(sec);
+        Button out = button("Sair da conta"); out.setOnClickListener(v -> showRoleChooser()); root.addView(out);
+        Button back = button("Voltar"); back.setOnClickListener(v -> {if(role.equals("client")) showClientHome(); else showDriverHome();}); root.addView(back);
+        setContentView(scroll(root));
+    }
+
+    private void showSafety() {
+        new AlertDialog.Builder(this).setTitle("Central de segurança")
+            .setMessage("Compartilhe sua corrida com alguém de confiança.\n\nEm emergência, ligue 190 ou 192.")
+            .setPositiveButton("Entendi", null).show();
     }
 
     @Override public void onBackPressed() {
-        if (webView != null && webView.getParent() != null) {
-            if (webView.canGoBack()) webView.goBack(); else showRoleChooser();
-        } else {
-            showRoleChooser();
-        }
+        if (role.equals("client")) showClientHome(); else if (role.equals("driver")) showDriverHome(); else if (role.equals("admin")) showAdminHome(); else showRoleChooser();
     }
 }
