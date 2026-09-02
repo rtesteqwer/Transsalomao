@@ -1,5 +1,5 @@
-name: Build Motorista Seguro APK
-# Build v0.5 with separate Client, Driver and Management login pages
+name: Build Transporte Seguro Vix APK
+# Build v0.6 pointing to Transporte Seguro Vix production URL
 on:
   push:
     branches: [motorista-seguro-apk-build]
@@ -24,9 +24,9 @@ jobs:
         working-directory: motorista-seguro-android
         run: gradle :app:assembleDebug --stacktrace
       - name: Rename APK
-        run: cp motorista-seguro-android/app/build/outputs/apk/debug/app-debug.apk Motorista_Seguro_v0.5.apk
+        run: cp motorista-seguro-android/app/build/outputs/apk/debug/app-debug.apk Transporte_Seguro_Vix_v0.6.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Motorista_Seguro_v0.5_APK
-          path: Motorista_Seguro_v0.5.apk
+          name: Transporte_Seguro_Vix_v0.6_APK
+          path: Transporte_Seguro_Vix_v0.6.apk
           if-no-files-found: error
