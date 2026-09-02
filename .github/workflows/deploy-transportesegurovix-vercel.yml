@@ -1,0 +1,42 @@
+name: Deploy Transporte Seguro Vix to Vercel
+on:
+  workflow_dispatch:
+  push:
+    branches: [motorista-seguro-apk-build]
+    paths:
+      - 'transportesegurovix-web/**'
+      - '.github/workflows/deploy-transportesegurovix-vercel.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check Vercel token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN secret is missing in this GitHub repository"
+            exit 2
+          fi
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+      - name: Create or reuse isolated Vercel project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel project add transportesegurovix --scope=transsalomao --token="$VERCEL_TOKEN" || true
+      - name: Link project
+        working-directory: transportesegurovix-web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel link --yes --project=transportesegurovix --scope=transsalomao --token="$VERCEL_TOKEN"
+      - name: Deploy production
+        working-directory: transportesegurovix-web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN"
