@@ -8,7 +8,7 @@ android {
         applicationId 'br.com.motoristaseguro.app'
         minSdk 24
         targetSdk 35
-        versionCode 26
-        versionName '2.6.0'
+        versionCode 30
+        versionName '3.0.0'
     }
 }
