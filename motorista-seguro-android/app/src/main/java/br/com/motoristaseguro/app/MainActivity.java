@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -20,6 +21,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -42,9 +44,11 @@ public class MainActivity extends Activity {
     private float lastAccuracy = 0f;
     private double lastMapLat = Double.NaN;
     private double lastMapLng = Double.NaN;
+    private long lastMapUpdateMs = 0L;
     private boolean receiverRegistered = false;
     private TextView gpsStatusView;
     private WebView mapWebView;
+    private String currentDestination = null;
 
     private final BroadcastReceiver locationReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -53,7 +57,7 @@ public class MainActivity extends Activity {
             lastLng = intent.getDoubleExtra("lng", Double.NaN);
             lastAccuracy = intent.getFloatExtra("accuracy", 0f);
             refreshGpsLabel();
-            refreshStreetMap(false);
+            refreshGoogleMap(false);
         }
     };
 
@@ -120,6 +124,24 @@ public class MainActivity extends Activity {
         return b;
     }
 
+    private Button compactButton(String label) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(13);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setPadding(dp(5), dp(8), dp(5), dp(8));
+        return b;
+    }
+
+    private GradientDrawable rounded(int color, float radiusDp) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(dp((int)radiusDp));
+        return d;
+    }
+
     private void header(LinearLayout root, String title, String sub) {
         root.addView(text(title, 29, true));
         TextView s = text(sub, 14, false); s.setTextColor(0xff666666); root.addView(s);
@@ -138,59 +160,49 @@ public class MainActivity extends Activity {
         if (Double.isNaN(lastMapLat) || Double.isNaN(lastMapLng) || Double.isNaN(lastLat)) return true;
         double dx = (lastLat-lastMapLat) * 111000.0;
         double dy = (lastLng-lastMapLng) * 111000.0 * Math.cos(Math.toRadians(lastLat));
-        return Math.sqrt(dx*dx + dy*dy) > 8.0;
+        return Math.sqrt(dx*dx + dy*dy) > 15.0;
     }
 
-    private String streetMapUrl() {
+    private String googleMapUrl() {
         double lat = Double.isNaN(lastLat) ? -20.3297 : lastLat;
         double lng = Double.isNaN(lastLng) ? -40.2925 : lastLng;
-        double d = 0.0035;
-        String bbox = String.format(Locale.US, "%f,%f,%f,%f", lng-d, lat-d, lng+d, lat+d);
-        return "https://www.openstreetmap.org/export/embed.html?bbox=" + Uri.encode(bbox) + "&layer=mapnik&marker=" +
-                String.format(Locale.US, "%f%%2C%f", lat, lng);
+        return String.format(Locale.US,
+                "https://www.google.com/maps/@?api=1&map_action=map&center=%.6f%%2C%.6f&zoom=18&basemap=roadmap",
+                lat, lng);
     }
 
-    private View streetMapCard(String title) {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setBackgroundColor(Color.WHITE);
-        box.setPadding(dp(10), dp(10), dp(10), dp(10));
+    private String googleDirectionsUrl(String destination) {
+        double lat = Double.isNaN(lastLat) ? -20.3297 : lastLat;
+        double lng = Double.isNaN(lastLng) ? -40.2925 : lastLng;
+        return String.format(Locale.US,
+                "https://www.google.com/maps/dir/?api=1&origin=%.6f%%2C%.6f&destination=%s&travelmode=driving",
+                lat, lng, Uri.encode(destination));
+    }
 
-        TextView label = text("MAPA DE RUAS • " + title, 14, true);
-        label.setTextColor(0xff166534);
-        box.addView(label);
-
-        gpsStatusView = text(gpsSummary(), 13, true);
-        gpsStatusView.setTextColor(0xff166534);
-        box.addView(gpsStatusView);
-
+    private WebView createGoogleMap() {
         mapWebView = new WebView(this);
+        mapWebView.setBackgroundColor(0xffe5e7eb);
+        mapWebView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         WebSettings ws = mapWebView.getSettings();
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
+        ws.setDatabaseEnabled(true);
         ws.setLoadWithOverviewMode(true);
         ws.setUseWideViewPort(true);
+        ws.setBuiltInZoomControls(false);
+        ws.setDisplayZoomControls(false);
         mapWebView.setWebViewClient(new WebViewClient());
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(-1, dp(360));
-        mp.setMargins(0, dp(6), 0, dp(6));
-        mapWebView.setLayoutParams(mp);
-        box.addView(mapWebView);
-        refreshStreetMap(true);
-
-        Button center = button("◎ Centralizar no meu GPS");
-        center.setOnClickListener(v -> refreshStreetMap(true));
-        box.addView(center);
-
-        Button exact = button("📍 Abrir posição exata");
-        exact.setOnClickListener(v -> openExactLocation());
-        box.addView(exact);
-        return box;
+        refreshGoogleMap(true);
+        return mapWebView;
     }
 
-    private void refreshStreetMap(boolean force) {
+    private void refreshGoogleMap(boolean force) {
         if (mapWebView == null) return;
-        if (!force && !movedEnough()) return;
-        mapWebView.loadUrl(streetMapUrl());
+        long now = System.currentTimeMillis();
+        if (!force && (!movedEnough() || now - lastMapUpdateMs < 5000L)) return;
+        if (currentDestination == null || currentDestination.trim().isEmpty()) mapWebView.loadUrl(googleMapUrl());
+        else mapWebView.loadUrl(googleDirectionsUrl(currentDestination));
+        lastMapUpdateMs = now;
         if (!Double.isNaN(lastLat)) { lastMapLat = lastLat; lastMapLng = lastLng; }
     }
 
@@ -212,14 +224,17 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Aguardando sinal GPS…", Toast.LENGTH_LONG).show();
             return;
         }
-        Uri u = Uri.parse(String.format(Locale.US, "https://www.openstreetmap.org/?mlat=%f&mlon=%f#map=18/%f/%f", lastLat,lastLng,lastLat,lastLng));
+        String q = String.format(Locale.US, "%.6f,%.6f", lastLat, lastLng);
+        Uri u = Uri.parse("https://www.google.com/maps/search/?api=1&query=" + Uri.encode(q));
         startActivity(new Intent(Intent.ACTION_VIEW, u));
     }
 
     private void showRoleChooser() {
         role = "";
+        currentDestination = null;
         stopGpsTracking();
         mapWebView = null;
+        gpsStatusView = null;
         LinearLayout root = column();
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.addView(text("TSV • Transporte Seguro Vix", 23, true));
@@ -244,6 +259,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this,"Login inválido",Toast.LENGTH_SHORT).show(); return;
             }
             role = r;
+            currentDestination = null;
             if (!r.equals("admin")) startGpsTracking();
             if (r.equals("client")) showClientHome(); else if (r.equals("driver")) showDriverHome(); else showAdminHome();
         });
@@ -252,76 +268,199 @@ public class MainActivity extends Activity {
         setContentView(scroll(root));
     }
 
-    private void addClientNav(LinearLayout root) {
-        LinearLayout nav = new LinearLayout(this); nav.setOrientation(LinearLayout.HORIZONTAL);
-        String[] names = {"⌂ Início","▣ Viagens","♡ Favoritos","☻ Conta"};
+    private LinearLayout clientBottomNav() {
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setGravity(Gravity.CENTER);
+        nav.setBackground(rounded(0xff111111, 28));
+        nav.setPadding(dp(4), dp(3), dp(4), dp(3));
+        String[] names = {"⌂\nInício","▣\nViagens","♡\nFavoritos","☻\nConta"};
         View.OnClickListener[] acts = {v->showClientHome(),v->showClientTrips(),v->showClientFavorites(),v->showAccount()};
-        for(int i=0;i<names.length;i++){Button b=button(names[i]); b.setOnClickListener(acts[i]); b.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1)); nav.addView(b);} root.addView(nav);
+        for(int i=0;i<names.length;i++){
+            Button b=compactButton(names[i]);
+            b.setTextColor(i==0 ? 0xffc6ff39 : 0xffdddddd);
+            b.setBackgroundColor(Color.TRANSPARENT);
+            b.setOnClickListener(acts[i]);
+            b.setLayoutParams(new LinearLayout.LayoutParams(0, dp(62), 1));
+            nav.addView(b);
+        }
+        return nav;
     }
 
-    private void addDriverNav(LinearLayout root) {
-        LinearLayout nav = new LinearLayout(this); nav.setOrientation(LinearLayout.HORIZONTAL);
-        String[] names = {"⌂ Início","▣ Viagens","R$ Ganhos","☻ Conta"};
+    private LinearLayout driverBottomNav() {
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setGravity(Gravity.CENTER);
+        nav.setBackground(rounded(0xff111111, 28));
+        nav.setPadding(dp(4), dp(3), dp(4), dp(3));
+        String[] names = {"⌂\nInício","▣\nViagens","R$\nGanhos","☻\nConta"};
         View.OnClickListener[] acts = {v->showDriverHome(),v->showDriverTrips(),v->showDriverEarnings(),v->showAccount()};
-        for(int i=0;i<names.length;i++){Button b=button(names[i]); b.setOnClickListener(acts[i]); b.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1)); nav.addView(b);} root.addView(nav);
+        for(int i=0;i<names.length;i++){
+            Button b=compactButton(names[i]);
+            b.setTextColor(i==0 ? 0xffc6ff39 : 0xffdddddd);
+            b.setBackgroundColor(Color.TRANSPARENT);
+            b.setOnClickListener(acts[i]);
+            b.setLayoutParams(new LinearLayout.LayoutParams(0, dp(62), 1));
+            nav.addView(b);
+        }
+        return nav;
+    }
+
+    private Button floatingSearchButton() {
+        Button search = new Button(this);
+        search.setText("🔎  Para onde você vai?");
+        search.setTextSize(19);
+        search.setAllCaps(false);
+        search.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
+        search.setPadding(dp(18),0,dp(18),0);
+        search.setBackground(rounded(Color.WHITE, 25));
+        search.setOnClickListener(v -> requestRide());
+        return search;
     }
 
     private void showClientHome() {
-        startGpsTracking(); mapWebView = null;
-        LinearLayout root = column();
-        header(root, "Boa viagem, Cliente", "Mapa leve em modo ruas, acompanhando seu GPS.");
-        root.addView(streetMapCard("SUA POSIÇÃO"));
-        Button dest = button("🔎 Para onde você vai?"); dest.setOnClickListener(v -> requestRide()); root.addView(dest);
+        startGpsTracking();
+        currentDestination = null;
+        mapWebView = null;
+        gpsStatusView = null;
+
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(0xffe5e7eb);
+        WebView map = createGoogleMap();
+        frame.addView(map, new FrameLayout.LayoutParams(-1,-1));
+
+        Button search = floatingSearchButton();
+        FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(-1, dp(64));
+        sp.gravity = Gravity.TOP;
+        sp.setMargins(dp(18), dp(22), dp(18), 0);
+        frame.addView(search, sp);
+
+        Button center = compactButton("◎");
+        center.setTextSize(23);
+        center.setBackground(rounded(Color.WHITE, 28));
+        center.setOnClickListener(v -> { currentDestination=null; refreshGoogleMap(true); });
+        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(dp(54), dp(54));
+        cp.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
+        cp.setMargins(0,0,dp(16),dp(75));
+        frame.addView(center, cp);
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18),dp(14),dp(18),dp(16));
+        panel.setBackground(rounded(Color.WHITE, 30));
+
+        LinearLayout titleRow = new LinearLayout(this); titleRow.setOrientation(LinearLayout.HORIZONTAL); titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("Boa viagem, Cliente", 27, true);
+        titleRow.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        TextView live = text("GPS ativo",13,false); live.setTextColor(0xff166534); titleRow.addView(live);
+        panel.addView(titleRow);
+
+        gpsStatusView = text(gpsSummary(), 13, true); gpsStatusView.setTextColor(0xff166534); panel.addView(gpsStatusView);
+
         LinearLayout quick = new LinearLayout(this); quick.setOrientation(LinearLayout.HORIZONTAL);
-        String[] qs={"⌂ Casa","▣ Trabalho","＋ Outro"};
+        String[] qs={"⌂\nCasa","▣\nTrabalho","＋\nOutro"};
         View.OnClickListener[] qa={v->requestRideWith("Casa"),v->requestRideWith("Trabalho"),v->requestRide()};
-        for(int i=0;i<3;i++){Button b=button(qs[i]);b.setOnClickListener(qa[i]);b.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));quick.addView(b);} root.addView(quick);
-        root.addView(text("Localização do motorista",18,true));
-        root.addView(text("Será exibida no mesmo mapa quando a sincronização entre aparelhos pelo Neon estiver ativa.",14,false));
-        addClientNav(root); setContentView(scroll(root));
+        for(int i=0;i<3;i++){Button b=compactButton(qs[i]);b.setTextSize(14);b.setOnClickListener(qa[i]);b.setLayoutParams(new LinearLayout.LayoutParams(0,dp(64),1));quick.addView(b);} panel.addView(quick);
+
+        Button exact = compactButton("📍 Minha localização exata no Google Maps");
+        exact.setTextSize(14); exact.setOnClickListener(v->openExactLocation()); panel.addView(exact);
+
+        TextView driver = text("Localização do motorista",16,true); panel.addView(driver);
+        TextView driverState = text("Aguardando sincronização do motorista em tempo real",13,false); driverState.setTextColor(0xff666666); panel.addView(driverState);
+
+        panel.addView(clientBottomNav());
+        FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(-1,-2);
+        pp.gravity = Gravity.BOTTOM;
+        pp.setMargins(0,0,0,0);
+        frame.addView(panel,pp);
+        setContentView(frame);
     }
 
     private void requestRide() {
         EditText i = new EditText(this); i.setHint("Destino"); i.setText("Praia da Costa, Vila Velha");
         new AlertDialog.Builder(this).setTitle("Escolher destino").setView(i)
-                .setPositiveButton("Solicitar",(d,w)->requestRideWith(i.getText().toString().trim().isEmpty()?"Destino":i.getText().toString().trim()))
+                .setPositiveButton("Mostrar rota",(d,w)->requestRideWith(i.getText().toString().trim().isEmpty()?"Destino":i.getText().toString().trim()))
                 .setNegativeButton("Cancelar",null).show();
     }
 
     private void requestRideWith(String dest) {
-        clientTrips.add("Minha localização → " + dest + " • buscando motorista");
-        Toast.makeText(this,"Corrida solicitada",Toast.LENGTH_SHORT).show(); showClientTrips();
+        currentDestination = dest;
+        clientTrips.add("Minha localização → " + dest + " • rota no Google Maps");
+        if (mapWebView != null) {
+            mapWebView.loadUrl(googleDirectionsUrl(dest));
+            Toast.makeText(this,"Rota aberta no Google Maps",Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this,"Destino salvo",Toast.LENGTH_SHORT).show();
+            showClientHome();
+            currentDestination = dest;
+            if (mapWebView != null) mapWebView.loadUrl(googleDirectionsUrl(dest));
+        }
     }
 
     private void showClientTrips() {
-        mapWebView=null; LinearLayout root=column(); header(root,"Minhas viagens","Histórico e solicitações");
+        mapWebView=null; gpsStatusView=null;
+        LinearLayout root=column(); header(root,"Minhas viagens","Histórico e solicitações");
         if(clientTrips.isEmpty()) root.addView(text("Nenhuma viagem ainda.",16,false));
-        for(String x:clientTrips) root.addView(text("🚗 "+x,16,true)); addClientNav(root); setContentView(scroll(root));
+        for(String x:clientTrips) root.addView(text("🚗 "+x,16,true));
+        Button back=button("Voltar ao mapa");back.setOnClickListener(v->showClientHome());root.addView(back);
+        setContentView(scroll(root));
     }
 
     private void showClientFavorites() {
-        mapWebView=null; LinearLayout root=column(); header(root,"Favoritos","Destinos rápidos");
-        Button c=button("⌂ Casa");c.setOnClickListener(v->requestRideWith("Casa"));root.addView(c);
-        Button t=button("▣ Trabalho");t.setOnClickListener(v->requestRideWith("Trabalho"));root.addView(t);
+        mapWebView=null; gpsStatusView=null;
+        LinearLayout root=column(); header(root,"Favoritos","Destinos rápidos");
+        Button c=button("⌂ Casa");c.setOnClickListener(v->{showClientHome();requestRideWith("Casa");});root.addView(c);
+        Button t=button("▣ Trabalho");t.setOnClickListener(v->{showClientHome();requestRideWith("Trabalho");});root.addView(t);
         Button n=button("＋ Adicionar favorito");n.setOnClickListener(v->Toast.makeText(this,"Favorito salvo em modo de teste",Toast.LENGTH_SHORT).show());root.addView(n);
-        addClientNav(root); setContentView(scroll(root));
+        Button back=button("Voltar ao mapa");back.setOnClickListener(v->showClientHome());root.addView(back);
+        setContentView(scroll(root));
     }
 
     private void showDriverHome() {
-        startGpsTracking(); mapWebView=null;
-        LinearLayout root=column(); header(root,"Modo motorista",driverOnline?"ONLINE • mapa de ruas seguindo seu GPS":"OFFLINE • GPS permanece ativo enquanto conectado");
-        root.addView(streetMapCard("POSIÇÃO DO MOTORISTA"));
-        Button on=button(driverOnline?"🟢 Ficar Offline":"⚫ Ficar Online");on.setOnClickListener(v->{driverOnline=!driverOnline;showDriverHome();});root.addView(on);
-        if(driverOnline){root.addView(text("Nova chamada de teste • Praia da Costa → Itapuã • R$ 32,50",17,true));Button ac=button("Aceitar corrida");ac.setOnClickListener(v->{driverTrips.add("Praia da Costa → Itapuã • concluída");driverEarnings+=26;showDriverTrips();});root.addView(ac);Button rc=button("Recusar");rc.setOnClickListener(v->Toast.makeText(this,"Chamada recusada",Toast.LENGTH_SHORT).show());root.addView(rc);} 
-        addDriverNav(root); setContentView(scroll(root));
+        startGpsTracking();
+        currentDestination = null;
+        mapWebView=null; gpsStatusView=null;
+
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(0xffe5e7eb);
+        WebView map = createGoogleMap();
+        frame.addView(map,new FrameLayout.LayoutParams(-1,-1));
+
+        Button status = new Button(this);
+        status.setAllCaps(false);
+        status.setTextSize(18);
+        status.setText(driverOnline ? "🟢 ONLINE" : "⚫ OFFLINE");
+        status.setBackground(rounded(Color.WHITE,25));
+        status.setOnClickListener(v->{driverOnline=!driverOnline;showDriverHome();});
+        FrameLayout.LayoutParams stp = new FrameLayout.LayoutParams(dp(150),dp(58)); stp.gravity=Gravity.TOP|Gravity.CENTER_HORIZONTAL; stp.setMargins(0,dp(22),0,0); frame.addView(status,stp);
+
+        Button center = compactButton("◎"); center.setTextSize(23); center.setBackground(rounded(Color.WHITE,28)); center.setOnClickListener(v->refreshGoogleMap(true));
+        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(dp(54),dp(54)); cp.gravity=Gravity.RIGHT|Gravity.CENTER_VERTICAL; cp.setMargins(0,0,dp(16),dp(70)); frame.addView(center,cp);
+
+        LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(dp(18),dp(14),dp(18),dp(16)); panel.setBackground(rounded(Color.WHITE,30));
+        panel.addView(text("Modo motorista",27,true));
+        gpsStatusView=text(gpsSummary(),13,true); gpsStatusView.setTextColor(0xff166534); panel.addView(gpsStatusView);
+        panel.addView(text(driverOnline?"Recebendo solicitações próximas":"Fique online para receber chamadas",14,false));
+
+        if(driverOnline){
+            panel.addView(text("Nova chamada de teste\nPraia da Costa → Itapuã\nValor: R$ 32,50",16,true));
+            LinearLayout actions=new LinearLayout(this);actions.setOrientation(LinearLayout.HORIZONTAL);
+            Button rc=compactButton("Recusar");rc.setOnClickListener(v->Toast.makeText(this,"Chamada recusada",Toast.LENGTH_SHORT).show());rc.setLayoutParams(new LinearLayout.LayoutParams(0,dp(52),1));actions.addView(rc);
+            Button ac=compactButton("Aceitar corrida");ac.setOnClickListener(v->{currentDestination="Itapuã, Vila Velha";if(mapWebView!=null)mapWebView.loadUrl(googleDirectionsUrl(currentDestination));driverTrips.add("Praia da Costa → Itapuã • aceita");driverEarnings+=26;Toast.makeText(this,"Corrida aceita e rota aberta",Toast.LENGTH_SHORT).show();});ac.setLayoutParams(new LinearLayout.LayoutParams(0,dp(52),1));actions.addView(ac);
+            panel.addView(actions);
+        }
+        Button exact=compactButton("📍 Abrir minha posição no Google Maps");exact.setOnClickListener(v->openExactLocation());panel.addView(exact);
+        panel.addView(driverBottomNav());
+        FrameLayout.LayoutParams pp=new FrameLayout.LayoutParams(-1,-2);pp.gravity=Gravity.BOTTOM;frame.addView(panel,pp);
+        setContentView(frame);
     }
 
-    private void showDriverTrips(){mapWebView=null;LinearLayout root=column();header(root,"Viagens do motorista","Corridas aceitas e concluídas");if(driverTrips.isEmpty())root.addView(text("Nenhuma viagem ainda.",16,false));for(String x:driverTrips)root.addView(text("🚗 "+x,16,true));addDriverNav(root);setContentView(scroll(root));}
-    private void showDriverEarnings(){mapWebView=null;LinearLayout root=column();header(root,"Ganhos","Resumo financeiro");root.addView(text(String.format(Locale.getDefault(),"R$ %.2f",driverEarnings),34,true));root.addView(text(driverTrips.size()+" viagem(ns)",16,false));addDriverNav(root);setContentView(scroll(root));}
+    private void showDriverTrips(){mapWebView=null;gpsStatusView=null;LinearLayout root=column();header(root,"Viagens do motorista","Corridas aceitas e concluídas");if(driverTrips.isEmpty())root.addView(text("Nenhuma viagem ainda.",16,false));for(String x:driverTrips)root.addView(text("🚗 "+x,16,true));Button back=button("Voltar ao mapa");back.setOnClickListener(v->showDriverHome());root.addView(back);setContentView(scroll(root));}
+    private void showDriverEarnings(){mapWebView=null;gpsStatusView=null;LinearLayout root=column();header(root,"Ganhos","Resumo financeiro");root.addView(text(String.format(Locale.getDefault(),"R$ %.2f",driverEarnings),34,true));root.addView(text(driverTrips.size()+" viagem(ns)",16,false));Button back=button("Voltar ao mapa");back.setOnClickListener(v->showDriverHome());root.addView(back);setContentView(scroll(root));}
 
-    private void showAccount(){mapWebView=null;LinearLayout root=column();header(root,"Minha conta",role.equals("client")?"Cliente":"Motorista");Button sec=button("🛡 Central de segurança");sec.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Segurança").setMessage("Em emergência ligue 190 ou 192.").setPositiveButton("OK",null).show());root.addView(sec);Button out=button("Sair");out.setOnClickListener(v->showRoleChooser());root.addView(out);Button back=button("Voltar");back.setOnClickListener(v->{if(role.equals("client"))showClientHome();else showDriverHome();});root.addView(back);setContentView(scroll(root));}
+    private void showAccount(){mapWebView=null;gpsStatusView=null;LinearLayout root=column();header(root,"Minha conta",role.equals("client")?"Cliente":"Motorista");Button sec=button("🛡 Central de segurança");sec.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Segurança").setMessage("Em emergência ligue 190 ou 192.").setPositiveButton("OK",null).show());root.addView(sec);Button out=button("Sair");out.setOnClickListener(v->showRoleChooser());root.addView(out);Button back=button("Voltar ao mapa");back.setOnClickListener(v->{if(role.equals("client"))showClientHome();else showDriverHome();});root.addView(back);setContentView(scroll(root));}
 
-    private void showAdminHome(){mapWebView=null;LinearLayout root=column();header(root,"Painel da Gerência","Controle de motoristas, clientes e corridas");root.addView(text("Clientes: 1",20,true));root.addView(text("Motoristas: 1",20,true));root.addView(text("Corridas: "+(clientTrips.size()+driverTrips.size()),20,true));Button out=button("Sair");out.setOnClickListener(v->showRoleChooser());root.addView(out);setContentView(scroll(root));}
+    private void showAdminHome(){mapWebView=null;gpsStatusView=null;LinearLayout root=column();header(root,"Painel da Gerência","Controle de motoristas, clientes e corridas");root.addView(text("Clientes: 1",20,true));root.addView(text("Motoristas: 1",20,true));root.addView(text("Corridas: "+(clientTrips.size()+driverTrips.size()),20,true));Button out=button("Sair");out.setOnClickListener(v->showRoleChooser());root.addView(out);setContentView(scroll(root));}
 
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){super.onRequestPermissionsResult(requestCode,permissions,grantResults);if(requestCode==LOCATION_REQUEST&&grantResults.length>0&&grantResults[0]==PackageManager.PERMISSION_GRANTED)startGpsTracking();}
 
