@@ -1,4 +1,5 @@
 name: Build Motorista Seguro APK
+# Rebuild v0.3 with updated admin test login
 on:
   push:
     branches: [motorista-seguro-apk-build]
