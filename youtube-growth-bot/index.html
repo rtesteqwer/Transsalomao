@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0b0b0f" />
+  <title>Shorts Growth Bot</title>
+  <style>
+    :root{--bg:#090a0f;--panel:#11131b;--panel2:#171a24;--text:#f7f8fb;--muted:#9aa1b2;--line:#262b38;--accent:#ff284f;--good:#53d38b;--warn:#ffc857}
+    *{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:radial-gradient(circle at 12% -10%,#2d1120 0,transparent 28%),var(--bg);color:var(--text)}
+    button{font:inherit}.wrap{max-width:1180px;margin:auto;padding:24px}.top{display:flex;gap:16px;justify-content:space-between;align-items:center;margin-bottom:22px}.brand{display:flex;align-items:center;gap:12px}.logo{width:44px;height:44px;border-radius:13px;background:linear-gradient(145deg,#ff174b,#7a1731);display:grid;place-items:center;font-weight:900}.brand h1{font-size:21px;margin:0}.brand small{color:var(--muted)}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;padding:10px 14px;cursor:pointer}.btn.primary{background:var(--accent);border-color:transparent;font-weight:800}.btn:hover{transform:translateY(-1px)}
+    .notice{background:#111824;border:1px solid #22334b;border-radius:14px;padding:12px 14px;color:#cbd8eb;margin-bottom:16px;font-size:14px}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.card{background:linear-gradient(180deg,var(--panel),#0e1017);border:1px solid var(--line);border-radius:18px;padding:18px}.metric{grid-column:span 3}.metric b{font-size:25px;display:block;margin-top:7px}.metric span{color:var(--muted);font-size:13px}
+    .main{grid-column:span 8}.side{grid-column:span 4}.card h2{font-size:16px;margin:0 0 14px}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.muted{color:var(--muted)}
+    table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--line);font-size:13px}th{color:var(--muted);font-weight:600}.score{font-weight:900}.bar{height:7px;border-radius:99px;background:#202532;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#ff284f,#ff7f6a)}
+    .winner{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}.rank{width:28px;height:28px;border-radius:9px;background:#252a37;display:grid;place-items:center;font-weight:900}.winner b{font-size:13px}.winner small{display:block;color:var(--muted);margin-top:4px}
+    .ideas{display:grid;gap:10px}.idea{padding:13px;border:1px solid var(--line);background:#10131a;border-radius:14px}.idea strong{font-size:14px}.idea p{margin:7px 0 0;color:var(--muted);font-size:13px;line-height:1.45}
+    .slots{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.slot{background:#10131a;border:1px solid var(--line);border-radius:13px;padding:12px;text-align:center}.slot b{display:block}.slot small{color:var(--muted)}
+    .foot{margin:18px 0;color:var(--muted);font-size:12px;text-align:center}.hidden{display:none}.danger{color:#ff9cae}.good{color:var(--good)}
+    @media(max-width:860px){.metric{grid-column:span 6}.main,.side{grid-column:span 12}.top{align-items:flex-start;flex-direction:column}}@media(max-width:520px){.wrap{padding:14px}.metric{grid-column:span 12}.slots{grid-template-columns:1fr}.actions{width:100%}.btn{flex:1}table th:nth-child(3),table td:nth-child(3){display:none}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><div class="logo">▶</div><div><h1>Shorts Growth Bot</h1><small id="channelName">Modo demonstração</small></div></div>
+    <div class="actions"><button class="btn" id="refreshBtn">Atualizar análise</button><button class="btn primary" id="connectBtn">Conectar YouTube</button><button class="btn hidden" id="logoutBtn">Sair</button></div>
+  </div>
+  <div class="notice" id="notice">Este bot analisa o canal e recomenda conteúdo. Ele não cria inscritos, views ou engajamento artificial.</div>
+  <section class="grid">
+    <div class="card metric"><span>Inscritos do canal</span><b id="subscribers">12.480</b></div>
+    <div class="card metric"><span>Views do canal</span><b id="totalViews">4,2 mi</b></div>
+    <div class="card metric"><span>Shorts analisados</span><b id="videoCount">10</b></div>
+    <div class="card metric"><span>Melhor score</span><b id="bestScore">94/100</b></div>
+    <div class="card main"><div class="row"><h2>Ranking dos Shorts — últimos 28 dias</h2><small class="muted">Score = retenção + inscritos + engajamento</small></div><div style="overflow:auto"><table><thead><tr><th>Short</th><th>Score</th><th>Retenção</th><th>Views</th><th>+Inscritos</th></tr></thead><tbody id="videoRows"></tbody></table></div></div>
+    <div class="card side"><h2>🏆 Top 3 vencedores</h2><div id="winners"></div></div>
+    <div class="card main"><div class="row"><h2>Próximos 10 Shorts</h2><button class="btn" id="generateBtn">Gerar novas ideias</button></div><div class="ideas" id="ideas"></div></div>
+    <div class="card side"><h2>Agenda diária</h2><div class="slots"><div class="slot"><b>11:30</b><small>Short A</small></div><div class="slot"><b>17:30</b><small>Short B</small></div><div class="slot"><b>21:00</b><small>Short C</small></div></div><div style="margin-top:14px" class="muted">Estratégia: a cada 10 Shorts, o bot pega os 3 melhores e usa os padrões vencedores para orientar o próximo lote.</div></div>
+  </section>
+  <div class="foot">YouTube Growth Bot • análise baseada em métricas reais • sem automação de inscritos</div>
+</div>
+<script>
+const demoVideos=[
+{id:'1',title:'O momento que ninguém esperava 😱',views:182400,averageViewPercentage:102.4,subscribersGained:384,likes:9400,comments:312,shares:621,score:94},
+{id:'2',title:'Ele fez isso no último segundo',views:143100,averageViewPercentage:96.8,subscribersGained:271,likes:7100,comments:196,shares:440,score:89},
+{id:'3',title:'A reação dele foi inacreditável 😂',views:119800,averageViewPercentage:91.2,subscribersGained:203,likes:6200,comments:271,shares:318,score:84},
+{id:'4',title:'Você teria coragem de fazer isso?',views:78200,averageViewPercentage:84.7,subscribersGained:108,likes:3900,comments:155,shares:184,score:75},
+{id:'5',title:'Olha o que aconteceu depois...',views:63400,averageViewPercentage:80.1,subscribersGained:82,likes:3200,comments:92,shares:151,score:70},
+{id:'6',title:'O final mudou tudo',views:52100,averageViewPercentage:78.3,subscribersGained:59,likes:2500,comments:77,shares:118,score:66}
+];
+let current=demoVideos;const $=s=>document.querySelector(s);const fmt=n=>new Intl.NumberFormat('pt-BR',{notation:n>=1000000?'compact':'standard',maximumFractionDigits:1}).format(n||0);
+function render(data,live=false){current=data.videos?.length?data.videos:demoVideos;if(live&&data.channel){$('#channelName').textContent=data.channel.title+' • dados reais';$('#subscribers').textContent=fmt(data.channel.subscribers);$('#totalViews').textContent=fmt(data.channel.totalViews);$('#videoCount').textContent=String(current.length);$('#connectBtn').classList.add('hidden');$('#logoutBtn').classList.remove('hidden')}else{$('#channelName').textContent='Modo demonstração';$('#subscribers').textContent='12.480';$('#totalViews').textContent='4,2 mi';$('#videoCount').textContent=String(current.length)}$('#bestScore').textContent=(current[0]?.score||0)+'/100';$('#videoRows').innerHTML=current.slice(0,10).map(v=>`<tr><td><b>${escapeHtml(v.title)}</b></td><td><span class="score">${v.score}</span><div class="bar"><i style="width:${Math.min(100,v.score)}%"></i></div></td><td>${Number(v.averageViewPercentage||0).toFixed(1)}%</td><td>${fmt(v.views)}</td><td class="good">+${fmt(v.subscribersGained)}</td></tr>`).join('');$('#winners').innerHTML=current.slice(0,3).map((v,i)=>`<div class="winner"><div class="rank">${i+1}</div><div><b>${escapeHtml(v.title)}</b><small>${v.score}/100 • ${fmt(v.views)} views • +${fmt(v.subscribersGained)} inscritos</small></div></div>`).join('');generateIdeas()}
+function escapeHtml(s=''){return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function hookFrom(title){const t=title.replace(/[😱😂🔥!?\.]+/g,'').trim();return t.length>38?t.slice(0,38)+'…':t}
+function generateIdeas(){const top=current.slice(0,3),base=top.map(v=>hookFrom(v.title));const patterns=[['Abrir pelo clímax','Comece já no momento mais forte, sem introdução.'],['Curiosidade imediata','Use uma frase que faça o público precisar ver o final.'],['Reação primeiro','Mostre a reação mais forte nos primeiros 1–2 segundos.'],['Antes do resultado','Corte exatamente antes da resposta e entregue rápido.'],['Pergunta direta','Transforme o melhor momento em uma pergunta curta.'],['Reviravolta','Escolha um trecho em que a situação muda de direção.'],['Erro ou susto','Priorize surpresa visual clara e compreensível sem contexto.'],['Promessa curta','Diga o que vai acontecer sem revelar o resultado.'],['Final em loop','Faça o final conectar visualmente ao primeiro segundo.'],['Versão acelerada','Reduza pausas e deixe apenas ação, fala e reação.']];$('#ideas').innerHTML=patterns.map((p,i)=>`<div class="idea"><strong>${i+1}. ${p[0]}</strong><p>${p[1]} Referência vencedora: “${escapeHtml(base[i%base.length]||'melhor Short')}”.</p></div>`).join('')}
+async function loadLive(show=true){try{if(show)$('#notice').textContent='Atualizando métricas do YouTube…';const r=await fetch('/api/youtube/overview');const data=await r.json();if(r.status===401){render({videos:demoVideos},false);$('#notice').textContent='Modo demonstração ativo. Conecte o YouTube para analisar suas métricas reais.';return}if(!r.ok)throw new Error(data.error||'Erro ao carregar métricas');render(data,true);$('#notice').textContent=`Dados reais carregados: ${data.period.start} a ${data.period.end}. O bot usa leitura apenas e não altera o canal.`}catch(e){$('#notice').innerHTML=`<span class="danger">${escapeHtml(e.message)}</span> — exibindo demonstração.`;render({videos:demoVideos},false)}}
+$('#connectBtn').onclick=()=>location.href='/api/auth/start';$('#refreshBtn').onclick=()=>loadLive(true);$('#generateBtn').onclick=()=>{current=[...current].sort(()=>Math.random()-.5).sort((a,b)=>b.score-a.score);generateIdeas();$('#notice').textContent='Novo lote de 10 ideias gerado usando os padrões dos 3 melhores Shorts.'};$('#logoutBtn').onclick=async()=>{await fetch('/api/auth/logout');location.href='/'};const q=new URLSearchParams(location.search);if(q.get('oauth')==='success'){history.replaceState({},'', '/');loadLive(true)}else if(q.get('oauth')==='error'){$('#notice').textContent='Falha ao conectar: '+(q.get('message')||'erro OAuth');render({videos:demoVideos},false)}else loadLive(false);
+</script>
+</body>
+</html>
