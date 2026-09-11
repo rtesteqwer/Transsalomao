@@ -11,12 +11,12 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct and verify exact source
+      - name: Reconstruct exact production base
         shell: bash
         run: |
           set -euo pipefail
@@ -63,28 +63,56 @@ jobs:
             '5e82558aae1e340041952bacfe7e34ccbd25d779a8ff8ad167cefd3c4c609272' \
             '/tmp/transsalomao-src/source.tar.xz' | sha256sum -c -
           xz -t /tmp/transsalomao-src/source.tar.xz
-
           tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
-          PACKAGE_JSON="$(find app -maxdepth 3 -name package.json -type f | head -n 1)"
-          test -n "$PACKAGE_JSON"
-          APP_DIR="$(dirname "$PACKAGE_JSON")"
-          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
-          echo "Source root: $APP_DIR"
-          echo 'EXACT_RELEASE_HASH_OK'
+          echo 'BASE_RELEASE_HASH_OK'
 
-      - name: Verify Cegonha Caixinha and Despesas
+      - name: Apply and verify trip reporting reform
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            deploy/reform-20260911-viagens-kml/part-00.txt \
+            deploy/reform-20260911-viagens-kml/part-01.txt \
+            deploy/reform-20260911-viagens-kml/part-02.txt \
+            deploy/reform-20260911-viagens-kml/part-03.txt \
+            deploy/reform-20260911-viagens-kml/part-04.txt \
+            deploy/reform-20260911-viagens-kml/part-05.txt \
+            deploy/reform-20260911-viagens-kml/part-06.txt \
+            > /tmp/transsalomao-src/reform.b64
+
+          test "$(wc -c < /tmp/transsalomao-src/reform.b64)" -eq 31180
+          printf '%s  %s\n' \
+            '6cbf727ad86e43397d70344a2dc553e06d7c4f9c7397c0a919ea9e170e6fb9ae' \
+            '/tmp/transsalomao-src/reform.b64' | sha256sum -c -
+
+          base64 -d /tmp/transsalomao-src/reform.b64 > /tmp/transsalomao-src/reform.patch.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/reform.patch.tar.xz)" -eq 23384
+          printf '%s  %s\n' \
+            'bd0173a9b373c4883d3e6593928e9e785ac5e98b07f511fa94bb9e16f872be30' \
+            '/tmp/transsalomao-src/reform.patch.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/reform.patch.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform.patch.tar.xz -C app
+
+          APP_DIR="$(pwd)/app"
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+
+          grep -q 'basta escolher motorista e conjunto' app/src/routes/motorista.tsx
+          grep -q 'const autoTicket' app/src/lib/api.ts
+          grep -q 'fuelingConsumptionRows' app/src/lib/calc.ts
+          grep -q 'Viagens por caminhão' app/src/routes/dono/index.tsx
+          grep -q 'Média KM/L (abastecimentos)' app/src/routes/dono/index.tsx
+          grep -q 'viagens_cegonha' app/src/routes/dono/totais.tsx
+          grep -q 'viagens_caixinha' app/src/routes/dono/totais.tsx
+          grep -q 'Modos por viagem' app/src/lib/pdf.ts
+          echo 'REFORM_FEATURES_OK'
+
+      - name: Typecheck reform
         shell: bash
         run: |
           set -euo pipefail
           cd "$APP_DIR"
-          grep -qi 'cegonha' src/lib/types.ts
-          grep -qi 'caixinha' src/lib/types.ts
-          test -f src/routes/dono/despesas.tsx
-          grep -qi 'Despesas' src/routes/dono/despesas.tsx
-          test -f migrations/0005_cegonha_caixinha_despesas.sql
-          grep -qi 'expenses' migrations/0005_cegonha_caixinha_despesas.sql
-          grep -q 'isMigrationFile' scripts/migration-plan.mjs
-          echo 'RELEASE_FEATURES_OK'
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
 
       - name: Link production project
         env:
