@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           cd app
-          npm ci --ignore-scripts --no-audit --no-fund
+          npm install --ignore-scripts --no-audit --no-fund
           npm run typecheck
 
       - name: Link production project
