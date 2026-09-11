@@ -66,24 +66,26 @@ jobs:
           xz -t /tmp/transsalomao-src/reform.patch.tar.xz
           tar -xJf /tmp/transsalomao-src/reform.patch.tar.xz -C app
 
-      - name: Apply and verify reform v2
+      - name: Apply exact reform v2 overlay
         shell: bash
         run: |
           set -euo pipefail
-          cat deploy/reform-v2-script/part-{00..05}.txt > /tmp/transsalomao-src/apply-v2.b64
-          test "$(wc -c < /tmp/transsalomao-src/apply-v2.b64)" -eq 21892
-          printf '%s  %s\n' 'dae501581aec36bab59b9f078b69022b5057a8f2d45c93e8bffc89477810cb15' '/tmp/transsalomao-src/apply-v2.b64' | sha256sum -c -
-          base64 -d /tmp/transsalomao-src/apply-v2.b64 > /tmp/transsalomao-src/apply-v2.py
-          test "$(wc -c < /tmp/transsalomao-src/apply-v2.py)" -eq 16418
-          printf '%s  %s\n' 'de07f09079099e2ac29ea2f015063f1e78c62f66e95b97b54ae46bfb675984f3' '/tmp/transsalomao-src/apply-v2.py' | sha256sum -c -
+          cat deploy/reform-v2-overlay/part-{00..03}.txt > /tmp/transsalomao-src/reform-v2.b64
+          test "$(wc -c < /tmp/transsalomao-src/reform-v2.b64)" -eq 25456
+          printf '%s  %s\n' 'cca1128084a720f0f39dec932dfab8c97d549dbf6ca3abd5a88dedb10ee47d2f' '/tmp/transsalomao-src/reform-v2.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/reform-v2.b64 > /tmp/transsalomao-src/reform-v2.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/reform-v2.tar.xz)" -eq 19092
+          printf '%s  %s\n' '786488c14e25e4bb4b649d858291d658e4d0b5150460566462aefdaec0a62a57' '/tmp/transsalomao-src/reform-v2.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/reform-v2.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v2.tar.xz -C app
           cd app
-          python /tmp/transsalomao-src/apply-v2.py
           grep -Fq 'fixedTripCount' src/lib/calc.ts
           grep -Fq 'viagens_por_caminhao' src/routes/dono/totais.tsx
           grep -Fq 'frete_por_viagem' src/routes/dono/totais.tsx
           grep -Fq 'Média KM/L' src/routes/dono/abastecimentos.tsx
           grep -Fq 'Por tonelada: valor bruto = peso líquido' src/components/owner/trip-form.tsx
-          echo 'REFORM_V2_FEATURES_OK'
+          grep -Fq 'const autoTicket' src/lib/api.ts
+          echo 'REFORM_V2_OVERLAY_OK'
 
       - name: Typecheck final source
         shell: bash
