@@ -1,0 +1,262 @@
+--- a/src/components/owner/trip-form.tsx
++++ b/src/components/owner/trip-form.tsx
+@@ -24,6 +24,7 @@
+   freightMode: FreightMode;
+   pricePerTon: string;
+   pricePerTrip: string;
++  batchQuantity: string;
+   kmStart: string;
+   kmEnd: string;
+   dieselLiters: string;
+@@ -47,6 +48,7 @@
+     freightMode: trip.freightMode,
+     pricePerTon: String(trip.pricePerTon || ""),
+     pricePerTrip: String(trip.pricePerTrip || ""),
++    batchQuantity: "1",
+     kmStart: String(trip.kmStart),
+     kmEnd: String(trip.kmEnd),
+     dieselLiters: String(trip.dieselLiters),
+@@ -76,6 +78,7 @@
+     freightMode: "ton",
+     pricePerTon: "",
+     pricePerTrip: "",
++    batchQuantity: "1",
+     kmStart: last != null ? String(last) : "",
+     kmEnd: "",
+     dieselLiters: "",
+@@ -131,6 +134,18 @@
+     );
+   }, [form, driver]);
+ 
++  const batchQuantity =
++    !form.id && form.freightMode !== "ton"
++      ? Math.max(1, Math.trunc(parseLocaleNumberOrZero(form.batchQuantity) || 1))
++      : 1;
++  const batchFreight = metrics.freight * batchQuantity;
++  const batchCommission = metrics.commissionValue * batchQuantity;
++  const batchGrossResult =
++    form.freightMode !== "ton" && batchQuantity > 1
++      ? batchFreight
++      : metrics.grossResult;
++  const batchAfterCommission = batchGrossResult - batchCommission;
++
+   async function handleSubmit(e: React.FormEvent) {
+     e.preventDefault();
+     await onSubmit({
+@@ -149,6 +164,7 @@
+       freightMode: form.freightMode,
+       pricePerTon: parseLocaleNumberOrZero(form.pricePerTon),
+       pricePerTrip: parseLocaleNumberOrZero(form.pricePerTrip),
++      quantity: form.id || form.freightMode === "ton" ? 1 : Math.max(1, Math.trunc(parseLocaleNumberOrZero(form.batchQuantity) || 1)),
+       kmStart: parseLocaleNumberOrZero(form.kmStart),
+       kmEnd: parseLocaleNumberOrZero(form.kmEnd),
+       dieselLiters: parseLocaleNumberOrZero(form.dieselLiters),
+@@ -163,7 +179,8 @@
+           <Input
+             value={form.code}
+             onChange={(e) => set("code", e.target.value.toUpperCase())}
+-            required
++            required={form.freightMode === "ton" || batchQuantity === 1}
++            placeholder={form.freightMode !== "ton" && batchQuantity > 1 ? "Gerado automaticamente" : undefined}
+           />
+         </Field>
+         <Field label="Data">
+@@ -265,12 +282,40 @@
+         </p>
+       </div>
+ 
++      {form.freightMode !== "ton" && !form.id ? (
++        <div className="rounded-xl border border-accent/30 bg-accent/5 p-4">
++          <div className="grid gap-3 sm:grid-cols-[220px_1fr] sm:items-end">
++            <Field label="Quantidade de viagens">
++              <Input
++                inputMode="numeric"
++                type="number"
++                min={1}
++                max={500}
++                value={form.batchQuantity}
++                onChange={(e) => set("batchQuantity", e.target.value)}
++              />
++            </Field>
++            <div className="pb-1 text-sm text-muted">
++              {batchQuantity > 1
++                ? `${batchQuantity} viagens serão criadas para o mesmo motorista e conjunto. Valor total do lote: ${brl(batchFreight)}.`
++                : "Use 2 ou mais para lançar várias viagens de uma só vez."}
++            </div>
++          </div>
++          {batchQuantity > 1 ? (
++            <p className="mt-2 text-xs text-subtle">
++              Cada viagem será registrada separadamente e receberá um código automático. Para não duplicar KM, diesel e pesos no total, esses campos ficam zerados nas viagens criadas em lote.
++            </p>
++          ) : null}
++        </div>
++      ) : null}
++
+       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+         <Field label="Ton. carregadas">
+           <Input
+             inputMode="decimal"
+             value={form.loadedTons}
+             onChange={(e) => set("loadedTons", e.target.value)}
++            disabled={batchQuantity > 1}
+           />
+         </Field>
+         <Field label="Peso bruto (t)">
+@@ -278,6 +323,7 @@
+             inputMode="decimal"
+             value={form.grossWeight}
+             onChange={(e) => set("grossWeight", e.target.value)}
++            disabled={batchQuantity > 1}
+           />
+         </Field>
+         <Field label="Peso líquido (t)">
+@@ -285,6 +331,7 @@
+             inputMode="decimal"
+             value={form.netWeight}
+             onChange={(e) => set("netWeight", e.target.value)}
++            disabled={batchQuantity > 1}
+           />
+         </Field>
+         {form.freightMode !== "ton" ? (
+@@ -313,6 +360,7 @@
+             inputMode="numeric"
+             value={form.kmStart}
+             onChange={(e) => set("kmStart", e.target.value)}
++            disabled={batchQuantity > 1}
+           />
+         </Field>
+         <Field label="KM final">
+@@ -320,6 +368,7 @@
+             inputMode="numeric"
+             value={form.kmEnd}
+             onChange={(e) => set("kmEnd", e.target.value)}
++            disabled={batchQuantity > 1}
+           />
+         </Field>
+         <Field label="Litros diesel">
+@@ -327,6 +376,7 @@
+             inputMode="decimal"
+             value={form.dieselLiters}
+             onChange={(e) => set("dieselLiters", e.target.value)}
++            disabled={batchQuantity > 1}
+           />
+         </Field>
+         <Field label="Preço diesel">
+@@ -334,6 +384,7 @@
+             inputMode="decimal"
+             value={form.dieselPrice}
+             onChange={(e) => set("dieselPrice", e.target.value)}
++            disabled={batchQuantity > 1}
+           />
+         </Field>
+       </div>
+@@ -341,16 +392,16 @@
+       <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-surface-2 p-3 sm:grid-cols-4">
+         <MiniStat label="KM rodados" value={integer(metrics.kmDriven)} />
+         <MiniStat label="KM/L" value={kmL(metrics.kmPerLiter)} />
+-        <MiniStat label="Frete" value={brl(metrics.freight)} />
++        <MiniStat label={batchQuantity > 1 ? "Frete do lote" : "Frete"} value={brl(batchFreight)} />
+         <MiniStat label="Diesel" value={brl(metrics.dieselCost)} />
+-        <MiniStat label="Resultado bruto" value={brl(metrics.grossResult)} />
++        <MiniStat label="Resultado bruto" value={brl(batchGrossResult)} />
+         <MiniStat
+           label="Comissão"
+-          value={`${num((driver?.commissionPct ?? 0) * 100, 0)}% · ${brl(metrics.commissionValue)}`}
++          value={`${num((driver?.commissionPct ?? 0) * 100, 0)}% · ${brl(batchCommission)}`}
+         />
+         <MiniStat
+           label="Após comissão"
+-          value={brl(metrics.afterCommission)}
++          value={brl(batchAfterCommission)}
+           wide
+         />
+       </div>
+--- a/src/lib/api.ts
++++ b/src/lib/api.ts
+@@ -369,6 +369,7 @@
+   dieselLiters: z.number().min(0),
+   dieselPrice: z.number().min(0),
+   reportId: z.string().optional(),
++  quantity: z.number().int().min(1).max(500).default(1),
+ });
+ 
+ export const upsertTrip = createServerFn({ method: "POST" })
+@@ -376,6 +377,52 @@
+   .handler(async ({ data }) => {
+     await requireManagement();
+     const sql = await getSql();
++    const quantity = data.quantity ?? 1;
++
++    if (data.id && quantity > 1) {
++      throw new Error("Uma viagem existente deve ser editada individualmente.");
++    }
++    if (data.freightMode === "ton" && quantity > 1) {
++      throw new Error("Lançamento em lote está disponível apenas para Viagem, Cegonha e Caixinha.");
++    }
++
++    if (!data.id && quantity > 1) {
++      const maxRows = await sql<{ max_number: number }>`
++        select coalesce(
++          max(
++            case
++              when regexp_replace(code, '[^0-9]', '', 'g') <> ''
++              then regexp_replace(code, '[^0-9]', '', 'g')::bigint
++              else 0
++            end
++          ),
++          0
++        )::double precision as max_number
++        from trips
++      `;
++      const startNumber = Math.trunc(num(maxRows[0]?.max_number)) + 1;
++      const ids: string[] = [];
++
++      for (let index = 0; index < quantity; index += 1) {
++        const id = newId("trip");
++        const code = `VG-${String(startNumber + index).padStart(4, "0")}`;
++        await sql`
++          insert into trips (
++            id, code, date, client, origin, destination, driver_id, fleet_id,
++            loaded_tons, gross_weight, net_weight, freight_mode, price_per_ton, price_per_trip,
++            km_start, km_end, diesel_liters, diesel_price
++          ) values (
++            ${id}, ${code}, ${data.date}, ${data.client}, ${data.origin}, ${data.destination},
++            ${data.driverId}, ${data.fleetId}, 0, 0, 0, ${data.freightMode}, 0, ${data.pricePerTrip},
++            0, 0, 0, 0
++          )
++        `;
++        ids.push(id);
++      }
++
++      return { id: ids[0], ids, created: ids.length };
++    }
++
+     const id = data.id?.trim() || newId("trip");
+     const code = data.code.toUpperCase();
+     await sql`
+@@ -411,7 +458,7 @@
+     if (data.reportId) {
+       await sql`update reports set status = 'aceito', trip_id = ${id} where id = ${data.reportId}`;
+     }
+-    return { id };
++    return { id, ids: [id], created: 1 };
+   });
+ 
+ export const deleteTrip = createServerFn({ method: "POST" })
+--- a/src/routes/dono/viagens.tsx
++++ b/src/routes/dono/viagens.tsx
+@@ -261,8 +261,12 @@
+               submitLabel="Salvar viagem"
+               pending={trip.isPending}
+               onSubmit={async (payload) => {
+-                await trip.mutateAsync(payload);
+-                toast.success("Viagem salva.");
++                const result = await trip.mutateAsync(payload);
++                toast.success(
++                  result.created > 1
++                    ? `${result.created} viagens salvas de uma vez.`
++                    : "Viagem salva.",
++                );
+                 setEditing(null);
+               }}
+             />
