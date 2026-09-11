@@ -1,0 +1,121 @@
+name: Deploy Trans Salomao Reform V2
+
+on:
+  push:
+    paths:
+      - 'deploy/deploy-production-v2.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact production base
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/transsalomao-src app
+          printf '%s  %s\n' 'f418a3ad07d682ba29e48293c0c68ff9b1c433fe47fb99471980c1f67ceb4e1b' 'deploy/release-exact-20260911/part-05a.txt' | sha256sum -c -
+          printf '%s  %s\n' '2aa865301428d9624ee580c5456fc68ff245cd5c83b361d83f479bb7a305872a' 'deploy/release-exact-20260911/part-05b.txt' | sha256sum -c -
+          printf '%s  %s\n' 'cd0940b8df6ce648a8d71f6d268b96c11ec5bf1b35b7faae71d65678503d619a' 'deploy/release-exact-20260911/part-05c.txt' | sha256sum -c -
+          head -c 5000 deploy/release-exact-20260911/part-11b.txt > /tmp/transsalomao-src/part-11b.exact
+          printf '%s  %s\n' '5d751aaaf78439de274899f61d06a5403ce12256f6c73b39fd6b16879a44e436' '/tmp/transsalomao-src/part-11b.exact' | sha256sum -c -
+          cat \
+            deploy/release-exact-20260911/part-00.txt \
+            deploy/release-exact-20260911/part-01.txt \
+            deploy/release-exact-20260911/part-02.txt \
+            deploy/release-exact-20260911/part-03.txt \
+            deploy/release-exact-20260911/part-04.txt \
+            deploy/release-exact-20260911/part-05a.txt \
+            deploy/release-exact-20260911/part-05b.txt \
+            deploy/release-exact-20260911/part-05c.txt \
+            deploy/release-exact-20260911/part-06.txt \
+            deploy/release-exact-20260911/part-07.txt \
+            deploy/release-exact-20260911/part-08.txt \
+            deploy/release-exact-20260911/part-09.txt \
+            deploy/release-exact-20260911/part-10.txt \
+            deploy/release-exact-20260911/part-11a.txt \
+            /tmp/transsalomao-src/part-11b.exact \
+            deploy/release-exact-20260911/part-11c.txt \
+            deploy/release-exact-20260911/part-12a.txt \
+            deploy/release-exact-20260911/part-12b.txt > /tmp/transsalomao-src/source.b64
+          test "$(wc -c < /tmp/transsalomao-src/source.b64)" -eq 188380
+          printf '%s  %s\n' '8135125e22be35abc6c8269aa2b9262982e0b3a016759e30d7a33b5495440fab' '/tmp/transsalomao-src/source.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/source.tar.xz)" -eq 141284
+          printf '%s  %s\n' '5e82558aae1e340041952bacfe7e34ccbd25d779a8ff8ad167cefd3c4c609272' '/tmp/transsalomao-src/source.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/source.tar.xz
+          tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
+
+      - name: Apply reform v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-20260911-viagens-kml/part-{00..06}.txt > /tmp/transsalomao-src/reform.b64
+          test "$(wc -c < /tmp/transsalomao-src/reform.b64)" -eq 31180
+          printf '%s  %s\n' '6cbf727ad86e43397d70344a2dc553e06d7c4f9c7397c0a919ea9e170e6fb9ae' '/tmp/transsalomao-src/reform.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/reform.b64 > /tmp/transsalomao-src/reform.patch.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/reform.patch.tar.xz)" -eq 23384
+          printf '%s  %s\n' 'bd0173a9b373c4883d3e6593928e9e785ac5e98b07f511fa94bb9e16f872be30' '/tmp/transsalomao-src/reform.patch.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/reform.patch.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform.patch.tar.xz -C app
+
+      - name: Apply and verify reform v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-v2-script/part-{00..05}.txt > /tmp/transsalomao-src/apply-v2.b64
+          test "$(wc -c < /tmp/transsalomao-src/apply-v2.b64)" -eq 21892
+          printf '%s  %s\n' 'dae501581aec36bab59b9f078b69022b5057a8f2d45c93e8bffc89477810cb15' '/tmp/transsalomao-src/apply-v2.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/apply-v2.b64 > /tmp/transsalomao-src/apply-v2.py
+          test "$(wc -c < /tmp/transsalomao-src/apply-v2.py)" -eq 16418
+          printf '%s  %s\n' 'de07f09079099e2ac29ea2f015063f1e78c62f66e95b97b54ae46bfb675984f3' '/tmp/transsalomao-src/apply-v2.py' | sha256sum -c -
+          cd app
+          python /tmp/transsalomao-src/apply-v2.py
+          grep -Fq 'fixedTripCount' src/lib/calc.ts
+          grep -Fq 'viagens_por_caminhao' src/routes/dono/totais.tsx
+          grep -Fq 'frete_por_viagem' src/routes/dono/totais.tsx
+          grep -Fq 'Média KM/L' src/routes/dono/abastecimentos.tsx
+          grep -Fq 'Por tonelada: valor bruto = peso líquido' src/components/owner/trip-form.tsx
+          echo 'REFORM_V2_FEATURES_OK'
+
+      - name: Typecheck final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+
+      - name: Link production project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+
+      - name: Remote production build and deploy
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          URL="$(npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
+          echo "DEPLOYMENT_URL=$URL" >> "$GITHUB_ENV"
+          echo "deployment_url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Deployment summary
+        shell: bash
+        run: echo "Published: $DEPLOYMENT_URL"
