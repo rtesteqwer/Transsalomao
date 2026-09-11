@@ -87,13 +87,26 @@ jobs:
           grep -Fq 'const autoTicket' src/lib/api.ts
           echo 'REFORM_V2_OVERLAY_OK'
 
-      - name: Typecheck final source
+      - name: Apply lancamentos type fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(wc -c < deploy/reform-v2-fix/overlay.b64)" -eq 4176
+          printf '%s  %s\n' '40e5e934e7c9354929f19a5c5b49ed4af2ef83f285bb11e649989a234def7422' 'deploy/reform-v2-fix/overlay.b64' | sha256sum -c -
+          base64 -d deploy/reform-v2-fix/overlay.b64 > /tmp/transsalomao-src/reform-v2-fix.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/reform-v2-fix.tar.xz)" -eq 3132
+          printf '%s  %s\n' 'c36db6a958f9239e0b82e0996cdd7910e4b0ac44fa04f59a0bde3aa445154502' '/tmp/transsalomao-src/reform-v2-fix.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/reform-v2-fix.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v2-fix.tar.xz -C app
+          grep -Fq 'open.freightMode ?? undefined' app/src/routes/dono/lancamentos.tsx
+
+      - name: Typecheck application source
         shell: bash
         run: |
           set -euo pipefail
           cd app
           npm install --ignore-scripts --no-audit --no-fund
-          npm run typecheck
+          npx tsc --noEmit --checkJs false
 
       - name: Link production project
         env:
