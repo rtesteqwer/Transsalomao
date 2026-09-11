@@ -47,34 +47,15 @@ jobs:
           base64 -d deploy/reform-v2-fix/overlay.b64 > /tmp/transsalomao-src/reform-v2-fix.tar.xz
           tar -xJf /tmp/transsalomao-src/reform-v2-fix.tar.xz -C app
 
-      - name: Decode batch overlay
+      - name: Apply batch trip patch
         shell: bash
         run: |
           set -euo pipefail
-          wc -c deploy/reform-v3-batch/overlay.b64
-          base64 -d deploy/reform-v3-batch/overlay.b64 > /tmp/transsalomao-src/batch-v3.tar.xz
-          wc -c /tmp/transsalomao-src/batch-v3.tar.xz
-
-      - name: Check batch archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          xz -t /tmp/transsalomao-src/batch-v3.tar.xz
-          tar -tJf /tmp/transsalomao-src/batch-v3.tar.xz
-
-      - name: Apply batch archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar -xJf /tmp/transsalomao-src/batch-v3.tar.xz -C app
-
-      - name: Check batch feature
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -Fq 'Quantidade de viagens' app/src/components/owner/trip-form.tsx
-          grep -Fq 'Lançamento em lote está disponível apenas' app/src/lib/api.ts
-          grep -Fq 'viagens salvas de uma vez' app/src/routes/dono/viagens.tsx
+          cd app
+          patch -p1 < ../deploy/reform-v3-batch/batch-v3.patch
+          grep -Fq 'Quantidade de viagens' src/components/owner/trip-form.tsx
+          grep -Fq 'Lançamento em lote está disponível apenas' src/lib/api.ts
+          grep -Fq 'viagens salvas de uma vez' src/routes/dono/viagens.tsx
 
       - name: Typecheck application source
         shell: bash
