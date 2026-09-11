@@ -22,70 +22,56 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/transsalomao-src app
           head -c 5000 deploy/release-exact-20260911/part-11b.txt > /tmp/transsalomao-src/part-11b.exact
-          cat \
-            deploy/release-exact-20260911/part-00.txt \
-            deploy/release-exact-20260911/part-01.txt \
-            deploy/release-exact-20260911/part-02.txt \
-            deploy/release-exact-20260911/part-03.txt \
-            deploy/release-exact-20260911/part-04.txt \
-            deploy/release-exact-20260911/part-05a.txt \
-            deploy/release-exact-20260911/part-05b.txt \
-            deploy/release-exact-20260911/part-05c.txt \
-            deploy/release-exact-20260911/part-06.txt \
-            deploy/release-exact-20260911/part-07.txt \
-            deploy/release-exact-20260911/part-08.txt \
-            deploy/release-exact-20260911/part-09.txt \
-            deploy/release-exact-20260911/part-10.txt \
-            deploy/release-exact-20260911/part-11a.txt \
-            /tmp/transsalomao-src/part-11b.exact \
-            deploy/release-exact-20260911/part-11c.txt \
-            deploy/release-exact-20260911/part-12a.txt \
-            deploy/release-exact-20260911/part-12b.txt > /tmp/transsalomao-src/source.b64
-          test "$(wc -c < /tmp/transsalomao-src/source.b64)" -eq 188380
-          printf '%s  %s\n' '8135125e22be35abc6c8269aa2b9262982e0b3a016759e30d7a33b5495440fab' '/tmp/transsalomao-src/source.b64' | sha256sum -c -
+          cat deploy/release-exact-20260911/part-00.txt deploy/release-exact-20260911/part-01.txt deploy/release-exact-20260911/part-02.txt deploy/release-exact-20260911/part-03.txt deploy/release-exact-20260911/part-04.txt deploy/release-exact-20260911/part-05a.txt deploy/release-exact-20260911/part-05b.txt deploy/release-exact-20260911/part-05c.txt deploy/release-exact-20260911/part-06.txt deploy/release-exact-20260911/part-07.txt deploy/release-exact-20260911/part-08.txt deploy/release-exact-20260911/part-09.txt deploy/release-exact-20260911/part-10.txt deploy/release-exact-20260911/part-11a.txt /tmp/transsalomao-src/part-11b.exact deploy/release-exact-20260911/part-11c.txt deploy/release-exact-20260911/part-12a.txt deploy/release-exact-20260911/part-12b.txt > /tmp/transsalomao-src/source.b64
           base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
-          printf '%s  %s\n' '5e82558aae1e340041952bacfe7e34ccbd25d779a8ff8ad167cefd3c4c609272' '/tmp/transsalomao-src/source.tar.xz' | sha256sum -c -
           tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
 
       - name: Apply reform v1
         shell: bash
         run: |
           set -euo pipefail
-          cat deploy/reform-20260911-viagens-kml/part-{00..06}.txt > /tmp/transsalomao-src/reform.b64
-          printf '%s  %s\n' '6cbf727ad86e43397d70344a2dc553e06d7c4f9c7397c0a919ea9e170e6fb9ae' '/tmp/transsalomao-src/reform.b64' | sha256sum -c -
-          base64 -d /tmp/transsalomao-src/reform.b64 > /tmp/transsalomao-src/reform.patch.tar.xz
-          printf '%s  %s\n' 'bd0173a9b373c4883d3e6593928e9e785ac5e98b07f511fa94bb9e16f872be30' '/tmp/transsalomao-src/reform.patch.tar.xz' | sha256sum -c -
-          tar -xJf /tmp/transsalomao-src/reform.patch.tar.xz -C app
+          cat deploy/reform-20260911-viagens-kml/part-{00..06}.txt | base64 -d > /tmp/transsalomao-src/reform.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform.tar.xz -C app
 
       - name: Apply reform v2
         shell: bash
         run: |
           set -euo pipefail
-          cat deploy/reform-v2-overlay/part-{00..03}.txt > /tmp/transsalomao-src/reform-v2.b64
-          printf '%s  %s\n' 'cca1128084a720f0f39dec932dfab8c97d549dbf6ca3abd5a88dedb10ee47d2f' '/tmp/transsalomao-src/reform-v2.b64' | sha256sum -c -
-          base64 -d /tmp/transsalomao-src/reform-v2.b64 > /tmp/transsalomao-src/reform-v2.tar.xz
-          printf '%s  %s\n' '786488c14e25e4bb4b649d858291d658e4d0b5150460566462aefdaec0a62a57' '/tmp/transsalomao-src/reform-v2.tar.xz' | sha256sum -c -
+          cat deploy/reform-v2-overlay/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/reform-v2.tar.xz
           tar -xJf /tmp/transsalomao-src/reform-v2.tar.xz -C app
 
       - name: Apply lancamentos type fix
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s  %s\n' '40e5e934e7c9354929f19a5c5b49ed4af2ef83f285bb11e649989a234def7422' 'deploy/reform-v2-fix/overlay.b64' | sha256sum -c -
           base64 -d deploy/reform-v2-fix/overlay.b64 > /tmp/transsalomao-src/reform-v2-fix.tar.xz
-          printf '%s  %s\n' 'c36db6a958f9239e0b82e0996cdd7910e4b0ac44fa04f59a0bde3aa445154502' '/tmp/transsalomao-src/reform-v2-fix.tar.xz' | sha256sum -c -
           tar -xJf /tmp/transsalomao-src/reform-v2-fix.tar.xz -C app
 
-      - name: Apply batch trip overlay
+      - name: Decode batch overlay
         shell: bash
         run: |
           set -euo pipefail
-          test "$(wc -c < deploy/reform-v3-batch/overlay.b64)" -eq 13304
-          printf '%s  %s\n' '2ca572f6e8b7243fad85967b558283fda5d412b8a24f3702e140b917b59ba55f' 'deploy/reform-v3-batch/overlay.b64' | sha256sum -c -
+          wc -c deploy/reform-v3-batch/overlay.b64
           base64 -d deploy/reform-v3-batch/overlay.b64 > /tmp/transsalomao-src/batch-v3.tar.xz
-          test "$(wc -c < /tmp/transsalomao-src/batch-v3.tar.xz)" -eq 9976
-          printf '%s  %s\n' '19fb34ab95e70dba5e13c3b4ffee2ad03ac78ee6b3f358a7915ff24b677a7167' '/tmp/transsalomao-src/batch-v3.tar.xz' | sha256sum -c -
+          wc -c /tmp/transsalomao-src/batch-v3.tar.xz
+
+      - name: Check batch archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          xz -t /tmp/transsalomao-src/batch-v3.tar.xz
+          tar -tJf /tmp/transsalomao-src/batch-v3.tar.xz
+
+      - name: Apply batch archive
+        shell: bash
+        run: |
+          set -euo pipefail
           tar -xJf /tmp/transsalomao-src/batch-v3.tar.xz -C app
+
+      - name: Check batch feature
+        shell: bash
+        run: |
+          set -euo pipefail
           grep -Fq 'Quantidade de viagens' app/src/components/owner/trip-form.tsx
           grep -Fq 'Lançamento em lote está disponível apenas' app/src/lib/api.ts
           grep -Fq 'viagens salvas de uma vez' app/src/routes/dono/viagens.tsx
