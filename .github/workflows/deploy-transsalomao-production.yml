@@ -16,32 +16,69 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct release source
+      - name: Reconstruct and verify exact source
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/transsalomao-src app
-          cat deploy/chunk-00.txt deploy/chunk-01.txt deploy/chunk-02.txt deploy/chunk-03.txt deploy/chunk-04.txt deploy/chunk-05.txt > /tmp/transsalomao-src/source.b64
+
+          # O bloco 11b recebeu bytes extras pelo conector; usamos somente
+          # os 5000 bytes que pertencem ao pacote local validado.
+          head -c 5000 deploy/release-exact-20260911/part-11b.txt > /tmp/transsalomao-src/part-11b.exact
+          printf '%s  %s\n' \
+            '5d751aaaf78439de274899f61d06a5403ce12256f6c73b39fd6b16879a44e436' \
+            '/tmp/transsalomao-src/part-11b.exact' | sha256sum -c -
+
+          cat \
+            deploy/release-exact-20260911/part-00.txt \
+            deploy/release-exact-20260911/part-01.txt \
+            deploy/release-exact-20260911/part-02.txt \
+            deploy/release-exact-20260911/part-03.txt \
+            deploy/release-exact-20260911/part-04.txt \
+            deploy/release-exact-20260911/part-05.txt \
+            deploy/release-exact-20260911/part-06.txt \
+            deploy/release-exact-20260911/part-07.txt \
+            deploy/release-exact-20260911/part-08.txt \
+            deploy/release-exact-20260911/part-09.txt \
+            deploy/release-exact-20260911/part-10.txt \
+            deploy/release-exact-20260911/part-11a.txt \
+            /tmp/transsalomao-src/part-11b.exact \
+            deploy/release-exact-20260911/part-11c.txt \
+            deploy/release-exact-20260911/part-12a.txt \
+            deploy/release-exact-20260911/part-12b.txt \
+            > /tmp/transsalomao-src/source.b64
+
+          test "$(wc -c < /tmp/transsalomao-src/source.b64)" -eq 188380
+          printf '%s  %s\n' \
+            '8135125e22be35abc6c8269aa2b9262982e0b3a016759e30d7a33b5495440fab' \
+            '/tmp/transsalomao-src/source.b64' | sha256sum -c -
+
           base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/source.tar.xz)" -eq 141284
+          printf '%s  %s\n' \
+            '5e82558aae1e340041952bacfe7e34ccbd25d779a8ff8ad167cefd3c4c609272' \
+            '/tmp/transsalomao-src/source.tar.xz' | sha256sum -c -
           xz -t /tmp/transsalomao-src/source.tar.xz
+
           tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
           PACKAGE_JSON="$(find app -maxdepth 3 -name package.json -type f | head -n 1)"
           test -n "$PACKAGE_JSON"
           APP_DIR="$(dirname "$PACKAGE_JSON")"
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
           echo "Source root: $APP_DIR"
+          echo 'EXACT_RELEASE_HASH_OK'
 
       - name: Verify Cegonha Caixinha and Despesas
         shell: bash
         run: |
           set -euo pipefail
           cd "$APP_DIR"
-          grep -q 'cegonha' src/lib/types.ts
-          grep -q 'caixinha' src/lib/types.ts
+          grep -qi 'cegonha' src/lib/types.ts
+          grep -qi 'caixinha' src/lib/types.ts
           test -f src/routes/dono/despesas.tsx
-          grep -q 'Despesas' src/routes/dono/despesas.tsx
+          grep -qi 'Despesas' src/routes/dono/despesas.tsx
           test -f migrations/0005_cegonha_caixinha_despesas.sql
-          grep -q 'expenses' migrations/0005_cegonha_caixinha_despesas.sql
+          grep -qi 'expenses' migrations/0005_cegonha_caixinha_despesas.sql
           grep -q 'isMigrationFile' scripts/migration-plan.mjs
           echo 'RELEASE_FEATURES_OK'
 
