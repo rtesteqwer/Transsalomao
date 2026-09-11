@@ -118,4 +118,5 @@ jobs:
 
       - name: Deployment summary
         shell: bash
-        run: echo "Published: $DEPLOYMENT_URL"
+        run: |
+          echo "Published: $DEPLOYMENT_URL"
