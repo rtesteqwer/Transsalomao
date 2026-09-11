@@ -1,1 +1,1 @@
-validate-batch-v3-patch-2026-09-11-19-03-BRT
+validate-batch-v3-exact-2026-09-11-19-10-BRT
