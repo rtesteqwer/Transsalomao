@@ -26,8 +26,6 @@ jobs:
           printf '%s  %s\n' '2aa865301428d9624ee580c5456fc68ff245cd5c83b361d83f479bb7a305872a' 'deploy/release-exact-20260911/part-05b.txt' | sha256sum -c -
           printf '%s  %s\n' 'cd0940b8df6ce648a8d71f6d268b96c11ec5bf1b35b7faae71d65678503d619a' 'deploy/release-exact-20260911/part-05c.txt' | sha256sum -c -
 
-          # O bloco 11b recebeu bytes extras pelo conector; usamos somente
-          # os 5000 bytes que pertencem ao pacote local validado.
           head -c 5000 deploy/release-exact-20260911/part-11b.txt > /tmp/transsalomao-src/part-11b.exact
           printf '%s  %s\n' \
             '5d751aaaf78439de274899f61d06a5403ce12256f6c73b39fd6b16879a44e436' \
@@ -99,16 +97,7 @@ jobs:
           printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
           npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
 
-      - name: Build production safely
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$APP_DIR"
-          npx --yes vercel@latest build --prod --scope=transsalomao --token="$VERCEL_TOKEN"
-
-      - name: Deploy production only after successful build
+      - name: Remote production build and deploy
         id: deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -116,7 +105,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$APP_DIR"
-          URL="$(npx --yes vercel@latest deploy --prebuilt --prod --scope=transsalomao --token="$VERCEL_TOKEN")"
+          URL="$(npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
           echo "DEPLOYMENT_URL=$URL" >> "$GITHUB_ENV"
           echo "deployment_url=$URL" >> "$GITHUB_OUTPUT"
           echo "DEPLOYMENT_URL=$URL"
