@@ -67,6 +67,15 @@ jobs:
           xz -t /tmp/transsalomao-src/fix3.tar.xz
           tar -xJf /tmp/transsalomao-src/fix3.tar.xz -C app
 
+          cat deploy/reform-fix4-20260911/part-00.txt > /tmp/transsalomao-src/fix4.b64
+          test "$(wc -c < /tmp/transsalomao-src/fix4.b64)" -eq 4312
+          printf '%s  %s\n' '42704a3e4562e69b918dfd865516f23c388128ef5c33e837c097c3b556ee7c31' '/tmp/transsalomao-src/fix4.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/fix4.b64 > /tmp/transsalomao-src/fix4.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/fix4.tar.xz)" -eq 3232
+          printf '%s  %s\n' 'a5210edec1054f45820bcf3b49e4af87979e3c2aef737d0c29d4d06ae4643095' '/tmp/transsalomao-src/fix4.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/fix4.tar.xz
+          tar -xJf /tmp/transsalomao-src/fix4.tar.xz -C app
+
           APP_DIR="$(pwd)/app"
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
           grep -Fq 'const autoTicket' app/src/lib/api.ts
@@ -77,6 +86,7 @@ jobs:
           grep -Fq 'viagens_caixinha' app/src/routes/dono/totais.tsx
           grep -Fq '}, [data, period, fuelingIntervals]);' app/src/routes/dono/totais.tsx
           grep -Fq 'const blobParts: BlobPart[]' app/src/lib/pdf.ts
+          grep -Fq 'freightMode: open.freightMode ?? "ton"' app/src/routes/dono/lancamentos.tsx
           echo 'REFORM_FEATURES_OK'
 
       - name: Typecheck application
