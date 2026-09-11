@@ -1,0 +1,25 @@
+name: Check Vercel Token
+
+on:
+  push:
+    paths:
+      - 'deploy/vercel-token-check.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check token presence
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          if [ -n "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN_CONFIGURADO"
+          else
+            echo "::error::VERCEL_TOKEN_AUSENTE"
+            exit 1
+          fi
