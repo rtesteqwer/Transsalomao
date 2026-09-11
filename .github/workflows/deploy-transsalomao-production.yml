@@ -21,18 +21,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/transsalomao-src app
-          cat \
-            deploy/release-20260911-cegonha-despesas-chunk-00.txt \
-            deploy/release-20260911-cegonha-despesas-chunk-01.txt \
-            deploy/release-20260911-cegonha-despesas-chunk-02.txt \
-            deploy/release-20260911-cegonha-despesas-chunk-03.txt \
-            deploy/release-20260911-cegonha-despesas-chunk-04.txt \
-            deploy/release-20260911-cegonha-despesas-chunk-05.txt \
-            deploy/release-20260911-cegonha-despesas-chunk-06.txt \
-            > /tmp/transsalomao-src/source.b64
-          base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.gz
-          gzip -t /tmp/transsalomao-src/source.tar.gz
-          tar -xzf /tmp/transsalomao-src/source.tar.gz -C app
+          cat deploy/chunk-00.txt deploy/chunk-01.txt deploy/chunk-02.txt deploy/chunk-03.txt deploy/chunk-04.txt deploy/chunk-05.txt > /tmp/transsalomao-src/source.b64
+          base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
+          xz -t /tmp/transsalomao-src/source.tar.xz
+          tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
           PACKAGE_JSON="$(find app -maxdepth 3 -name package.json -type f | head -n 1)"
           test -n "$PACKAGE_JSON"
           APP_DIR="$(dirname "$PACKAGE_JSON")"
