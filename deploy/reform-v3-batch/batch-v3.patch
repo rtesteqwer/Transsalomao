@@ -47,7 +47,7 @@
        freightMode: form.freightMode,
        pricePerTon: parseLocaleNumberOrZero(form.pricePerTon),
        pricePerTrip: parseLocaleNumberOrZero(form.pricePerTrip),
-+      quantity: form.id || form.freightMode === "ton" ? 1 : Math.max(1, Math.trunc(parseLocaleNumberOrZero(form.batchQuantity) || 1)),
++      quantity: form.id || form.freightMode === "ton" ? 1 : batchQuantity,
        kmStart: parseLocaleNumberOrZero(form.kmStart),
        kmEnd: parseLocaleNumberOrZero(form.kmEnd),
        dieselLiters: parseLocaleNumberOrZero(form.dieselLiters),
@@ -142,7 +142,7 @@
            />
          </Field>
          <Field label="Preço diesel">
-@@ -334,6 +384,7 @@
+@@ -334,22 +384,23 @@
              inputMode="decimal"
              value={form.dieselPrice}
              onChange={(e) => set("dieselPrice", e.target.value)}
@@ -150,10 +150,9 @@
            />
          </Field>
        </div>
-@@ -341,16 +392,16 @@
-       <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-surface-2 p-3 sm:grid-cols-4">
+ 
+       <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-surface-2 p-3 sm:grid-cols-3">
          <MiniStat label="KM rodados" value={integer(metrics.kmDriven)} />
-         <MiniStat label="KM/L" value={kmL(metrics.kmPerLiter)} />
 -        <MiniStat label="Frete" value={brl(metrics.freight)} />
 +        <MiniStat label={batchQuantity > 1 ? "Frete do lote" : "Frete"} value={brl(batchFreight)} />
          <MiniStat label="Diesel" value={brl(metrics.dieselCost)} />
@@ -162,7 +161,7 @@
          <MiniStat
            label="Comissão"
 -          value={`${num((driver?.commissionPct ?? 0) * 100, 0)}% · ${brl(metrics.commissionValue)}`}
-+          value={`${num((driver?.commissionPct ?? 0) * 100, 0)}% · ${brl(batchCommission)}`}
++          value={`${num((driver?.commissionPct ?? 0) * 100, 0)}% · ${brl(batchCommission)}` }
          />
          <MiniStat
            label="Após comissão"
@@ -173,7 +172,7 @@
        </div>
 --- a/src/lib/api.ts
 +++ b/src/lib/api.ts
-@@ -369,6 +369,7 @@
+@@ -368,6 +368,7 @@
    dieselLiters: z.number().min(0),
    dieselPrice: z.number().min(0),
    reportId: z.string().optional(),
@@ -181,7 +180,7 @@
  });
  
  export const upsertTrip = createServerFn({ method: "POST" })
-@@ -376,6 +377,52 @@
+@@ -375,6 +376,52 @@
    .handler(async ({ data }) => {
      await requireManagement();
      const sql = await getSql();
@@ -234,7 +233,7 @@
      const id = data.id?.trim() || newId("trip");
      const code = data.code.toUpperCase();
      await sql`
-@@ -411,7 +458,7 @@
+@@ -410,7 +457,7 @@
      if (data.reportId) {
        await sql`update reports set status = 'aceito', trip_id = ${id} where id = ${data.reportId}`;
      }
@@ -245,7 +244,7 @@
  export const deleteTrip = createServerFn({ method: "POST" })
 --- a/src/routes/dono/viagens.tsx
 +++ b/src/routes/dono/viagens.tsx
-@@ -261,8 +261,12 @@
+@@ -260,8 +260,12 @@
                submitLabel="Salvar viagem"
                pending={trip.isPending}
                onSubmit={async (payload) => {
