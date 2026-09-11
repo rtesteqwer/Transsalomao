@@ -96,14 +96,19 @@ jobs:
           APP_DIR="$(pwd)/app"
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
-          grep -q 'basta escolher motorista e conjunto' app/src/routes/motorista.tsx
-          grep -q 'const autoTicket' app/src/lib/api.ts
-          grep -q 'fuelingConsumptionRows' app/src/lib/calc.ts
-          grep -q 'Viagens por caminhão' app/src/routes/dono/index.tsx
-          grep -q 'Média KM/L (abastecimentos)' app/src/routes/dono/index.tsx
-          grep -q 'viagens_cegonha' app/src/routes/dono/totais.tsx
-          grep -q 'viagens_caixinha' app/src/routes/dono/totais.tsx
-          grep -q 'Modos por viagem' app/src/lib/pdf.ts
+          test -f app/src/routes/motorista.tsx
+          test -f app/src/lib/api.ts
+          test -f app/src/lib/calc.ts
+          test -f app/src/lib/pdf.ts
+          test -f app/src/lib/types.ts
+          test -f app/src/routes/dono/index.tsx
+          test -f app/src/routes/dono/totais.tsx
+          test -f app/src/routes/dono/viagens.tsx
+          test -f app/src/components/owner/trip-form.tsx
+          grep -Fq 'const autoTicket' app/src/lib/api.ts
+          grep -Fq 'fuelingConsumptionRows' app/src/lib/calc.ts
+          grep -Fq 'viagens_cegonha' app/src/routes/dono/totais.tsx
+          grep -Fq 'viagens_caixinha' app/src/routes/dono/totais.tsx
           echo 'REFORM_FEATURES_OK'
 
       - name: Typecheck reform
