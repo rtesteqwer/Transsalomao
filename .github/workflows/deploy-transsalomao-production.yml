@@ -76,6 +76,15 @@ jobs:
           xz -t /tmp/transsalomao-src/fix4.tar.xz
           tar -xJf /tmp/transsalomao-src/fix4.tar.xz -C app
 
+          cat deploy/reform-fix5-20260911/part-00.txt > /tmp/transsalomao-src/fix5.b64
+          test "$(wc -c < /tmp/transsalomao-src/fix5.b64)" -eq 4336
+          printf '%s  %s\n' '1bbbda8f682a7909749604c7f096eea989ad0395f156b3080913c85ad044c0d4' '/tmp/transsalomao-src/fix5.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/fix5.b64 > /tmp/transsalomao-src/fix5.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/fix5.tar.xz)" -eq 3252
+          printf '%s  %s\n' 'e5c0db8fd74f62affb1daa63c9ef7b4ca7b3cc7d146c118c26ee83b688e21596' '/tmp/transsalomao-src/fix5.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/fix5.tar.xz
+          tar -xJf /tmp/transsalomao-src/fix5.tar.xz -C app
+
           APP_DIR="$(pwd)/app"
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
           grep -Fq 'const autoTicket' app/src/lib/api.ts
@@ -87,6 +96,7 @@ jobs:
           grep -Fq '}, [data, period, fuelingIntervals]);' app/src/routes/dono/totais.tsx
           grep -Fq 'const blobParts: BlobPart[]' app/src/lib/pdf.ts
           grep -Fq 'freightMode: open.freightMode ?? "ton"' app/src/routes/dono/lancamentos.tsx
+          grep -Fq 'needsReview?: number' app/src/routes/dono/lancamentos.tsx
           echo 'REFORM_FEATURES_OK'
 
       - name: Typecheck application
