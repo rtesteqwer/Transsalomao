@@ -1,1 +1,1 @@
-publish-cegonha-caixinha-despesas-2026-09-11-attempt-2
+publish-cegonha-caixinha-despesas-2026-09-11-attempt-3
