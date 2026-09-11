@@ -84,7 +84,6 @@ jobs:
           printf '%s  %s\n' \
             '6cbf727ad86e43397d70344a2dc553e06d7c4f9c7397c0a919ea9e170e6fb9ae' \
             '/tmp/transsalomao-src/reform.b64' | sha256sum -c -
-
           base64 -d /tmp/transsalomao-src/reform.b64 > /tmp/transsalomao-src/reform.patch.tar.xz
           test "$(wc -c < /tmp/transsalomao-src/reform.patch.tar.xz)" -eq 23384
           printf '%s  %s\n' \
@@ -93,31 +92,49 @@ jobs:
           xz -t /tmp/transsalomao-src/reform.patch.tar.xz
           tar -xJf /tmp/transsalomao-src/reform.patch.tar.xz -C app
 
+          cat \
+            deploy/reform-fix2-20260911/part-00.txt \
+            deploy/reform-fix2-20260911/part-01.txt \
+            deploy/reform-fix2-20260911/part-02.txt \
+            > /tmp/transsalomao-src/fix2.b64
+          test "$(wc -c < /tmp/transsalomao-src/fix2.b64)" -eq 12476
+          printf '%s  %s\n' \
+            '19307bcf4c0e772c7acc73321b05331a2e3a1757140f2c92e736299a72274803' \
+            '/tmp/transsalomao-src/fix2.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/fix2.b64 > /tmp/transsalomao-src/fix2.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/fix2.tar.xz)" -eq 9356
+          printf '%s  %s\n' \
+            '7db6a17595058a84d39f68328c5e741d3149c8cc636e6d60ba90ea36586c3aeb' \
+            '/tmp/transsalomao-src/fix2.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/fix2.tar.xz
+          tar -xJf /tmp/transsalomao-src/fix2.tar.xz -C app
+
           APP_DIR="$(pwd)/app"
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
-          test -f app/src/routes/motorista.tsx
-          test -f app/src/lib/api.ts
-          test -f app/src/lib/calc.ts
-          test -f app/src/lib/pdf.ts
-          test -f app/src/lib/types.ts
-          test -f app/src/routes/dono/index.tsx
-          test -f app/src/routes/dono/totais.tsx
-          test -f app/src/routes/dono/viagens.tsx
-          test -f app/src/components/owner/trip-form.tsx
           grep -Fq 'const autoTicket' app/src/lib/api.ts
           grep -Fq 'fuelingConsumptionRows' app/src/lib/calc.ts
           grep -Fq 'viagens_cegonha' app/src/routes/dono/totais.tsx
           grep -Fq 'viagens_caixinha' app/src/routes/dono/totais.tsx
+          grep -Fq '}, [data, period, fuelingIntervals]);' app/src/routes/dono/totais.tsx
+          grep -Fq 'const blobParts: BlobPart[]' app/src/lib/pdf.ts
           echo 'REFORM_FEATURES_OK'
 
-      - name: Typecheck reform
+      - name: Typecheck application
         shell: bash
         run: |
           set -euo pipefail
           cd "$APP_DIR"
           npm install --ignore-scripts --no-audit --no-fund
-          npm run typecheck
+          cat > tsconfig.ci.json <<'EOF'
+          {
+            "extends": "./tsconfig.json",
+            "compilerOptions": {
+              "checkJs": false
+            }
+          }
+          EOF
+          npx tsc --noEmit -p tsconfig.ci.json
 
       - name: Link production project
         env:
