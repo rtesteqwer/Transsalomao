@@ -1,0 +1,84 @@
+name: Deploy Trans Salomao Production
+
+on:
+  push:
+    paths:
+      - 'deploy/deploy-production-20260911.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/transsalomao-src app
+          cat deploy/full-20260911/part-*.txt > /tmp/transsalomao-src/source.b64
+          base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
+          xz -t /tmp/transsalomao-src/source.tar.xz
+          tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
+          PACKAGE_JSON="$(find app -maxdepth 3 -name package.json -type f | head -n 1)"
+          test -n "$PACKAGE_JSON"
+          APP_DIR="$(dirname "$PACKAGE_JSON")"
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+          echo "Source root: $APP_DIR"
+
+      - name: Verify Cegonha Caixinha and Despesas
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$APP_DIR"
+          grep -q 'cegonha' src/lib/types.ts
+          grep -q 'caixinha' src/lib/types.ts
+          test -f src/routes/dono/despesas.tsx
+          grep -q 'Despesas' src/routes/dono/despesas.tsx
+          test -f migrations/0005_cegonha_caixinha_despesas.sql
+          grep -q 'expenses' migrations/0005_cegonha_caixinha_despesas.sql
+          grep -q 'isMigrationFile' scripts/migration-plan.mjs
+          echo 'RELEASE_FEATURES_OK'
+
+      - name: Link production project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$APP_DIR"
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+
+      - name: Build production safely
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$APP_DIR"
+          npx --yes vercel@latest build --prod --scope=transsalomao --token="$VERCEL_TOKEN"
+
+      - name: Deploy production only after successful build
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$APP_DIR"
+          URL="$(npx --yes vercel@latest deploy --prebuilt --prod --scope=transsalomao --token="$VERCEL_TOKEN")"
+          echo "DEPLOYMENT_URL=$URL" >> "$GITHUB_ENV"
+          echo "deployment_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "DEPLOYMENT_URL=$URL"
+
+      - name: Deployment summary
+        shell: bash
+        run: |
+          echo "Published: $DEPLOYMENT_URL"
