@@ -99,7 +99,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd ..
           cat deploy/reform-v7-overlay-small/chunk-{00..03}.txt > /tmp/transsalomao-src/v7.b64
           head -c 6000 deploy/reform-v7-overlay-small/chunk-04.txt >> /tmp/transsalomao-src/v7.b64
           cat deploy/reform-v7-overlay-small/chunk-05.txt >> /tmp/transsalomao-src/v7.b64
