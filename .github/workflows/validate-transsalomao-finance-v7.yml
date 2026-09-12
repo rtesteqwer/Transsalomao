@@ -37,17 +37,25 @@ jobs:
           cd app
           patch -p1 < ../deploy/reform-v5-fixed-quantity-price/trans-v5.patch
           patch -p1 < ../deploy/reform-v6-mode-selector/trans-v6-mode-selector.patch
-      - name: Apply finance V7 patch
+      - name: Apply finance V7 overlay
         shell: bash
         run: |
           set -euo pipefail
-          cd app
-          patch -p1 < ../deploy/reform-v7-finance/trans-v7-finance.patch
-          test -f migrations/0008_driver_expenses.sql
-          grep -Fq 'Adiantamento' src/routes/dono/despesas.tsx
-          grep -Fq 'Faturamento − comissões (sem descontar diesel)' src/routes/dono/index.tsx
-          grep -Fq 'Comissões por motorista' src/lib/pdf.ts
-          grep -Fq 'Despesas totais' src/routes/dono/totais.tsx
+          cat deploy/reform-v7-overlay-small/chunk-{00..03}.txt > /tmp/transsalomao-src/v7.b64
+          head -c 6000 deploy/reform-v7-overlay-small/chunk-04.txt >> /tmp/transsalomao-src/v7.b64
+          cat deploy/reform-v7-overlay-small/chunk-05.txt >> /tmp/transsalomao-src/v7.b64
+          test "$(wc -c < /tmp/transsalomao-src/v7.b64)" -eq 32300
+          printf '%s  %s\n' '0917be3e6069e189685c724c7f4cd1a612a203cb6bdae53cf0dd4355f40c54ba' '/tmp/transsalomao-src/v7.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/v7.b64 > /tmp/transsalomao-src/v7.tar.xz
+          printf '%s  %s\n' '36a7017204f1fbe033c44fca06d3e88fa01af940906c2bbd57be1932b8ab0b48' '/tmp/transsalomao-src/v7.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/v7.tar.xz
+          tar -xJf /tmp/transsalomao-src/v7.tar.xz -C app
+          test -f app/migrations/0008_driver_expenses_advances.sql
+          grep -Fq 'Resultado líquido' app/src/routes/dono/index.tsx
+          grep -Fq 'Resumo e comissões por motorista' app/src/routes/dono/index.tsx
+          grep -Fq 'Adiantamento' app/src/routes/dono/despesas.tsx
+          grep -Fq 'Comissões por motorista' app/src/lib/pdf.ts
+          grep -Fq 'Separadas por motorista, cavalo ou carreta' app/src/lib/pdf.ts
       - name: Typecheck application source
         shell: bash
         run: |
