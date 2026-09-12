@@ -1,0 +1,206 @@
+, 0);
++  const trailerTotal = scopedExpenses.filter((e) => e.assetType === "trailer").reduce((sum, e) => sum + e.amount, 0);
++  const driverTotal = allExpenses.filter((e) => e.assetType === "driver").reduce((sum, e) => sum + e.amount, 0);
++  const visibleDriverTotal = fleetFilter === "all" ? driverTotal : 0;
++  const total = tractorTotal + trailerTotal + visibleDriverTotal;
+ 
+   async function handleDelete(row: Expense) {
+     if (!window.confirm(`Excluir a despesa “${row.description}”?`)) return;
+@@ -85,6 +84,7 @@
+             setEditing({
+               date: new Date().toISOString().slice(0, 10),
+               fleetId: data?.fleets[0]?.id ?? "",
++              driverId: "",
+               assetType: "tractor",
+               category: "Manutenção",
+               description: "",
+@@ -92,16 +92,17 @@
+               notes: "",
+             })
+           }
+-          disabled={(data?.fleets.length ?? 0) === 0}
++          disabled={(data?.fleets.length ?? 0) === 0 && (data?.drivers.length ?? 0) === 0}
+         >
+           <Plus className="size-4" /> Nova despesa
+         </Button>
+       </div>
+ 
+-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
++      <div className="mt-6 grid gap-3 sm:grid-cols-4">
+         <Metric label="Total geral" value={brl(total)} />
+         <Metric label="Despesas dos cavalos" value={brl(tractorTotal)} />
+         <Metric label="Despesas das carretas" value={brl(trailerTotal)} />
++        <Metric label="Despesas com motoristas" value={brl(driverTotal)} />
+       </div>
+ 
+       <div className="mt-6 grid gap-3 sm:grid-cols-2">
+@@ -120,11 +121,12 @@
+             <option value="all">Cavalo + carreta</option>
+             <option value="tractor">Somente cavalo</option>
+             <option value="trailer">Somente carreta</option>
++            <option value="driver">Somente motoristas</option>
+           </Select>
+         </Field>
+       </div>
+ 
+-      {(data?.fleets.length ?? 0) === 0 ? (
++      {(data?.fleets.length ?? 0) === 0 && (data?.drivers.length ?? 0) === 0 ? (
+         <div className="mt-6 rounded-xl border border-dashed border-border px-5 py-12 text-center">
+           <Truck className="mx-auto size-7 text-muted" />
+           <p className="mt-3 text-sm text-muted">Cadastre primeiro um cavalo e uma carreta na aba Cadastros.</p>
+@@ -138,8 +140,9 @@
+         <ul className="mt-6 grid gap-3">
+           {rows.map((row) => {
+             const fleet = data?.fleets.find((f) => f.id === row.fleetId);
+-            const plate = row.assetType === "tractor" ? fleet?.tractorPlate : fleet?.trailerPlate;
+-            const assetLabel = row.assetType === "tractor" ? "Cavalo" : "Carreta";
++            const driver = data?.drivers.find((d) => d.id === row.driverId);
++            const plate = row.assetType === "tractor" ? fleet?.tractorPlate : row.assetType === "trailer" ? fleet?.trailerPlate : null;
++            const assetLabel = row.assetType === "driver" ? "Motorista" : row.assetType === "tractor" ? "Cavalo" : "Carreta";
+             return (
+               <li key={row.id} className="rounded-xl border border-border bg-surface p-4 sm:p-5">
+                 <div className="flex flex-wrap items-start justify-between gap-3">
+@@ -148,11 +151,11 @@
+                       <span className="rounded-md border border-border bg-surface-2 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-muted">
+                         {assetLabel}
+                       </span>
+-                      <span className="text-xs text-muted">{plate ?? "Sem placa"}</span>
++                      <span className="text-xs text-muted">{row.assetType === "driver" ? (driver?.name ?? "Motorista removido") : (plate ?? "Sem placa")}</span>
+                     </div>
+                     <p className="mt-2 font-display text-2xl font-semibold">{row.description}</p>
+                     <p className="text-sm text-muted">
+-                      {formatDate(row.date)} · {fleet?.name ?? "Conjunto"} · {row.category}
++                      {formatDate(row.date)} · {row.assetType === "driver" ? (driver?.name ?? "Motorista") : (fleet?.name ?? "Conjunto")} · {row.category}
+                     </p>
+                   </div>
+                   <div className="flex items-start gap-2">
+@@ -197,6 +200,7 @@
+   const { expense } = useFleetMutations();
+   const [date, setDate] = useState("");
+   const [fleetId, setFleetId] = useState("");
++  const [driverId, setDriverId] = useState("");
+   const [assetType, setAssetType] = useState<ExpenseAssetType>("tractor");
+   const [category, setCategory] = useState("Manutenção");
+   const [description, setDescription] = useState("");
+@@ -207,6 +211,7 @@
+     if (!value) return;
+     setDate(value.date ?? new Date().toISOString().slice(0, 10));
+     setFleetId(value.fleetId ?? data?.fleets[0]?.id ?? "");
++    setDriverId(value.driverId ?? "");
+     setAssetType(value.assetType ?? "tractor");
+     setCategory(value.category ?? "Manutenção");
+     setDescription(value.description ?? "");
+@@ -235,6 +240,7 @@
+                   id: value.id,
+                   date: date || new Date().toISOString().slice(0, 10),
+                   fleetId,
++                  driverId,
+                   assetType,
+                   category,
+                   description,
+@@ -257,17 +263,26 @@
+               </Field>
+             </div>
+ 
+-            <Field label="Conjunto cadastrado">
+-              <Select value={fleetId} onChange={(e) => setFleetId(e.target.value)} required>
+-                <option value="">Escolha</option>
+-                {(data?.fleets ?? []).map((f) => (
+-                  <option key={f.id} value={f.id}>{f.name} · {f.tractorPlate} / {f.trailerPlate}</option>
+-                ))}
+-              </Select>
+-            </Field>
++            {assetType === "driver" ? (
++              <Field label="Motorista">
++                <Select value={driverId} onChange={(e) => setDriverId(e.target.value)} required>
++                  <option value="">Escolha o motorista</option>
++                  {(data?.drivers ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
++                </Select>
++              </Field>
++            ) : (
++              <Field label="Conjunto cadastrado">
++                <Select value={fleetId} onChange={(e) => setFleetId(e.target.value)} required>
++                  <option value="">Escolha</option>
++                  {(data?.fleets ?? []).map((f) => (
++                    <option key={f.id} value={f.id}>{f.name} · {f.tractorPlate} / {f.trailerPlate}</option>
++                  ))}
++                </Select>
++              </Field>
++            )}
+ 
+             <Field label="Despesa pertence a">
+-              <div className="grid grid-cols-2 gap-2">
++              <div className="grid grid-cols-3 gap-2">
+                 <button
+                   type="button"
+                   onClick={() => setAssetType("tractor")}
+@@ -284,6 +299,14 @@
+                   <span className="block text-sm font-medium">Carreta</span>
+                   <span className="mt-1 block text-xs">{fleet?.trailerPlate ?? "Placa da carreta"}</span>
+                 </button>
++                <button
++                  type="button"
++                  onClick={() => { setAssetType("driver"); setCategory("Adiantamento"); }}
++                  className={`rounded-lg border px-3 py-3 text-left ${assetType === "driver" ? "border-accent bg-surface-2 text-fg" : "border-border text-muted"}`}
++                >
++                  <span className="block text-sm font-medium">Motorista</span>
++                  <span className="mt-1 block text-xs">Adiantamento / despesa</span>
++                </button>
+               </div>
+             </Field>
+ 
+diff -ruN '--exclude=node_modules' a/src/routes/dono/index.tsx b/src/routes/dono/index.tsx
+--- a/src/routes/dono/index.tsx	2026-09-11 20:59:43.000000000 +0000
++++ b/src/routes/dono/index.tsx	2026-09-12 13:49:34.339538558 +0000
+@@ -76,7 +76,7 @@
+     dieselLiters: hasFuelings ? fuelLiters : kpis.dieselLiters,
+     dieselCost: hasFuelings ? fuelCost : kpis.dieselCost,
+     grossResult: hasFuelings ? kpis.revenue - fuelCost : kpis.grossResult,
+-    afterCommission: hasFuelings ? kpis.revenue - fuelCost - kpis.commissions : kpis.afterCommission,
++    afterCommission: kpis.revenue - kpis.commissions,
+     avgKmL: fuelConsumption.kmPerLiter,
+   };
+   const prevKpis = useMemo(() => {
+@@ -106,7 +106,7 @@
+       dieselLiters: litersTotal,
+       dieselCost: cost,
+       grossResult: prevKpis.revenue - cost,
+-      afterCommission: prevKpis.revenue - cost - prevKpis.commissions,
++      afterCommission: prevKpis.revenue - prevKpis.commissions,
+       avgKmL: consumption.kmPerLiter,
+     };
+   }, [prevKpis, data, period, driverFilter, fuelingRows]);
+@@ -197,24 +197,28 @@
+           value={brl(effectiveKpis.revenue)}
+           delta={deltaOf(effectiveKpis, prevEffectiveKpis, "revenue")}
+           large
++          formula="Fretes somados no período"
+         />
+         <Kpi
+           label="Resultado bruto"
+           value={brl(effectiveKpis.grossResult)}
+           delta={deltaOf(effectiveKpis, prevEffectiveKpis, "grossResult")}
+           large
++          formula="Faturamento − custo do diesel"
+         />
+         <Kpi
+           label="Após comissões"
+           value={brl(effectiveKpis.afterCommission)}
+           delta={deltaOf(effectiveKpis, prevEffectiveKpis, "afterCommission")}
+           large
++          formula="Faturamento − comissões (sem descontar diesel)"
+         />
+         <Kpi
+           label="Custo diesel"
+           value={brl(effectiveKpis.dieselCost)}
+           delta={deltaOf(effectiveKpis, prevEffectiveKpis, "dieselCost")}
+           large
++          formula="Litros abastecidos × preço por litro"
+         />
+       </div>
+ 
+@@ -256,6 +260,7 @@
+                 </div>
+                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                   <div><dt className="text-[10px] uppercase tracking-[0.12em] text-subtle">Frete</dt><dd className="mt-1 tabular">{brl(d.freight)}</dd></div>
++                  <div><dt className="text-[10px] uppercase tracking-[0.12em] text-subtle">Comissão</dt><dd className="mt-1 tabular">{brl(d.commissionValue)} · {Math.round(d.commissionPct * 10000) / 100}%</dd></div>
