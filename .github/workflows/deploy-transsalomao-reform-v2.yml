@@ -1,4 +1,4 @@
-name: Deploy Trans Salomao Loading V4
+name: Deploy Trans Salomao Fixed Quantity V5
 
 on:
   push:
@@ -73,6 +73,17 @@ jobs:
           grep -Fq 'Hora do carregamento' app/src/components/owner/trip-form.tsx
           grep -Fq 'code: z.string().trim().max(80).default("")' app/src/lib/api.ts
           test -f app/migrations/0006_loading_datetime_optional.sql
+
+      - name: Apply fixed quantity and price v5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          patch -p1 < ../deploy/reform-v5-fixed-quantity-price/trans-v5.patch
+          grep -Fq 'Quantidade de viagens' src/routes/motorista.tsx
+          grep -Fq 'Preço por viagem' src/components/owner/trip-form.tsx
+          grep -Fq 'quantity integer not null default 1' migrations/0007_report_trip_quantity.sql
+          grep -Fq 'devem ser fechadas individualmente para informar o preço por viagem' src/lib/api.ts
 
       - name: Typecheck application source
         shell: bash
