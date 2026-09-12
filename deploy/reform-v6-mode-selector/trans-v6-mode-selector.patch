@@ -1,0 +1,50 @@
+--- a/src/routes/motorista.tsx
++++ b/src/routes/motorista.tsx
+@@ -39,21 +39,27 @@
+ 
+   useEffect(() => {
+     if (!data) return;
++    const activeDrivers = data.drivers.filter((d) => d.status === "ativo");
++    const activeFleets = data.fleets.filter((f) => f.status === "ativo");
+     const savedDriver = localStorage.getItem(DRIVER_KEY) ?? "";
+     const savedFleet = localStorage.getItem(FLEET_KEY) ?? "";
+     const savedMode = localStorage.getItem(MODE_KEY);
+-    if (savedMode === "trip" || savedMode === "ton" || savedMode === "cegonha" || savedMode === "caixinha") setFreightMode(savedMode);
+-    if (!driverId) {
+-      const next =
+-        drivers.find((d) => d.id === savedDriver)?.id ?? drivers[0]?.id ?? "";
+-      setDriverId(next);
+-    }
+-    if (!fleetId) {
+-      const next =
+-        fleets.find((f) => f.id === savedFleet)?.id ?? fleets[0]?.id ?? "";
+-      setFleetId(next);
++
++    if (savedMode === "trip" || savedMode === "ton" || savedMode === "cegonha" || savedMode === "caixinha") {
++      setFreightMode(savedMode);
+     }
+-  }, [data, driverId, fleetId, drivers, fleets]);
++    setDriverId((current) =>
++      current || activeDrivers.find((d) => d.id === savedDriver)?.id || activeDrivers[0]?.id || "",
++    );
++    setFleetId((current) =>
++      current || activeFleets.find((f) => f.id === savedFleet)?.id || activeFleets[0]?.id || "",
++    );
++  }, [data]);
++
++  function changeFreightMode(mode: FreightMode) {
++    setFreightMode(mode);
++    localStorage.setItem(MODE_KEY, mode);
++  }
+ 
+   const mine = useMemo(() => {
+     if (!data || !driverId) return [];
+@@ -193,7 +199,7 @@
+           <Field label="Modo de frete" hint="Opcional — pode ser ajustado pela gerência">
+             <Select
+               value={freightMode}
+-              onChange={(e) => setFreightMode(e.target.value as FreightMode)}
++              onChange={(e) => changeFreightMode(e.target.value as FreightMode)}
+             >
+               <option value="ton">Por tonelada</option>
+               <option value="trip">Por viagem</option>
