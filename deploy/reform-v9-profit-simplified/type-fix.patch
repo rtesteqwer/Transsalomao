@@ -1,0 +1,13 @@
+--- a/src/routes/dono/totais.tsx
++++ b/src/routes/dono/totais.tsx
+@@ -546,8 +546,8 @@
+       }));
+       if (rows.length === 0) rows.push({
+         "Data": "", "Motorista": "", "Conjunto": "", "Posto": "TOTAL DO PERÍODO",
+-        "KM odômetro": null, "KM desde anterior": null, "Litros": 0, "KM/L": null,
+-        "Preço/L (R$)": null, "Custo (R$)": 0, "Lucro líquido total do período (R$)": totalProfit,
++        "KM odômetro": 0, "KM desde anterior": null, "Litros": 0, "KM/L": null,
++        "Preço/L (R$)": 0, "Custo (R$)": 0, "Lucro líquido total do período (R$)": totalProfit,
+       });
+       downloadText("relatorio-combustivel.csv", toCsv(rows), "text/csv;charset=utf-8");
+     } else {
