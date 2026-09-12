@@ -1,0 +1,221 @@
+diff -ruN '--exclude=node_modules' a/migrations/0008_driver_expenses.sql b/migrations/0008_driver_expenses.sql
+--- a/migrations/0008_driver_expenses.sql	1970-01-01 00:00:00.000000000 +0000
++++ b/migrations/0008_driver_expenses.sql	2026-09-12 13:48:59.967437142 +0000
+@@ -0,0 +1,8 @@
++alter table expenses add column if not exists driver_id text references drivers(id);
++
++alter table expenses alter column fleet_id drop not null;
++
++alter table expenses drop constraint if exists expenses_asset_type_check;
++alter table expenses add constraint expenses_asset_type_check check (asset_type in ('tractor', 'trailer', 'driver'));
++
++create index if not exists expenses_driver_idx on expenses (driver_id, date desc);
+diff -ruN '--exclude=node_modules' a/src/lib/api.ts b/src/lib/api.ts
+--- a/src/lib/api.ts	2026-09-12 13:48:11.000000000 +0000
++++ b/src/lib/api.ts	2026-09-12 13:48:59.966397671 +0000
+@@ -121,7 +121,8 @@
+     id: str(r.id),
+     date: str(r.date).slice(0, 10),
+     fleetId: str(r.fleet_id),
+-    assetType: str(r.asset_type) === "trailer" ? "trailer" : "tractor",
++    driverId: str(r.driver_id),
++    assetType: str(r.asset_type) === "driver" ? "driver" : str(r.asset_type) === "trailer" ? "trailer" : "tractor",
+     category: str(r.category),
+     description: str(r.description),
+     amount: num(r.amount),
+@@ -556,12 +557,20 @@
+ const expenseSchema = z.object({
+   id: z.string().optional(),
+   date: z.string().min(8),
+-  fleetId: z.string().min(1, "Escolha o conjunto"),
+-  assetType: z.enum(["tractor", "trailer"]),
++  fleetId: z.string().default(""),
++  driverId: z.string().default(""),
++  assetType: z.enum(["tractor", "trailer", "driver"]),
+   category: z.string().trim().min(1, "Informe a categoria"),
+   description: z.string().trim().min(1, "Informe a despesa"),
+   amount: z.number().positive("Informe um valor maior que zero"),
+   notes: z.string().trim(),
++}).superRefine((data, ctx) => {
++  if (data.assetType === "driver" && !data.driverId.trim()) {
++    ctx.addIssue({ code: "custom", path: ["driverId"], message: "Escolha o motorista" });
++  }
++  if (data.assetType !== "driver" && !data.fleetId.trim()) {
++    ctx.addIssue({ code: "custom", path: ["fleetId"], message: "Escolha o conjunto" });
++  }
+ });
+ 
+ export const upsertExpense = createServerFn({ method: "POST" })
+@@ -570,12 +579,15 @@
+     await requireManagement();
+     const sql = await getSql();
+     const id = data.id?.trim() || newId("exp");
++    const fleetId = data.assetType === "driver" ? null : data.fleetId.trim() || null;
++    const driverId = data.assetType === "driver" ? data.driverId.trim() || null : null;
+     await sql`
+-      insert into expenses (id, date, fleet_id, asset_type, category, description, amount, notes)
+-      values (${id}, ${data.date}, ${data.fleetId}, ${data.assetType}, ${data.category}, ${data.description}, ${data.amount}, ${data.notes})
++      insert into expenses (id, date, fleet_id, driver_id, asset_type, category, description, amount, notes)
++      values (${id}, ${data.date}, ${fleetId}, ${driverId}, ${data.assetType}, ${data.category}, ${data.description}, ${data.amount}, ${data.notes})
+       on conflict (id) do update set
+         date = excluded.date,
+         fleet_id = excluded.fleet_id,
++        driver_id = excluded.driver_id,
+         asset_type = excluded.asset_type,
+         category = excluded.category,
+         description = excluded.description,
+diff -ruN '--exclude=node_modules' a/src/lib/pdf.ts b/src/lib/pdf.ts
+--- a/src/lib/pdf.ts	2026-09-11 20:58:10.000000000 +0000
++++ b/src/lib/pdf.ts	2026-09-12 13:49:47.038865793 +0000
+@@ -1,5 +1,5 @@
+ import { brl, formatDate, integer, kmL, liters, tons } from "@/lib/format";
+-import type { ComputedTrip, Fueling } from "@/lib/types";
++import type { ComputedTrip, Expense, Fueling } from "@/lib/types";
+ import { freightModeBreakdown, freightModeLabel, fuelingConsumptionStats } from "@/lib/calc";
+ 
+ const PAGE_W = 595;
+@@ -302,7 +302,7 @@
+     : trips.reduce((a, t) => a + t.dieselLiters, 0);
+   const totalCommissions = trips.reduce((a, t) => a + t.commissionValue, 0);
+   const totalResult = totalFreight - totalDiesel;
+-  const totalAfter = totalResult - totalCommissions;
++  const totalAfter = totalFreight - totalCommissions;
+   const modes = freightModeBreakdown(trips);
+   const consumption = fuelingConsumptionStats(fuelings.map((f) => ({
+     kmSincePrevious: f.kmSincePrevious ?? null,
+@@ -334,7 +334,7 @@
+   drawMetricCard(page, x3, top2, colW, rowH, "KM/L abastecimentos", consumption.kmPerLiter ? kmL(consumption.kmPerLiter) : "—", `${integer(consumption.kmDriven)} km calculados`);
+   drawMetricCard(page, x1, top3, colW, rowH, "Frete total", brl(totalFreight), `${tons(totalTons)} de peso líquido`);
+   drawMetricCard(page, x2, top3, colW, rowH, "Custo diesel", brl(totalDiesel), totalLiters > 0 ? `${liters(totalLiters)} no período` : "sem litros lançados");
+-  drawMetricCard(page, x3, top3, colW, rowH, "Após comissão", brl(totalAfter), `Resultado bruto ${brl(totalResult)}`);
++  drawMetricCard(page, x3, top3, colW, rowH, "Após comissão", brl(totalAfter), `Frete ${brl(totalFreight)} - comissões ${brl(totalCommissions)}`);
+ 
+   const stripTop = top3 + rowH + 14;
+   page.text(`Modos por viagem: ${modes.fixedTripCount} viagens • ${brl(modes.fixedFreight)} | Viagens por caminhão: ${truncate(fleetLine || "sem viagens", 78)}`, MARGIN, topToY(stripTop), {
+@@ -433,10 +433,54 @@
+   });
+ }
+ 
++
++export type ReportExpense = Expense & {
++  driverName: string;
++  fleetName: string;
++  assetLabel: string;
++};
++
++function drawFinancialDetailsPage(page: PdfPage, trips: ComputedTrip[], expenses: ReportExpense[], top = 132) {
++  page.text("Comissões por motorista", MARGIN, topToY(top), { size: 14, bold: true, color: colors.fg });
++  const byDriver = new Map<string, { freight: number; commission: number }>();
++  for (const trip of trips) {
++    const row = byDriver.get(trip.driverName) ?? { freight: 0, commission: 0 };
++    row.freight += trip.freight;
++    row.commission += trip.commissionValue;
++    byDriver.set(trip.driverName, row);
++  }
++  let y = top + 26;
++  if (byDriver.size === 0) {
++    page.text("Sem comissões no período.", MARGIN, topToY(y), { size: 9, color: colors.muted });
++    y += 22;
++  } else {
++    for (const [name, row] of [...byDriver.entries()].sort((a, b) => b[1].commission - a[1].commission)) {
++      page.text(truncate(name, 32), MARGIN, topToY(y), { size: 9.5, bold: true, color: colors.fg });
++      page.text(`Frete ${brl(row.freight)}  |  Comissão ${brl(row.commission)}  |  Após comissão ${brl(row.freight - row.commission)}`, MARGIN + 180, topToY(y), { size: 8.5, color: colors.muted });
++      y += 18;
++    }
++  }
++  y += 12;
++  page.text("Despesas no período", MARGIN, topToY(y), { size: 14, bold: true, color: colors.fg });
++  y += 24;
++  if (expenses.length === 0) {
++    page.text("Sem despesas registradas no período.", MARGIN, topToY(y), { size: 9, color: colors.muted });
++    return;
++  }
++  for (const expense of expenses.slice(0, 24)) {
++    const target = expense.assetType === "driver" ? `Motorista: ${expense.driverName}` : `${expense.assetLabel}: ${expense.fleetName}`;
++    page.text(`${formatDate(expense.date)}  |  ${truncate(expense.category, 18)}  |  ${truncate(target, 34)}`, MARGIN, topToY(y), { size: 8.5, color: colors.fg });
++    page.text(brl(expense.amount), MARGIN + CONTENT_W - 80, topToY(y), { size: 9, bold: true, color: colors.accent });
++    y += 17;
++    if (y > 760) break;
++  }
++}
++
+ export function downloadDriverReportPdf({
+   driverName,
+   trips,
+   fuelings = [],
++  expenses = [],
+   periodLabel,
+   sourceLabel,
+   reportTitle,
+@@ -445,6 +489,7 @@
+   driverName: string;
+   trips: ComputedTrip[];
+   fuelings?: ReportFueling[];
++  expenses?: ReportExpense[];
+   periodLabel?: string;
+   sourceLabel?: string;
+   reportTitle?: string;
+@@ -550,6 +595,20 @@
+     pages.push(fuelPage);
+   }
+ 
++  const financePage = new PdfPage();
++  drawPageShell(financePage, pages.length + 1);
++  drawHeaderCard(
++    financePage,
++    driverName,
++    periodLabel ?? "Selecionado",
++    sourceLabel ?? "Gerência",
++    generatedAt,
++    reportTitle ?? "Relatório operacional por motorista",
++    operatorName,
++  );
++  drawFinancialDetailsPage(financePage, trips, expenses);
++  pages.push(financePage);
++
+   const blob = buildPdf(pages.map((item) => item.ops.join("\n")));
+   const url = URL.createObjectURL(blob);
+   const a = document.createElement("a");
+diff -ruN '--exclude=node_modules' a/src/lib/types.ts b/src/lib/types.ts
+--- a/src/lib/types.ts	2026-09-12 13:48:11.000000000 +0000
++++ b/src/lib/types.ts	2026-09-12 13:48:59.966208595 +0000
+@@ -2,7 +2,7 @@
+ 
+ export type FreightMode = "ton" | "trip" | "cegonha" | "caixinha";
+ 
+-export type ExpenseAssetType = "tractor" | "trailer";
++export type ExpenseAssetType = "tractor" | "trailer" | "driver";
+ 
+ export type Driver = {
+   id: string;
+@@ -68,6 +68,7 @@
+   id: string;
+   date: string;
+   fleetId: string;
++  driverId: string;
+   assetType: ExpenseAssetType;
+   category: string;
+   description: string;
+diff -ruN '--exclude=node_modules' a/src/routes/dono/despesas.tsx b/src/routes/dono/despesas.tsx
+--- a/src/routes/dono/despesas.tsx	2026-09-11 18:15:51.000000000 +0000
++++ b/src/routes/dono/despesas.tsx	2026-09-12 13:49:26.019734013 +0000
+@@ -30,6 +30,7 @@
+   "Seguro",
+   "Pedágio",
+   "Multa",
++  "Adiantamento",
+   "Outros",
+ ] as const;
+ 
+@@ -51,13 +52,11 @@
+   const scopedExpenses = fleetFilter === "all"
+     ? allExpenses
+     : allExpenses.filter((e) => e.fleetId === fleetFilter);
+-  const tractorTotal = scopedExpenses
+-    .filter((e) => e.assetType === "tractor")
+-    .reduce((sum, e) => sum + e.amount, 0);
+-  const trailerTotal = scopedExpenses
+-    .filter((e) => e.assetType === "trailer")
+-    .reduce((sum, e) => sum + e.amount, 0);
+-  const total = tractorTotal + trailerTotal;
++  const tractorTotal = scopedExpenses.filter((e) => e.assetType === "tractor").reduce((sum, e) => sum + e.amount
