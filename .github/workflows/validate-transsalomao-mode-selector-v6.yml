@@ -1,0 +1,88 @@
+name: Validate Trans Salomao Mode Selector V6
+
+on:
+  push:
+    paths:
+      - 'deploy/validate-mode-selector-v6.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact production base
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/transsalomao-src app
+          head -c 5000 deploy/release-exact-20260911/part-11b.txt > /tmp/transsalomao-src/part-11b.exact
+          cat deploy/release-exact-20260911/part-00.txt deploy/release-exact-20260911/part-01.txt deploy/release-exact-20260911/part-02.txt deploy/release-exact-20260911/part-03.txt deploy/release-exact-20260911/part-04.txt deploy/release-exact-20260911/part-05a.txt deploy/release-exact-20260911/part-05b.txt deploy/release-exact-20260911/part-05c.txt deploy/release-exact-20260911/part-06.txt deploy/release-exact-20260911/part-07.txt deploy/release-exact-20260911/part-08.txt deploy/release-exact-20260911/part-09.txt deploy/release-exact-20260911/part-10.txt deploy/release-exact-20260911/part-11a.txt /tmp/transsalomao-src/part-11b.exact deploy/release-exact-20260911/part-11c.txt deploy/release-exact-20260911/part-12a.txt deploy/release-exact-20260911/part-12b.txt > /tmp/transsalomao-src/source.b64
+          base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
+          tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
+
+      - name: Apply reform v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-20260911-viagens-kml/part-{00..06}.txt | base64 -d > /tmp/transsalomao-src/reform.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform.tar.xz -C app
+
+      - name: Apply reform v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-v2-overlay/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/reform-v2.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v2.tar.xz -C app
+
+      - name: Apply lancamentos type fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d deploy/reform-v2-fix/overlay.b64 > /tmp/transsalomao-src/reform-v2-fix.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v2-fix.tar.xz -C app
+
+      - name: Apply batch trip patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          patch -p1 < ../deploy/reform-v3-batch/batch-v3.patch
+
+      - name: Apply loading optional v4 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-v4-loading-optional/part-{00..03}.txt > /tmp/transsalomao-src/reform-v4.b64
+          base64 -d /tmp/transsalomao-src/reform-v4.b64 > /tmp/transsalomao-src/reform-v4.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v4.tar.xz -C app
+
+      - name: Apply fixed quantity and price v5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          patch -p1 < ../deploy/reform-v5-fixed-quantity-price/trans-v5.patch
+
+      - name: Apply mode selector fix v6
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          patch -p1 < ../deploy/reform-v6-mode-selector/trans-v6-mode-selector.patch
+          grep -Fq 'function changeFreightMode(mode: FreightMode)' src/routes/motorista.tsx
+          grep -Fq 'localStorage.setItem(MODE_KEY, mode)' src/routes/motorista.tsx
+          grep -Fq '}, [data]);' src/routes/motorista.tsx
+
+      - name: Typecheck application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          npm install --ignore-scripts --no-audit --no-fund
+          npx tsc --noEmit --checkJs false
