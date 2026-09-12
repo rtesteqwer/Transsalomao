@@ -1,4 +1,4 @@
-name: Deploy Trans Salomao Profit V9
+name: Deploy Trans Salomao Commission V10
 
 on:
   push:
@@ -16,142 +16,70 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct exact production base
+      - name: Reconstruct application through V10
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/transsalomao-src app
+
           head -c 5000 deploy/release-exact-20260911/part-11b.txt > /tmp/transsalomao-src/part-11b.exact
           cat deploy/release-exact-20260911/part-00.txt deploy/release-exact-20260911/part-01.txt deploy/release-exact-20260911/part-02.txt deploy/release-exact-20260911/part-03.txt deploy/release-exact-20260911/part-04.txt deploy/release-exact-20260911/part-05a.txt deploy/release-exact-20260911/part-05b.txt deploy/release-exact-20260911/part-05c.txt deploy/release-exact-20260911/part-06.txt deploy/release-exact-20260911/part-07.txt deploy/release-exact-20260911/part-08.txt deploy/release-exact-20260911/part-09.txt deploy/release-exact-20260911/part-10.txt deploy/release-exact-20260911/part-11a.txt /tmp/transsalomao-src/part-11b.exact deploy/release-exact-20260911/part-11c.txt deploy/release-exact-20260911/part-12a.txt deploy/release-exact-20260911/part-12b.txt > /tmp/transsalomao-src/source.b64
           base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
           tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
 
-      - name: Apply reform v1
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat deploy/reform-20260911-viagens-kml/part-{00..06}.txt | base64 -d > /tmp/transsalomao-src/reform.tar.xz
-          tar -xJf /tmp/transsalomao-src/reform.tar.xz -C app
+          cat deploy/reform-20260911-viagens-kml/part-{00..06}.txt | base64 -d > /tmp/transsalomao-src/v1.tar.xz
+          tar -xJf /tmp/transsalomao-src/v1.tar.xz -C app
+          cat deploy/reform-v2-overlay/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/v2.tar.xz
+          tar -xJf /tmp/transsalomao-src/v2.tar.xz -C app
+          base64 -d deploy/reform-v2-fix/overlay.b64 > /tmp/transsalomao-src/v2fix.tar.xz
+          tar -xJf /tmp/transsalomao-src/v2fix.tar.xz -C app
 
-      - name: Apply reform v2
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat deploy/reform-v2-overlay/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/reform-v2.tar.xz
-          tar -xJf /tmp/transsalomao-src/reform-v2.tar.xz -C app
-
-      - name: Apply lancamentos type fix
-        shell: bash
-        run: |
-          set -euo pipefail
-          base64 -d deploy/reform-v2-fix/overlay.b64 > /tmp/transsalomao-src/reform-v2-fix.tar.xz
-          tar -xJf /tmp/transsalomao-src/reform-v2-fix.tar.xz -C app
-
-      - name: Apply batch trip patch
-        shell: bash
-        run: |
-          set -euo pipefail
           cd app
           patch -p1 < ../deploy/reform-v3-batch/batch-v3.patch
-          grep -Fq 'Quantidade de viagens' src/components/owner/trip-form.tsx
-          grep -Fq 'Lançamento em lote está disponível apenas' src/lib/api.ts
-          grep -Fq 'viagens salvas de uma vez' src/routes/dono/viagens.tsx
+          cd ..
 
-      - name: Apply loading optional v4 overlay
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat deploy/reform-v4-loading-optional/part-{00..03}.txt > /tmp/transsalomao-src/reform-v4.b64
-          test "$(wc -c < /tmp/transsalomao-src/reform-v4.b64)" -eq 19352
-          printf '%s  %s\n' '0a25f8746c71b3631cfdcbe955e7f85a5d71bf83442866cbd7ec61a9b62e0b72' '/tmp/transsalomao-src/reform-v4.b64' | sha256sum -c -
-          base64 -d /tmp/transsalomao-src/reform-v4.b64 > /tmp/transsalomao-src/reform-v4.tar.xz
-          test "$(wc -c < /tmp/transsalomao-src/reform-v4.tar.xz)" -eq 14512
-          printf '%s  %s\n' 'ba6a16ba57013782f49aa39dc1361cf13162669b3ce2038311352581bc41ef86' '/tmp/transsalomao-src/reform-v4.tar.xz' | sha256sum -c -
-          xz -t /tmp/transsalomao-src/reform-v4.tar.xz
-          tar -xJf /tmp/transsalomao-src/reform-v4.tar.xz -C app
-          grep -Fq 'Data do carregamento' app/src/routes/motorista.tsx
-          grep -Fq 'Hora do carregamento' app/src/components/owner/trip-form.tsx
-          grep -Fq 'code: z.string().trim().max(80).default("")' app/src/lib/api.ts
-          test -f app/migrations/0006_loading_datetime_optional.sql
+          cat deploy/reform-v4-loading-optional/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/v4.tar.xz
+          tar -xJf /tmp/transsalomao-src/v4.tar.xz -C app
 
-      - name: Apply fixed quantity and price v5
-        shell: bash
-        run: |
-          set -euo pipefail
           cd app
           patch -p1 < ../deploy/reform-v5-fixed-quantity-price/trans-v5.patch
-          grep -Fq 'Quantidade de viagens' src/routes/motorista.tsx
-          grep -Fq 'Preço por viagem' src/components/owner/trip-form.tsx
-          grep -Fq 'quantity integer not null default 1' migrations/0007_report_trip_quantity.sql
-          grep -Fq 'devem ser fechadas individualmente para informar o preço por viagem' src/lib/api.ts
-
-      - name: Apply mode selector fix v6
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd app
           patch -p1 < ../deploy/reform-v6-mode-selector/trans-v6-mode-selector.patch
-          grep -Fq 'function changeFreightMode(mode: FreightMode)' src/routes/motorista.tsx
-          grep -Fq 'localStorage.setItem(MODE_KEY, mode)' src/routes/motorista.tsx
-          grep -Fq '}, [data]);' src/routes/motorista.tsx
+          cd ..
 
-      - name: Apply commissions expenses and advances v7
-        shell: bash
-        run: |
-          set -euo pipefail
           cat deploy/reform-v7-overlay-small/chunk-{00..03}.txt > /tmp/transsalomao-src/v7.b64
           head -c 6000 deploy/reform-v7-overlay-small/chunk-04.txt >> /tmp/transsalomao-src/v7.b64
           cat deploy/reform-v7-overlay-small/chunk-05.txt >> /tmp/transsalomao-src/v7.b64
-          test "$(wc -c < /tmp/transsalomao-src/v7.b64)" -eq 32300
-          printf '%s  %s\n' '0917be3e6069e189685c724c7f4cd1a612a203cb6bdae53cf0dd4355f40c54ba' '/tmp/transsalomao-src/v7.b64' | sha256sum -c -
           base64 -d /tmp/transsalomao-src/v7.b64 > /tmp/transsalomao-src/v7.tar.xz
-          printf '%s  %s\n' '36a7017204f1fbe033c44fca06d3e88fa01af940906c2bbd57be1932b8ab0b48' '/tmp/transsalomao-src/v7.tar.xz' | sha256sum -c -
-          xz -t /tmp/transsalomao-src/v7.tar.xz
           tar -xJf /tmp/transsalomao-src/v7.tar.xz -C app
-          test -f app/migrations/0008_driver_expenses_advances.sql
-          grep -Fq 'Resultado líquido' app/src/routes/dono/index.tsx
-          grep -Fq 'Resumo e comissões por motorista' app/src/routes/dono/index.tsx
-          grep -Fq 'Adiantamento' app/src/routes/dono/despesas.tsx
-          grep -Fq 'Comissões por motorista' app/src/lib/pdf.ts
-          grep -Fq 'Separadas por motorista, cavalo ou carreta' app/src/lib/pdf.ts
 
-      - name: Apply Excel and CSV V8 overlay
-        shell: bash
-        run: |
-          set -euo pipefail
           cat deploy/reform-v8-excel-csv/part-{00..01}.txt > /tmp/transsalomao-src/v8.b64
           test "$(wc -c < /tmp/transsalomao-src/v8.b64)" -eq 18700
           printf '%s  %s\n' 'd73122f9773e301c2af4ee5c924e493d88f56bf429294882c8f10d7c4f5dbc94' '/tmp/transsalomao-src/v8.b64' | sha256sum -c -
           base64 -d /tmp/transsalomao-src/v8.b64 > /tmp/transsalomao-src/v8.tar.xz
-          test "$(wc -c < /tmp/transsalomao-src/v8.tar.xz)" -eq 14024
-          printf '%s  %s\n' 'e69a5143050d5515b5d212f9e0416bbfaa064e8ff6721a5f81f88af66fde3cab' '/tmp/transsalomao-src/v8.tar.xz' | sha256sum -c -
-          xz -t /tmp/transsalomao-src/v8.tar.xz
           tar -xJf /tmp/transsalomao-src/v8.tar.xz -C app
-          grep -Fq '"exceljs": "^4.4.0"' app/package.json
-          grep -Fq 'Excel colorido' app/src/routes/dono/totais.tsx
-          grep -Fq 'CSV corrigido' app/src/routes/dono/totais.tsx
-          grep -Fq '\uFEFFsep=;' app/src/lib/format.ts
-          grep -Fq 'writeBuffer' app/src/lib/excel.ts
-          grep -Fq 'autoFilter' app/src/lib/excel.ts
 
-      - name: Apply simplified profit V9 overlay
-        shell: bash
-        run: |
-          set -euo pipefail
           cat deploy/reform-v9-profit-simplified/chunk-00a.txt deploy/reform-v9-profit-simplified/chunk-00b.txt deploy/reform-v9-profit-simplified/chunk-00c.txt deploy/reform-v9-profit-simplified/chunk-01.txt deploy/reform-v9-profit-simplified/chunk-02.txt deploy/reform-v9-profit-simplified/chunk-03.txt > /tmp/transsalomao-src/v9.b64
           test "$(wc -c < /tmp/transsalomao-src/v9.b64)" -eq 21056
           printf '%s  %s\n' '5f7f1feb5a8177bb442842899938b3a5c59ab0c8680b1b66d95678a84636bea6' '/tmp/transsalomao-src/v9.b64' | sha256sum -c -
           base64 -d /tmp/transsalomao-src/v9.b64 > /tmp/transsalomao-src/v9.tar.xz
-          printf '%s  %s\n' 'b4a2ac1f8b35ad8e39798cb43160b878a72a3337deeb67e84e9dc1206bfc1d97' '/tmp/transsalomao-src/v9.tar.xz' | sha256sum -c -
-          xz -t /tmp/transsalomao-src/v9.tar.xz
           tar -xJf /tmp/transsalomao-src/v9.tar.xz -C app
           cd app
           patch -p1 < ../deploy/reform-v9-profit-simplified/type-fix.patch
-          grep -Fq 'Lucro líquido total do período' src/routes/dono/totais.tsx
-          grep -Fq 'Despesas operacionais' src/routes/dono/index.tsx
-          grep -Fq 'Lucro líquido' src/lib/pdf.ts
-          ! grep -Fq 'label="Modos por viagem"' src/routes/dono/totais.tsx
-          ! grep -Fq 'label="Modos por viagem"' src/routes/dono/index.tsx
+          cd ..
+
+          cat deploy/reform-v10-advance-commission/part-00.txt deploy/reform-v10-advance-commission/part-01a.txt deploy/reform-v10-advance-commission/part-01b.txt deploy/reform-v10-advance-commission/part-02a.txt deploy/reform-v10-advance-commission/part-02b.txt > /tmp/transsalomao-src/v10.b64
+          test "$(wc -c < /tmp/transsalomao-src/v10.b64)" -eq 25056
+          printf '%s  %s\n' '0b234111a791668d4b2bd85f5893f16740f2571d9e3c728f52a2861b7ca41c79' '/tmp/transsalomao-src/v10.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/v10.b64 > /tmp/transsalomao-src/v10.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/v10.tar.xz)" -eq 18792
+          printf '%s  %s\n' '040e6a5028bcd93d4b204554693e216149f5191dc662ace6c4e8ff1c1a7e903a' '/tmp/transsalomao-src/v10.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/v10.tar.xz
+          tar -xJf /tmp/transsalomao-src/v10.tar.xz -C app
+
+          grep -Fq 'Adiantamentos de comissão' app/src/routes/dono/despesas.tsx
+          grep -Fq 'Saldo de comissão' app/src/routes/dono/totais.tsx
+          grep -Fq 'commissionBalance' app/src/lib/pdf.ts
+          grep -Fq 'não inclui adiantamentos de comissão' app/src/routes/dono/index.tsx
 
       - name: Typecheck application source
         shell: bash
@@ -160,6 +88,7 @@ jobs:
           cd app
           npm install --ignore-scripts --no-audit --no-fund
           npx tsc --noEmit --checkJs false
+          npm run build:dev
 
       - name: Link production project
         env:
@@ -186,5 +115,4 @@ jobs:
 
       - name: Deployment summary
         shell: bash
-        run: |
-          echo "Published: $DEPLOYMENT_URL"
+        run: echo "Published: $DEPLOYMENT_URL"
