@@ -1,4 +1,4 @@
-name: Deploy Trans Salomao Fixed Quantity V5
+name: Deploy Trans Salomao Mode Selector V6
 
 on:
   push:
@@ -84,6 +84,16 @@ jobs:
           grep -Fq 'Preço por viagem' src/components/owner/trip-form.tsx
           grep -Fq 'quantity integer not null default 1' migrations/0007_report_trip_quantity.sql
           grep -Fq 'devem ser fechadas individualmente para informar o preço por viagem' src/lib/api.ts
+
+      - name: Apply mode selector fix v6
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          patch -p1 < ../deploy/reform-v6-mode-selector/trans-v6-mode-selector.patch
+          grep -Fq 'function changeFreightMode(mode: FreightMode)' src/routes/motorista.tsx
+          grep -Fq 'localStorage.setItem(MODE_KEY, mode)' src/routes/motorista.tsx
+          grep -Fq '}, [data]);' src/routes/motorista.tsx
 
       - name: Typecheck application source
         shell: bash
