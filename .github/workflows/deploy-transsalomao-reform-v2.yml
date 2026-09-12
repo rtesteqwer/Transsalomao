@@ -1,4 +1,4 @@
-name: Deploy Trans Salomao Mode Selector V6
+name: Deploy Trans Salomao Finance V7
 
 on:
   push:
@@ -94,6 +94,27 @@ jobs:
           grep -Fq 'function changeFreightMode(mode: FreightMode)' src/routes/motorista.tsx
           grep -Fq 'localStorage.setItem(MODE_KEY, mode)' src/routes/motorista.tsx
           grep -Fq '}, [data]);' src/routes/motorista.tsx
+
+      - name: Apply commissions expenses and advances v7
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ..
+          cat deploy/reform-v7-overlay-small/chunk-{00..03}.txt > /tmp/transsalomao-src/v7.b64
+          head -c 6000 deploy/reform-v7-overlay-small/chunk-04.txt >> /tmp/transsalomao-src/v7.b64
+          cat deploy/reform-v7-overlay-small/chunk-05.txt >> /tmp/transsalomao-src/v7.b64
+          test "$(wc -c < /tmp/transsalomao-src/v7.b64)" -eq 32300
+          printf '%s  %s\n' '0917be3e6069e189685c724c7f4cd1a612a203cb6bdae53cf0dd4355f40c54ba' '/tmp/transsalomao-src/v7.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/v7.b64 > /tmp/transsalomao-src/v7.tar.xz
+          printf '%s  %s\n' '36a7017204f1fbe033c44fca06d3e88fa01af940906c2bbd57be1932b8ab0b48' '/tmp/transsalomao-src/v7.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/v7.tar.xz
+          tar -xJf /tmp/transsalomao-src/v7.tar.xz -C app
+          test -f app/migrations/0008_driver_expenses_advances.sql
+          grep -Fq 'Resultado líquido' app/src/routes/dono/index.tsx
+          grep -Fq 'Resumo e comissões por motorista' app/src/routes/dono/index.tsx
+          grep -Fq 'Adiantamento' app/src/routes/dono/despesas.tsx
+          grep -Fq 'Comissões por motorista' app/src/lib/pdf.ts
+          grep -Fq 'Separadas por motorista, cavalo ou carreta' app/src/lib/pdf.ts
 
       - name: Typecheck application source
         shell: bash
