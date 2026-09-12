@@ -1,0 +1,80 @@
+name: Validate Trans Salomao Loading V4
+
+on:
+  push:
+    paths:
+      - 'deploy/validate-loading-v4.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact production base
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/transsalomao-src app
+          head -c 5000 deploy/release-exact-20260911/part-11b.txt > /tmp/transsalomao-src/part-11b.exact
+          cat deploy/release-exact-20260911/part-00.txt deploy/release-exact-20260911/part-01.txt deploy/release-exact-20260911/part-02.txt deploy/release-exact-20260911/part-03.txt deploy/release-exact-20260911/part-04.txt deploy/release-exact-20260911/part-05a.txt deploy/release-exact-20260911/part-05b.txt deploy/release-exact-20260911/part-05c.txt deploy/release-exact-20260911/part-06.txt deploy/release-exact-20260911/part-07.txt deploy/release-exact-20260911/part-08.txt deploy/release-exact-20260911/part-09.txt deploy/release-exact-20260911/part-10.txt deploy/release-exact-20260911/part-11a.txt /tmp/transsalomao-src/part-11b.exact deploy/release-exact-20260911/part-11c.txt deploy/release-exact-20260911/part-12a.txt deploy/release-exact-20260911/part-12b.txt > /tmp/transsalomao-src/source.b64
+          base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
+          tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
+
+      - name: Apply reform v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-20260911-viagens-kml/part-{00..06}.txt | base64 -d > /tmp/transsalomao-src/reform.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform.tar.xz -C app
+
+      - name: Apply reform v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-v2-overlay/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/reform-v2.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v2.tar.xz -C app
+
+      - name: Apply lancamentos type fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d deploy/reform-v2-fix/overlay.b64 > /tmp/transsalomao-src/reform-v2-fix.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v2-fix.tar.xz -C app
+
+      - name: Apply batch trip patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          patch -p1 < ../deploy/reform-v3-batch/batch-v3.patch
+
+      - name: Apply loading optional v4 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-v4-loading-optional/part-{00..03}.txt > /tmp/transsalomao-src/reform-v4.b64
+          test "$(wc -c < /tmp/transsalomao-src/reform-v4.b64)" -eq 19352
+          printf '%s  %s\n' '0a25f8746c71b3631cfdcbe955e7f85a5d71bf83442866cbd7ec61a9b62e0b72' '/tmp/transsalomao-src/reform-v4.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/reform-v4.b64 > /tmp/transsalomao-src/reform-v4.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/reform-v4.tar.xz)" -eq 14512
+          printf '%s  %s\n' 'ba6a16ba57013782f49aa39dc1361cf13162669b3ce2038311352581bc41ef86' '/tmp/transsalomao-src/reform-v4.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/reform-v4.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v4.tar.xz -C app
+          grep -Fq 'Data do carregamento' app/src/routes/motorista.tsx
+          grep -Fq 'Hora do carregamento' app/src/components/owner/trip-form.tsx
+          grep -Fq 'code: z.string().trim().max(80).default("")' app/src/lib/api.ts
+          test -f app/migrations/0006_loading_datetime_optional.sql
+
+      - name: Typecheck application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          npm install --ignore-scripts --no-audit --no-fund
+          npx tsc --noEmit --checkJs false
