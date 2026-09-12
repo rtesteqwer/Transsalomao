@@ -1,0 +1,367 @@
+diff -ruN '--exclude=node_modules' a/migrations/0008_driver_expenses.sql b/migrations/0008_driver_expenses.sql
+--- a/migrations/0008_driver_expenses.sql	1970-01-01 00:00:00.000000000 +0000
++++ b/migrations/0008_driver_expenses.sql	2026-09-12 13:48:59.967437142 +0000
+@@ -0,0 +1,8 @@
++alter table expenses add column if not exists driver_id text references drivers(id);
++
++alter table expenses alter column fleet_id drop not null;
++
++alter table expenses drop constraint if exists expenses_asset_type_check;
++alter table expenses add constraint expenses_asset_type_check check (asset_type in ('tractor', 'trailer', 'driver'));
++
++create index if not exists expenses_driver_idx on expenses (driver_id, date desc);
+diff -ruN '--exclude=node_modules' a/src/lib/api.ts b/src/lib/api.ts
+--- a/src/lib/api.ts	2026-09-12 13:48:11.000000000 +0000
++++ b/src/lib/api.ts	2026-09-12 13:48:59.967244681 +0000
+@@ -121,7 +121,8 @@
+     id: str(r.id),
+     date: str(r.date).slice(0, 10),
+     fleetId: str(r.fleet_id),
+-    assetType: str(r.asset_type) === "trailer" ? "trailer" : "tractor",
++    driverId: str(r.driver_id),
++    assetType: str(r.asset_type) === "driver" ? "driver" : str(r.asset_type) === "trailer" ? "trailer" : "tractor",
+     category: str(r.category),
+     description: str(r.description),
+     amount: num(r.amount),
+@@ -557,12 +558,19 @@
+   id: z.string().optional(),
+   date: z.string().min(8),
+-  fleetId: z.string().min(1, "Escolha o conjunto"),
+-  assetType: z.enum(["tractor", "trailer"]),
++  fleetId: z.string().default(""),
++  driverId: z.string().default(""),
++  assetType: z.enum(["tractor", "trailer", "driver"]),
+   category: z.string().trim().min(1, "Informe a categoria"),
+   description: z.string().trim().min(1, "Informe a despesa"),
+   amount: z.number().positive("Informe um valor maior que zero"),
+   notes: z.string().trim(),
++}).superRefine((data, ctx) => {
++  if (data.assetType === "driver" && !data.driverId.trim()) {
++    ctx.addIssue({ code: "custom", path: ["driverId"], message: "Escolha o motorista" });
++  }
++  if (data.assetType !== "driver" && !data.fleetId.trim()) {
++    ctx.addIssue({ code: "custom", path: ["fleetId"], message: "Escolha o conjunto" });
++  }
+ });
+ 
+ export const upsertExpense = createServerFn({ method: "POST" })
+@@ -571,12 +579,15 @@
+     await requireManagement();
+     const sql = await getSql();
+     const id = data.id?.trim() || newId("exp");
++    const fleetId = data.assetType === "driver" ? null : data.fleetId.trim() || null;
++    const driverId = data.assetType === "driver" ? data.driverId.trim() || null : null;
+     await sql`
+-      insert into expenses (id, date, fleet_id, asset_type, category, description, amount, notes)
+-      values (${id}, ${data.date}, ${data.fleetId}, ${data.assetType}, ${data.category}, ${data.description}, ${data.amount}, ${data.notes})
++      insert into expenses (id, date, fleet_id, driver_id, asset_type, category, description, amount, notes)
++      values (${id}, ${data.date}, ${fleetId}, ${driverId}, ${data.assetType}, ${data.category}, ${data.description}, ${data.amount}, ${data.notes})
+       on conflict (id) do update set
+         date = excluded.date,
+         fleet_id = excluded.fleet_id,
++        driver_id = excluded.driver_id,
+         asset_type = excluded.asset_type,
+         category = excluded.category,
+         description = excluded.description,
+diff -ruN '--exclude=node_modules' a/src/lib/pdf.ts b/src/lib/pdf.ts
+--- a/src/lib/pdf.ts	2026-09-12 13:48:11.000000000 +0000
++++ b/src/lib/pdf.ts	2026-09-12 13:51:47.247424821 +0000
+@@ -1,5 +1,5 @@
+ import { brl, formatDate, integer, kmL, liters, tons } from "@/lib/format";
+-import type { ComputedTrip, Fueling } from "@/lib/types";
++import type { ComputedTrip, Expense, Fueling } from "@/lib/types";
+ import { freightModeBreakdown, freightModeLabel, fuelingConsumptionStats } from "@/lib/calc";
+@@ -302,7 +302,7 @@
+   const totalLiters = hasFuelings
+     ? fuelings.reduce((a, f) => a + f.liters, 0)
+     : trips.reduce((a, t) => a + t.dieselLiters, 0);
+   const totalCommissions = trips.reduce((a, t) => a + t.commissionValue, 0);
+   const totalResult = totalFreight - totalDiesel;
+-  const totalAfter = totalResult - totalCommissions;
++  const totalAfter = totalFreight - totalCommissions;
+@@ -337,7 +337,7 @@
+   drawMetricCard(page, x1, top3, colW, rowH, "Frete total", brl(totalFreight), `${tons(totalTons)} de peso líquido`);
+   drawMetricCard(page, x2, top3, colW, rowH, "Custo diesel", brl(totalDiesel), totalLiters > 0 ? `${liters(totalLiters)} no período` : "sem litros lançados");
+-  drawMetricCard(page, x3, top3, colW, rowH, "Após comissão", brl(totalAfter), `Resultado bruto ${brl(totalResult)}`);
++  drawMetricCard(page, x3, top3, colW, rowH, "Após comissão", brl(totalAfter), `Frete ${brl(totalFreight)} - comissões ${brl(totalCommissions)}`);
+@@ -433,10 +433,50 @@
+ }
+ 
++export type ReportExpense = Expense & {
++  driverName: string;
++  fleetName: string;
++  assetLabel: string;
++};
++
++function drawFinancialDetailsPage(page: PdfPage, trips: ComputedTrip[], expenses: ReportExpense[], top = 132) {
++  page.text("Comissões por motorista", MARGIN, topToY(top), { size: 14, bold: true, color: colors.fg });
++  const byDriver = new Map<string, { freight: number; commission: number }>();
++  for (const trip of trips) {
++    const row = byDriver.get(trip.driverName) ?? { freight: 0, commission: 0 };
++    row.freight += trip.freight;
++    row.commission += trip.commissionValue;
++    byDriver.set(trip.driverName, row);
++  }
++  let y = top + 26;
++  if (byDriver.size === 0) {
++    page.text("Sem comissões no período.", MARGIN, topToY(y), { size: 9, color: colors.muted });
++    y += 22;
++  } else {
++    for (const [name, row] of [...byDriver.entries()].sort((a, b) => b[1].commission - a[1].commission)) {
++      page.text(truncate(name, 32), MARGIN, topToY(y), { size: 9.5, bold: true, color: colors.fg });
++      page.text(`Frete ${brl(row.freight)}  |  Comissão ${brl(row.commission)}  |  Após comissão ${brl(row.freight - row.commission)}`, MARGIN + 180, topToY(y), { size: 8.5, color: colors.muted });
++      y += 18;
++    }
++  }
++  y += 12;
++  page.text("Despesas no período", MARGIN, topToY(y), { size: 14, bold: true, color: colors.fg });
++  y += 24;
++  if (expenses.length === 0) {
++    page.text("Sem despesas registradas no período.", MARGIN, topToY(y), { size: 9, color: colors.muted });
++    return;
++  }
++  for (const expense of expenses.slice(0, 24)) {
++    const target = expense.assetType === "driver" ? `Motorista: ${expense.driverName}` : `${expense.assetLabel}: ${expense.fleetName}`;
++    page.text(`${formatDate(expense.date)}  |  ${truncate(expense.category, 18)}  |  ${truncate(target, 34)}`, MARGIN, topToY(y), { size: 8.5, color: colors.fg });
++    page.text(brl(expense.amount), MARGIN + CONTENT_W - 80, topToY(y), { size: 9, bold: true, color: colors.accent });
++    y += 17;
++    if (y > 760) break;
++  }
++}
++
+ export function downloadDriverReportPdf({
+   driverName,
+   trips,
+   fuelings = [],
++  expenses = [],
+@@ -449,6 +489,7 @@
+   driverName: string;
+   trips: ComputedTrip[];
+   fuelings?: ReportFueling[];
++  expenses?: ReportExpense[];
+@@ -558,6 +599,19 @@
+     pages.push(fuelPage);
+   }
+ 
++  const financePage = new PdfPage();
++  drawPageShell(financePage, pages.length + 1);
++  drawHeaderCard(
++    financePage,
++    driverName,
++    periodLabel ?? "Selecionado",
++    sourceLabel ?? "Gerência",
++    generatedAt,
++    reportTitle ?? "Relatório operacional por motorista",
++    operatorName,
++  );
++  drawFinancialDetailsPage(financePage, trips, expenses);
++  pages.push(financePage);
++
+   const blob = buildPdf(pages.map((item) => item.ops.join("\n")));
+diff -ruN '--exclude=node_modules' a/src/lib/types.ts b/src/lib/types.ts
+--- a/src/lib/types.ts	2026-09-12 13:48:11.000000000 +0000
++++ b/src/lib/types.ts	2026-09-12 13:48:59.966892907 +0000
+@@ -3,7 +3,7 @@
+ export type FreightMode = "ton" | "trip" | "cegonha" | "caixinha";
+ 
+-export type ExpenseAssetType = "tractor" | "trailer";
++export type ExpenseAssetType = "tractor" | "trailer" | "driver";
+@@ -69,6 +69,7 @@
+   id: string;
+   date: string;
+   fleetId: string;
++  driverId: string;
+   assetType: ExpenseAssetType;
+diff -ruN '--exclude=node_modules' a/src/routes/dono/despesas.tsx b/src/routes/dono/despesas.tsx
+--- a/src/routes/dono/despesas.tsx	2026-09-12 13:48:11.000000000 +0000
++++ b/src/routes/dono/despesas.tsx	2026-09-12 13:50:54.174148568 +0000
+@@ -29,6 +29,7 @@
+   "Pedágio",
+   "Multa",
++  "Adiantamento",
+   "Outros",
+@@ -56,14 +57,11 @@
+   const trailerTotal = scopedExpenses
+     .filter((e) => e.assetType === "trailer")
+     .reduce((sum, e) => sum + e.amount, 0);
+-  const total = tractorTotal + trailerTotal;
++  const driverTotal = allExpenses.filter((e) => e.assetType === "driver").reduce((sum, e) => sum + e.amount, 0);
++  const visibleDriverTotal = fleetFilter === "all" ? driverTotal : 0;
++  const total = tractorTotal + trailerTotal + visibleDriverTotal;
+@@ -81,6 +79,7 @@
+               date: new Date().toISOString().slice(0, 10),
+               fleetId: data?.fleets[0]?.id ?? "",
++              driverId: "",
+               assetType: "tractor",
+@@ -92,7 +91,7 @@
+           }
+-          disabled={(data?.fleets.length ?? 0) === 0}
++          disabled={(data?.fleets.length ?? 0) === 0 && (data?.drivers.length ?? 0) === 0}
+@@ -102,10 +101,11 @@
+-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
++      <div className="mt-6 grid gap-3 sm:grid-cols-4">
+         <Metric label="Total geral" value={brl(total)} />
+         <Metric label="Despesas dos cavalos" value={brl(tractorTotal)} />
+         <Metric label="Despesas das carretas" value={brl(trailerTotal)} />
++        <Metric label="Despesas com motoristas" value={brl(driverTotal)} />
+@@ -127,10 +127,11 @@
+             <option value="tractor">Somente cavalo</option>
+             <option value="trailer">Somente carreta</option>
++            <option value="driver">Somente motoristas</option>
+@@ -140,7 +141,7 @@
+-      {(data?.fleets.length ?? 0) === 0 ? (
++      {(data?.fleets.length ?? 0) === 0 && (data?.drivers.length ?? 0) === 0 ? (
+@@ -154,9 +155,10 @@
+             const fleet = data?.fleets.find((f) => f.id === row.fleetId);
+-            const plate = row.assetType === "tractor" ? fleet?.tractorPlate : fleet?.trailerPlate;
+-            const assetLabel = row.assetType === "tractor" ? "Cavalo" : "Carreta";
++            const driver = data?.drivers.find((d) => d.id === row.driverId);
++            const plate = row.assetType === "tractor" ? fleet?.tractorPlate : row.assetType === "trailer" ? fleet?.trailerPlate : null;
++            const assetLabel = row.assetType === "driver" ? "Motorista" : row.assetType === "tractor" ? "Cavalo" : "Carreta";
+@@ -169,7 +171,7 @@
+-                      <span className="text-xs text-muted">{plate ?? "Sem placa"}</span>
++                      <span className="text-xs text-muted">{row.assetType === "driver" ? (driver?.name ?? "Motorista removido") : (plate ?? "Sem placa")}</span>
+@@ -176,7 +178,7 @@
+-                      {formatDate(row.date)} · {fleet?.name ?? "Conjunto"} · {row.category}
++                      {formatDate(row.date)} · {row.assetType === "driver" ? (driver?.name ?? "Motorista") : (fleet?.name ?? "Conjunto")} · {row.category}
+@@ -229,6 +231,7 @@
+   const [date, setDate] = useState("");
+   const [fleetId, setFleetId] = useState("");
++  const [driverId, setDriverId] = useState("");
+@@ -239,6 +242,7 @@
+     setFleetId(value.fleetId ?? data?.fleets[0]?.id ?? "");
++    setDriverId(value.driverId ?? "");
+@@ -268,6 +272,7 @@
+                   fleetId,
++                  driverId,
+@@ -288,12 +293,20 @@
+-            <Field label="Conjunto cadastrado">
++            {assetType === "driver" ? (
++              <Field label="Motorista">
++                <Select value={driverId} onChange={(e) => setDriverId(e.target.value)} required>
++                  <option value="">Escolha o motorista</option>
++                  {(data?.drivers ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
++                </Select>
++              </Field>
++            ) : (
++              <Field label="Conjunto cadastrado">
+               <Select value={fleetId} onChange={(e) => setFleetId(e.target.value)} required>
+@@ -304,8 +317,9 @@
+               </Select>
+-            </Field>
++              </Field>
++            )}
+ 
+             <Field label="Despesa pertence a">
+-              <div className="grid grid-cols-2 gap-2">
++              <div className="grid grid-cols-3 gap-2">
+@@ -333,6 +347,14 @@
+                 </button>
++                <button type="button" onClick={() => { setAssetType("driver"); setCategory("Adiantamento"); }} className={`rounded-lg border px-3 py-3 text-left ${assetType === "driver" ? "border-accent bg-surface-2 text-fg" : "border-border text-muted"}`}>
++                  <span className="block text-sm font-medium">Motorista</span>
++                  <span className="mt-1 block text-xs">Adiantamento / despesa</span>
++                </button>
+               </div>
+diff -ruN '--exclude=node_modules' a/src/routes/dono/index.tsx b/src/routes/dono/index.tsx
+--- a/src/routes/dono/index.tsx	2026-09-12 13:48:11.000000000 +0000
++++ b/src/routes/dono/index.tsx	2026-09-12 13:51:02.338208028 +0000
+@@ -78,7 +78,7 @@
+-    afterCommission: hasFuelings ? kpis.revenue - fuelCost - kpis.commissions : kpis.afterCommission,
++    afterCommission: kpis.revenue - kpis.commissions,
+@@ -110,7 +110,7 @@
+-      afterCommission: prevKpis.revenue - cost - prevKpis.commissions,
++      afterCommission: prevKpis.revenue - prevKpis.commissions,
+@@ -202,6 +202,7 @@
+           delta={deltaOf(effectiveKpis, prevEffectiveKpis, "revenue")}
+           large
++          formula="Fretes somados no período"
+@@ -209,6 +210,7 @@
+           delta={deltaOf(effectiveKpis, prevEffectiveKpis, "grossResult")}
+           large
++          formula="Faturamento − custo do diesel"
+@@ -216,6 +218,7 @@
+           delta={deltaOf(effectiveKpis, prevEffectiveKpis, "afterCommission")}
+           large
++          formula="Faturamento − comissões (sem descontar diesel)"
+@@ -223,6 +226,7 @@
+           delta={deltaOf(effectiveKpis, prevEffectiveKpis, "dieselCost")}
+           large
++          formula="Litros abastecidos × preço por litro"
+@@ -269,6 +273,7 @@
+                   <div><dt className="text-[10px] uppercase tracking-[0.12em] text-subtle">Frete</dt><dd className="mt-1 tabular">{brl(d.freight)}</dd></div>
++                  <div><dt className="text-[10px] uppercase tracking-[0.12em] text-subtle">Comissão</dt><dd className="mt-1 tabular">{brl(d.commissionValue)} · {Math.round(d.commissionPct * 10000) / 100}%</dd></div>
+@@ -421,11 +426,13 @@
+   delta,
+   large,
++  formula,
+ }: {
+@@ -425,6 +432,7 @@
+   delta?: number | null;
+   large?: boolean;
++  formula?: string;
+@@ -444,6 +452,7 @@
+       </p>
++      {formula ? <p className="mt-1 text-[9px] leading-tight text-subtle">{formula}</p> : null}
+diff -ruN '--exclude=node_modules' a/src/routes/dono/totais.tsx b/src/routes/dono/totais.tsx
+--- a/src/routes/dono/totais.tsx	2026-09-12 13:48:11.000000000 +0000
++++ b/src/routes/dono/totais.tsx	2026-09-12 13:53:13.558373209 +0000
+@@ -16,7 +16,7 @@
+-import { downloadDriverReportPdf, type ReportFueling } from "@/lib/pdf";
++import { downloadDriverReportPdf, type ReportExpense, type ReportFueling } from "@/lib/pdf";
+@@ -30,7 +30,7 @@
+-  const [tab, setTab] = useState<"motoristas" | "conjuntos" | "diesel">("motoristas");
++  const [tab, setTab] = useState<"motoristas" | "conjuntos" | "diesel" | "despesas">("motoristas");
+@@ -66,6 +66,20 @@
++  const expenses = useMemo<ReportExpense[]>(() => {
++    if (!data) return [];
++    return data.expenses.filter((e) => inPeriod(e.date, period)).map((e) => {
++      const driver = data.drivers.find((d) => d.id === e.driverId);
++      const fleet = data.fleets.find((f) => f.id === e.fleetId);
++      return { ...e, driverName: driver?.name ?? "Motorista removido", fleetName: fleet?.name ?? "Conjunto removido", assetLabel: e.assetType === "driver" ? "Motorista" : e.assetType === "tractor" ? "Cavalo" : "Carreta" };
++    });
++  }, [data, period]);
++
+@@ -101,6 +115,7 @@
+   const fuelForDriver = (driverId: string) => fuelings.filter((f) => f.driverId === driverId);
++  const expensesForDriver = (driverId: string) => expenses.filter((e) => e.assetType === "driver" && e.driverId === driverId);
+@@ -121,6 +136,7 @@
+       fuelings: fuelForDriver(selectedDriver.id),
++      expenses: expensesForDriver(selectedDriver.id),
+@@ -160,6 +176,16 @@
++    const expenseRows: ReportExpense[] = data.expenses.filter((e) => kind === "day" ? e.date === isoToday : kind === "week" ? inPeriod(e.date, "7d", today) : kind === "month" ? inPeriod(e.date, "month", today) : true).map((e) => {
++      const driver = data.drivers.find((d) => d.id === e.driverId);
++      const fleet = data.fleets.find((f) => f.id === e.fleetId);
++      return { ...e, driverName: driver?.name ?? "Motorista removido", fleetName: fleet?.name ?? "Conjunto removido", assetLabel: e.assetType === "driver" ? "Motorista" : e.assetType === "tractor" ? "Cavalo" : "Carreta" };
++    });
+@@ -169,6 +195,7 @@
+       fuelings: fuelRows,
++      expenses: expenseRows,
+@@ -241,7 +268,20 @@
+-    } else {
++    } else if (tab === "diesel") {
+@@ -263,6 +303,18 @@
++    } else {
++      downloadText("despesas.csv", toCsv(expenses.map((e) => ({ data: e.date, tipo: e.assetLabel, motorista: e.assetType === "driver" ? e.driverName : "", conjunto: e.assetType === "driver" ? "" : e.fleetName, categoria: e.category, descricao: e.description, valor: e.amount, observacao: e.notes }))), "text/csv;charset=utf-8");
+@@ -287,6 +339,7 @@
+               fuelings,
++              expenses,
+@@ -346,7 +399,7 @@
+-          {([ ["motoristas", "Motoristas"], ["conjuntos", "Conjuntos"], ["diesel", "Combustível"] ] as const).map(([key, label]) => (
++          {([ ["motoristas", "Motoristas"], ["conjuntos", "Conjuntos"], ["diesel", "Combustível"], ["despesas", "Despesas"] ] as const).map(([key, label]) => (
+@@ -389,6 +442,7 @@
+                     fuelings: fuelForDriver(d.driverId),
++                    expenses: expensesForDriver(d.driverId),
+@@ -481,6 +535,20 @@
++      {tab === "despesas" ? (
++        <div className="mt-6 space-y-4">
++          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
++            <Summary label="Despesas totais" value={brl(expenses.reduce((a, e) => a + e.amount, 0))} />
++            <Summary label="Com motoristas" value={brl(expenses.filter((e) => e.assetType === "driver").reduce((a, e) => a + e.amount, 0))} />
++            <Summary label="Com cavalos" value={brl(expenses.filter((e) => e.assetType === "tractor").reduce((a, e) => a + e.amount, 0))} />
++            <Summary label="Com carretas" value={brl(expenses.filter((e) => e.assetType === "trailer").reduce((a, e) => a + e.amount, 0))} />
++          </div>
++          <div className="overflow-x-auto rounded-xl border border-border">
++            <table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-surface-2 text-[10px] uppercase tracking-[0.14em] text-muted"><tr>{["Data", "Tipo", "Motorista / conjunto", "Categoria", "Descrição", "Valor"].map((h) => <th key={h} className="px-3 py-3 font-medium">{h}</th>)}</tr></thead><tbody>{expenses.length === 0 ? <tr><td colSpan={6} className="px-4 py-8 text-center text-muted">Nenhuma despesa neste período.</td></tr> : expenses.map((e) => <tr key={e.id} className="border-t border-border"><td className="px-3 py-3">{formatDate(e.date)}</td><td className="px-3 py-3">{e.assetLabel}</td><td className="px-3 py-3">{e.assetType === "driver" ? e.driverName : e.fleetName}</td><td className="px-3 py-3">{e.category}</td><td className="px-3 py-3">{e.description}</td><td className="px-3 py-3 font-medium tabular">{brl(e.amount)}</td></tr>)}</tbody></table>
++          </div>
++        </div>
++      ) : null}
