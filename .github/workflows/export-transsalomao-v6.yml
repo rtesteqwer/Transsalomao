@@ -1,0 +1,48 @@
+name: Export Trans Salomao V6 Source
+
+on:
+  push:
+    paths:
+      - 'deploy/export-v6.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Reconstruct current V6
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/transsalomao-src app
+          head -c 5000 deploy/release-exact-20260911/part-11b.txt > /tmp/transsalomao-src/part-11b.exact
+          cat deploy/release-exact-20260911/part-00.txt deploy/release-exact-20260911/part-01.txt deploy/release-exact-20260911/part-02.txt deploy/release-exact-20260911/part-03.txt deploy/release-exact-20260911/part-04.txt deploy/release-exact-20260911/part-05a.txt deploy/release-exact-20260911/part-05b.txt deploy/release-exact-20260911/part-05c.txt deploy/release-exact-20260911/part-06.txt deploy/release-exact-20260911/part-07.txt deploy/release-exact-20260911/part-08.txt deploy/release-exact-20260911/part-09.txt deploy/release-exact-20260911/part-10.txt deploy/release-exact-20260911/part-11a.txt /tmp/transsalomao-src/part-11b.exact deploy/release-exact-20260911/part-11c.txt deploy/release-exact-20260911/part-12a.txt deploy/release-exact-20260911/part-12b.txt > /tmp/transsalomao-src/source.b64
+          base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
+          tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
+          cat deploy/reform-20260911-viagens-kml/part-{00..06}.txt | base64 -d > /tmp/transsalomao-src/reform.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform.tar.xz -C app
+          cat deploy/reform-v2-overlay/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/reform-v2.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v2.tar.xz -C app
+          base64 -d deploy/reform-v2-fix/overlay.b64 > /tmp/transsalomao-src/reform-v2-fix.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v2-fix.tar.xz -C app
+          cd app
+          patch -p1 < ../deploy/reform-v3-batch/batch-v3.patch
+          cd ..
+          cat deploy/reform-v4-loading-optional/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/reform-v4.tar.xz
+          tar -xJf /tmp/transsalomao-src/reform-v4.tar.xz -C app
+          cd app
+          patch -p1 < ../deploy/reform-v5-fixed-quantity-price/trans-v5.patch
+          patch -p1 < ../deploy/reform-v6-mode-selector/trans-v6.patch
+          rm -rf node_modules .vercel
+      - name: Package source
+        run: tar -czf transsalomao-v6-source.tar.gz -C app .
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: transsalomao-v6-source
+          path: transsalomao-v6-source.tar.gz
+          retention-days: 1
