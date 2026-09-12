@@ -68,6 +68,9 @@ jobs:
           printf '%s  %s\n' 'b4a2ac1f8b35ad8e39798cb43160b878a72a3337deeb67e84e9dc1206bfc1d97' '/tmp/transsalomao-src/v9.tar.xz' | sha256sum -c -
           xz -t /tmp/transsalomao-src/v9.tar.xz
           tar -xJf /tmp/transsalomao-src/v9.tar.xz -C app
+          cd app
+          patch -p1 < ../deploy/reform-v9-profit-simplified/type-fix.patch
+          cd ..
           grep -Fq 'Lucro líquido total do período' app/src/routes/dono/totais.tsx
           grep -Fq 'Despesas operacionais' app/src/routes/dono/index.tsx
           grep -Fq 'Lucro líquido' app/src/lib/pdf.ts
