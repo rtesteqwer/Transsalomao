@@ -1,0 +1,82 @@
+name: Validate Trans Salomao Excel V8
+
+on:
+  push:
+    paths:
+      - 'deploy/validate-excel-v8.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Reconstruct through V7
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/transsalomao-src app
+          head -c 5000 deploy/release-exact-20260911/part-11b.txt > /tmp/transsalomao-src/part-11b.exact
+          cat deploy/release-exact-20260911/part-00.txt deploy/release-exact-20260911/part-01.txt deploy/release-exact-20260911/part-02.txt deploy/release-exact-20260911/part-03.txt deploy/release-exact-20260911/part-04.txt deploy/release-exact-20260911/part-05a.txt deploy/release-exact-20260911/part-05b.txt deploy/release-exact-20260911/part-05c.txt deploy/release-exact-20260911/part-06.txt deploy/release-exact-20260911/part-07.txt deploy/release-exact-20260911/part-08.txt deploy/release-exact-20260911/part-09.txt deploy/release-exact-20260911/part-10.txt deploy/release-exact-20260911/part-11a.txt /tmp/transsalomao-src/part-11b.exact deploy/release-exact-20260911/part-11c.txt deploy/release-exact-20260911/part-12a.txt deploy/release-exact-20260911/part-12b.txt > /tmp/transsalomao-src/source.b64
+          base64 -d /tmp/transsalomao-src/source.b64 > /tmp/transsalomao-src/source.tar.xz
+          tar -xJf /tmp/transsalomao-src/source.tar.xz -C app
+          cat deploy/reform-20260911-viagens-kml/part-{00..06}.txt | base64 -d > /tmp/transsalomao-src/v1.tar.xz
+          tar -xJf /tmp/transsalomao-src/v1.tar.xz -C app
+          cat deploy/reform-v2-overlay/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/v2.tar.xz
+          tar -xJf /tmp/transsalomao-src/v2.tar.xz -C app
+          base64 -d deploy/reform-v2-fix/overlay.b64 > /tmp/transsalomao-src/v2fix.tar.xz
+          tar -xJf /tmp/transsalomao-src/v2fix.tar.xz -C app
+          cd app
+          patch -p1 < ../deploy/reform-v3-batch/batch-v3.patch
+          cd ..
+          cat deploy/reform-v4-loading-optional/part-{00..03}.txt | base64 -d > /tmp/transsalomao-src/v4.tar.xz
+          tar -xJf /tmp/transsalomao-src/v4.tar.xz -C app
+          cd app
+          patch -p1 < ../deploy/reform-v5-fixed-quantity-price/trans-v5.patch
+          patch -p1 < ../deploy/reform-v6-mode-selector/trans-v6-mode-selector.patch
+          cd ..
+          cat deploy/reform-v7-overlay-small/chunk-{00..03}.txt > /tmp/transsalomao-src/v7.b64
+          head -c 6000 deploy/reform-v7-overlay-small/chunk-04.txt >> /tmp/transsalomao-src/v7.b64
+          cat deploy/reform-v7-overlay-small/chunk-05.txt >> /tmp/transsalomao-src/v7.b64
+          base64 -d /tmp/transsalomao-src/v7.b64 > /tmp/transsalomao-src/v7.tar.xz
+          tar -xJf /tmp/transsalomao-src/v7.tar.xz -C app
+      - name: Apply Excel and CSV V8 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-v8-excel-csv/part-{00..01}.txt > /tmp/transsalomao-src/v8.b64
+          test "$(wc -c < /tmp/transsalomao-src/v8.b64)" -eq 18700
+          printf '%s  %s\n' 'd73122f9773e301c2af4ee5c924e493d88f56bf429294882c8f10d7c4f5dbc94' '/tmp/transsalomao-src/v8.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/v8.b64 > /tmp/transsalomao-src/v8.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/v8.tar.xz)" -eq 14024
+          printf '%s  %s\n' 'e69a5143050d5515b5d212f9e0416bbfaa064e8ff6721a5f81f88af66fde3cab' '/tmp/transsalomao-src/v8.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/v8.tar.xz
+          tar -xJf /tmp/transsalomao-src/v8.tar.xz -C app
+          grep -Fq '"exceljs": "^4.4.0"' app/package.json
+          grep -Fq 'Excel colorido' app/src/routes/dono/totais.tsx
+          grep -Fq 'CSV corrigido' app/src/routes/dono/totais.tsx
+          grep -Fq '\uFEFFsep=;' app/src/lib/format.ts
+          grep -Fq 'writeBuffer' app/src/lib/excel.ts
+          grep -Fq 'autoFilter' app/src/lib/excel.ts
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          npm install --ignore-scripts --no-audit --no-fund
+      - name: Typecheck application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          npx tsc --noEmit --checkJs false
+      - name: Browser production build check
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app
+          npm run build:dev
