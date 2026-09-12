@@ -1,4 +1,4 @@
-name: Deploy Trans Salomao Finance V7
+name: Deploy Trans Salomao Excel V8
 
 on:
   push:
@@ -114,6 +114,25 @@ jobs:
           grep -Fq 'Adiantamento' app/src/routes/dono/despesas.tsx
           grep -Fq 'Comissões por motorista' app/src/lib/pdf.ts
           grep -Fq 'Separadas por motorista, cavalo ou carreta' app/src/lib/pdf.ts
+
+      - name: Apply Excel and CSV V8 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-v8-excel-csv/part-{00..01}.txt > /tmp/transsalomao-src/v8.b64
+          test "$(wc -c < /tmp/transsalomao-src/v8.b64)" -eq 18700
+          printf '%s  %s\n' 'd73122f9773e301c2af4ee5c924e493d88f56bf429294882c8f10d7c4f5dbc94' '/tmp/transsalomao-src/v8.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/v8.b64 > /tmp/transsalomao-src/v8.tar.xz
+          test "$(wc -c < /tmp/transsalomao-src/v8.tar.xz)" -eq 14024
+          printf '%s  %s\n' 'e69a5143050d5515b5d212f9e0416bbfaa064e8ff6721a5f81f88af66fde3cab' '/tmp/transsalomao-src/v8.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/v8.tar.xz
+          tar -xJf /tmp/transsalomao-src/v8.tar.xz -C app
+          grep -Fq '"exceljs": "^4.4.0"' app/package.json
+          grep -Fq 'Excel colorido' app/src/routes/dono/totais.tsx
+          grep -Fq 'CSV corrigido' app/src/routes/dono/totais.tsx
+          grep -Fq '\uFEFFsep=;' app/src/lib/format.ts
+          grep -Fq 'writeBuffer' app/src/lib/excel.ts
+          grep -Fq 'autoFilter' app/src/lib/excel.ts
 
       - name: Typecheck application source
         shell: bash
