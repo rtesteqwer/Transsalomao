@@ -36,7 +36,7 @@ jobs:
           tar -xJf /tmp/transsalomao-src/reform-v4.tar.xz -C app
           cd app
           patch -p1 < ../deploy/reform-v5-fixed-quantity-price/trans-v5.patch
-          patch -p1 < ../deploy/reform-v6-mode-selector/trans-v6.patch
+          patch -p1 < ../deploy/reform-v6-mode-selector/trans-v6-mode-selector.patch
           rm -rf node_modules .vercel
       - name: Package source
         run: tar -czf transsalomao-v6-source.tar.gz -C app .
