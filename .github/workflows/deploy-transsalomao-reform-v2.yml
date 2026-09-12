@@ -1,4 +1,4 @@
-name: Deploy Trans Salomao Excel V8
+name: Deploy Trans Salomao Profit V9
 
 on:
   push:
@@ -133,6 +133,25 @@ jobs:
           grep -Fq '\uFEFFsep=;' app/src/lib/format.ts
           grep -Fq 'writeBuffer' app/src/lib/excel.ts
           grep -Fq 'autoFilter' app/src/lib/excel.ts
+
+      - name: Apply simplified profit V9 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/reform-v9-profit-simplified/chunk-00a.txt deploy/reform-v9-profit-simplified/chunk-00b.txt deploy/reform-v9-profit-simplified/chunk-00c.txt deploy/reform-v9-profit-simplified/chunk-01.txt deploy/reform-v9-profit-simplified/chunk-02.txt deploy/reform-v9-profit-simplified/chunk-03.txt > /tmp/transsalomao-src/v9.b64
+          test "$(wc -c < /tmp/transsalomao-src/v9.b64)" -eq 21056
+          printf '%s  %s\n' '5f7f1feb5a8177bb442842899938b3a5c59ab0c8680b1b66d95678a84636bea6' '/tmp/transsalomao-src/v9.b64' | sha256sum -c -
+          base64 -d /tmp/transsalomao-src/v9.b64 > /tmp/transsalomao-src/v9.tar.xz
+          printf '%s  %s\n' 'b4a2ac1f8b35ad8e39798cb43160b878a72a3337deeb67e84e9dc1206bfc1d97' '/tmp/transsalomao-src/v9.tar.xz' | sha256sum -c -
+          xz -t /tmp/transsalomao-src/v9.tar.xz
+          tar -xJf /tmp/transsalomao-src/v9.tar.xz -C app
+          cd app
+          patch -p1 < ../deploy/reform-v9-profit-simplified/type-fix.patch
+          grep -Fq 'Lucro líquido total do período' src/routes/dono/totais.tsx
+          grep -Fq 'Despesas operacionais' src/routes/dono/index.tsx
+          grep -Fq 'Lucro líquido' src/lib/pdf.ts
+          ! grep -Fq 'label="Modos por viagem"' src/routes/dono/totais.tsx
+          ! grep -Fq 'label="Modos por viagem"' src/routes/dono/index.tsx
 
       - name: Typecheck application source
         shell: bash
