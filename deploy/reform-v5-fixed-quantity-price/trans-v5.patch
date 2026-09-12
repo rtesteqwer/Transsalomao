@@ -1,0 +1,403 @@
+diff -ruN trans_v5_base/migrations/0007_report_trip_quantity.sql trans_v5_work/migrations/0007_report_trip_quantity.sql
+--- trans_v5_base/migrations/0007_report_trip_quantity.sql	1970-01-01 00:00:00.000000000 +0000
++++ trans_v5_work/migrations/0007_report_trip_quantity.sql	2026-09-12 12:26:32.973196942 +0000
+@@ -0,0 +1,3 @@
++alter table reports add column if not exists quantity integer not null default 1;
++
++update reports set quantity = 1 where quantity is null or quantity < 1;
+diff -ruN trans_v5_base/src/components/owner/trip-form.tsx trans_v5_work/src/components/owner/trip-form.tsx
+--- trans_v5_base/src/components/owner/trip-form.tsx	2026-09-12 12:01:04.000000000 +0000
++++ trans_v5_work/src/components/owner/trip-form.tsx	2026-09-12 12:26:32.972918743 +0000
+@@ -166,9 +166,9 @@
+       destination: form.destination,
+       driverId: form.driverId,
+       fleetId: form.fleetId,
+-      loadedTons: parseLocaleNumberOrZero(form.loadedTons),
+-      grossWeight: parseLocaleNumberOrZero(form.grossWeight),
+-      netWeight: parseLocaleNumberOrZero(form.netWeight),
++      loadedTons: form.freightMode === "ton" ? parseLocaleNumberOrZero(form.loadedTons) : 0,
++      grossWeight: form.freightMode === "ton" ? parseLocaleNumberOrZero(form.grossWeight) : 0,
++      netWeight: form.freightMode === "ton" ? parseLocaleNumberOrZero(form.netWeight) : 0,
+       freightMode: form.freightMode,
+       pricePerTon: parseLocaleNumberOrZero(form.pricePerTon),
+       pricePerTrip: parseLocaleNumberOrZero(form.pricePerTrip),
+@@ -295,9 +295,40 @@
+         </p>
+       </div>
+ 
+-      {form.freightMode !== "ton" && !form.id ? (
+-        <div className="rounded-xl border border-accent/30 bg-accent/5 p-4">
+-          <div className="grid gap-3 sm:grid-cols-[220px_1fr] sm:items-end">
++      {form.freightMode === "ton" ? (
++        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
++          <Field label="Ton. carregadas">
++            <Input
++              inputMode="decimal"
++              value={form.loadedTons}
++              onChange={(e) => set("loadedTons", e.target.value)}
++            />
++          </Field>
++          <Field label="Peso bruto (t)">
++            <Input
++              inputMode="decimal"
++              value={form.grossWeight}
++              onChange={(e) => set("grossWeight", e.target.value)}
++            />
++          </Field>
++          <Field label="Peso líquido (t)">
++            <Input
++              inputMode="decimal"
++              value={form.netWeight}
++              onChange={(e) => set("netWeight", e.target.value)}
++            />
++          </Field>
++          <Field label="Preço R$/t">
++            <Input
++              inputMode="decimal"
++              value={form.pricePerTon}
++              onChange={(e) => set("pricePerTon", e.target.value)}
++            />
++          </Field>
++        </div>
++      ) : (
++        <div className="rounded-xl border border-border bg-surface p-4">
++          <div className="grid gap-3 sm:grid-cols-2 sm:items-end">
+             <Field label="Quantidade de viagens">
+               <Input
+                 inputMode="numeric"
+@@ -306,66 +337,23 @@
+                 max={500}
+                 value={form.batchQuantity}
+                 onChange={(e) => set("batchQuantity", e.target.value)}
++                disabled={!!form.id}
++              />
++            </Field>
++            <Field label={`Preço por viagem${form.freightMode === "trip" ? "" : ` — ${form.freightMode === "cegonha" ? "Cegonha" : "Caixinha"}`}`}>
++              <Input
++                inputMode="decimal"
++                value={form.pricePerTrip}
++                onChange={(e) => set("pricePerTrip", e.target.value)}
++                placeholder="0,00"
+               />
+             </Field>
+-            <div className="pb-1 text-sm text-muted">
+-              {batchQuantity > 1
+-                ? `${batchQuantity} viagens serão criadas para o mesmo motorista e conjunto. Valor total do lote: ${brl(batchFreight)}.`
+-                : "Use 2 ou mais para lançar várias viagens de uma só vez."}
+-            </div>
+           </div>
+-          {batchQuantity > 1 ? (
+-            <p className="mt-2 text-xs text-subtle">
+-              Cada viagem será registrada separadamente e receberá um código automático. Para não duplicar KM, diesel e pesos no total, esses campos ficam zerados nas viagens criadas em lote.
+-            </p>
+-          ) : null}
++          <p className="mt-3 text-sm text-muted">
++            Cálculo automático: {batchQuantity} × {brl(parseLocaleNumberOrZero(form.pricePerTrip))} = <strong className="text-fg">{brl(batchFreight)}</strong>.
++          </p>
+         </div>
+-      ) : null}
+-
+-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+-        <Field label="Ton. carregadas">
+-          <Input
+-            inputMode="decimal"
+-            value={form.loadedTons}
+-            onChange={(e) => set("loadedTons", e.target.value)}
+-            disabled={batchQuantity > 1}
+-          />
+-        </Field>
+-        <Field label="Peso bruto (t)">
+-          <Input
+-            inputMode="decimal"
+-            value={form.grossWeight}
+-            onChange={(e) => set("grossWeight", e.target.value)}
+-            disabled={batchQuantity > 1}
+-          />
+-        </Field>
+-        <Field label="Peso líquido (t)">
+-          <Input
+-            inputMode="decimal"
+-            value={form.netWeight}
+-            onChange={(e) => set("netWeight", e.target.value)}
+-            disabled={batchQuantity > 1}
+-          />
+-        </Field>
+-        {form.freightMode !== "ton" ? (
+-          <Field label={`Valor por viagem${form.freightMode === "trip" ? "" : ` — ${form.freightMode === "cegonha" ? "Cegonha" : "Caixinha"}`}`}>
+-            <Input
+-              inputMode="decimal"
+-              value={form.pricePerTrip}
+-              onChange={(e) => set("pricePerTrip", e.target.value)}
+-              placeholder="0,00"
+-            />
+-          </Field>
+-        ) : (
+-          <Field label="Preço R$/t">
+-            <Input
+-              inputMode="decimal"
+-              value={form.pricePerTon}
+-              onChange={(e) => set("pricePerTon", e.target.value)}
+-            />
+-          </Field>
+-        )}
+-      </div>
++      )}
+ 
+       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+         <Field label="KM inicial">
+diff -ruN trans_v5_base/src/lib/api.ts trans_v5_work/src/lib/api.ts
+--- trans_v5_base/src/lib/api.ts	2026-09-12 12:00:47.000000000 +0000
++++ trans_v5_work/src/lib/api.ts	2026-09-12 12:26:32.972261202 +0000
+@@ -90,6 +90,7 @@
+     fleetId: str(r.fleet_id),
+     km: num(r.km),
+     tons: num(r.tons),
++    quantity: Math.max(1, Math.trunc(num(r.quantity) || 1)),
+     freightMode: freightMode(r.freight_mode),
+     status:
+       status === "aceito" || status === "recusado" ? status : "pendente",
+@@ -242,6 +243,7 @@
+   fleetId: z.string().min(1, "Escolha o conjunto"),
+   km: z.number().min(0).default(0),
+   tons: z.number().min(0).default(0),
++  quantity: z.number().int().min(1).max(500).default(1),
+   freightMode: z.enum(["ton", "trip", "cegonha", "caixinha"]).default("ton"),
+ });
+ 
+@@ -261,8 +263,8 @@
+       if (tripHit[0]) throw new Error("Este ticket já virou viagem no Painel Gerência.");
+     }
+     await sql`
+-      insert into reports (id, ticket, loading_date, loading_time, driver_id, fleet_id, km, tons, freight_mode, status)
+-      values (${id}, ${ticket}, ${data.loadingDate || null}, ${data.loadingTime || null}, ${data.driverId}, ${data.fleetId}, ${data.km}, ${data.tons}, ${data.freightMode}, 'pendente')
++      insert into reports (id, ticket, loading_date, loading_time, driver_id, fleet_id, km, tons, quantity, freight_mode, status)
++      values (${id}, ${ticket}, ${data.loadingDate || null}, ${data.loadingTime || null}, ${data.driverId}, ${data.fleetId}, ${data.km}, ${data.tons}, ${data.quantity}, ${data.freightMode}, 'pendente')
+     `;
+     return { id, ticket };
+   });
+@@ -287,6 +289,11 @@
+       return num(a.km) - num(b.km);
+     });
+ 
++    const fixedReport = reports.find((report) => freightMode(report.freight_mode) !== "ton");
++    if (fixedReport) {
++      throw new Error("Viagem, Cegonha e Caixinha devem ser fechadas individualmente para informar o preço por viagem.");
++    }
++
+     let accepted = 0;
+     for (const report of reports) {
+       const reportId = str(report.id);
+@@ -429,6 +436,9 @@
+         ids.push(id);
+       }
+ 
++      if (data.reportId && ids[0]) {
++        await sql`update reports set status = 'aceito', trip_id = ${ids[0]} where id = ${data.reportId}`;
++      }
+       return { id: ids[0], ids, created: ids.length };
+     }
+ 
+diff -ruN trans_v5_base/src/lib/types.ts trans_v5_work/src/lib/types.ts
+--- trans_v5_base/src/lib/types.ts	2026-09-12 12:00:25.000000000 +0000
++++ trans_v5_work/src/lib/types.ts	2026-09-12 12:26:32.971930193 +0000
+@@ -57,6 +57,7 @@
+   fleetId: string;
+   km: number;
+   tons: number;
++  quantity: number;
+   freightMode: FreightMode | null;
+   status: ReportStatus;
+   createdAt: string;
+diff -ruN trans_v5_base/src/routes/dono/lancamentos.tsx trans_v5_work/src/routes/dono/lancamentos.tsx
+--- trans_v5_base/src/routes/dono/lancamentos.tsx	2026-09-12 12:01:25.000000000 +0000
++++ trans_v5_work/src/routes/dono/lancamentos.tsx	2026-09-12 12:26:32.972615365 +0000
+@@ -27,9 +27,10 @@
+ 
+   const pending = data?.reports.filter((r) => r.status === "pendente") ?? [];
+   const done = data?.reports.filter((r) => r.status !== "pendente") ?? [];
+-  const selectedPending = pending.filter((r) => selected.has(r.id));
++  const bulkEligible = pending.filter((r) => (r.freightMode ?? "ton") === "ton");
++  const selectedPending = bulkEligible.filter((r) => selected.has(r.id));
+   const selectedCount = selectedPending.length;
+-  const allSelected = pending.length > 0 && selectedCount === pending.length;
++  const allSelected = bulkEligible.length > 0 && selectedCount === bulkEligible.length;
+ 
+   const draft: TripDraft | null =
+     open && data
+@@ -42,8 +43,9 @@
+           fleetId: open.fleetId,
+           kmEnd: String(open.km),
+           kmStart: String(lastKmForFleet(data.trips, open.fleetId) ?? ""),
+-          loadedTons: String(open.tons),
+-          netWeight: String(open.tons),
++          loadedTons: (open.freightMode ?? "ton") === "ton" ? String(open.tons) : "",
++          netWeight: (open.freightMode ?? "ton") === "ton" ? String(open.tons) : "",
++          batchQuantity: String(open.quantity || 1),
+           freightMode: open.freightMode ?? undefined,
+           dieselPrice: String(lastDieselPrice(data.trips)),
+         })
+@@ -63,7 +65,7 @@
+       setSelected(new Set());
+       return;
+     }
+-    setSelected(new Set(pending.map((r) => r.id)));
++    setSelected(new Set(bulkEligible.map((r) => r.id)));
+   }
+ 
+   async function acceptSelected() {
+@@ -99,7 +101,7 @@
+         Do motorista
+       </h1>
+       <p className="mt-2 max-w-xl text-sm text-muted">
+-        Ticket, data/hora do carregamento, KM e toneladas podem entrar por aqui. Somente motorista e conjunto são obrigatórios; a gerência pode completar o restante ao fechar a viagem.
++        Ticket, data/hora e KM podem entrar por aqui. Em Por tonelada, a gerência completa toneladas e preço por tonelada. Em Viagem, Cegonha ou Caixinha, confirma a quantidade e informa o preço por viagem; o total é calculado automaticamente.
+       </p>
+ 
+       <section className="mt-8">
+@@ -122,7 +124,7 @@
+                   className="size-5 cursor-pointer accent-current"
+                   aria-label="Marcar todas as viagens pendentes"
+                 />
+-                <span>Marcar todas ({pending.length})</span>
++                <span>Marcar por tonelada ({bulkEligible.length})</span>
+               </label>
+               <div className="flex flex-wrap items-center gap-2">
+                 <span className="text-xs text-muted">
+@@ -155,8 +157,10 @@
+                         type="checkbox"
+                         checked={selected.has(r.id)}
+                         onChange={() => toggleSelected(r.id)}
+-                        className="mt-2 size-5 shrink-0 cursor-pointer accent-current"
++                        disabled={(r.freightMode ?? "ton") !== "ton"}
++                        className="mt-2 size-5 shrink-0 cursor-pointer accent-current disabled:cursor-not-allowed disabled:opacity-40"
+                         aria-label={`Selecionar viagem ${r.ticket}`}
++                        title={(r.freightMode ?? "ton") === "ton" ? "Selecionar" : "Feche individualmente para informar o preço por viagem"}
+                       />
+                       <div>
+                       <p className="font-display text-3xl font-semibold tracking-wide">
+@@ -184,10 +188,12 @@
+                     </div>
+                     <div>
+                       <dt className="text-[10px] uppercase tracking-[0.14em] text-subtle">
+-                        Toneladas
++                        {(r.freightMode ?? "ton") === "ton" ? "Toneladas" : "Quantidade de viagens"}
+                       </dt>
+                       <dd className="mt-1 font-display text-xl tabular">
+-                        {num(r.tons, 2)} t
++                        {(r.freightMode ?? "ton") === "ton"
++                          ? `${num(r.tons, 2)} t`
++                          : `${r.quantity} viagem${r.quantity === 1 ? "" : "s"}`}
+                       </dd>
+                     </div>
+                     <div>
+@@ -255,7 +261,7 @@
+                   <div>
+                     <p className="font-medium">{r.ticket}</p>
+                     <p className="text-xs text-muted">
+-                      {driver?.name} · {integer(r.km)} km · {num(r.tons, 1)} t · {freightModeLabel(r.freightMode)}
++                      {driver?.name} · {integer(r.km)} km · {(r.freightMode ?? "ton") === "ton" ? `${num(r.tons, 1)} t` : `${r.quantity} viagem${r.quantity === 1 ? "" : "s"}`} · {freightModeLabel(r.freightMode)}
+                     </p>
+                   </div>
+                   <div className="flex items-center gap-2">
+diff -ruN trans_v5_base/src/routes/motorista.tsx trans_v5_work/src/routes/motorista.tsx
+--- trans_v5_base/src/routes/motorista.tsx	2026-09-12 12:01:15.000000000 +0000
++++ trans_v5_work/src/routes/motorista.tsx	2026-09-12 12:26:32.971509239 +0000
+@@ -33,6 +33,7 @@
+   const [loadingTime, setLoadingTime] = useState("");
+   const [km, setKm] = useState("");
+   const [tons, setTons] = useState("");
++  const [tripQuantity, setTripQuantity] = useState("1");
+   const [freightMode, setFreightMode] = useState<FreightMode>("ton");
+   const [sentTicket, setSentTicket] = useState<string | null>(null);
+ 
+@@ -72,6 +73,7 @@
+     e.preventDefault();
+     const kmN = parseLocaleNumber(km);
+     const tonsN = parseLocaleNumber(tons);
++    const quantityN = Math.max(1, Math.min(500, Math.trunc(parseLocaleNumber(tripQuantity) ?? 1)));
+     if (!driverId) return toast.error("Escolha o motorista.");
+     if (!fleetId) return toast.error("Escolha o conjunto.");
+     try {
+@@ -82,7 +84,8 @@
+         driverId,
+         fleetId,
+         km: kmN ?? 0,
+-        tons: tonsN ?? 0,
++        tons: freightMode === "ton" ? (tonsN ?? 0) : 0,
++        quantity: freightMode === "ton" ? 1 : quantityN,
+         freightMode,
+       });
+       localStorage.setItem(DRIVER_KEY, driverId);
+@@ -94,7 +97,12 @@
+       setLoadingTime("");
+       setKm("");
+       setTons("");
+-      toast.success(`Ticket ${res.ticket} enviado ao Painel Gerência.`);
++      setTripQuantity("1");
++      toast.success(
++        freightMode === "ton"
++          ? `Ticket ${res.ticket} enviado ao Painel Gerência.`
++          : `${quantityN} viagem${quantityN === 1 ? "" : "s"} enviada${quantityN === 1 ? "" : "s"} ao Painel Gerência.`,
++      );
+     } catch (err) {
+       toast.error(err instanceof Error ? err.message : "Não foi possível enviar.");
+     }
+@@ -120,7 +128,7 @@
+           Lançar viagem
+         </h1>
+         <p className="mt-2 text-sm text-muted">
+-          Para enviar, basta escolher motorista e conjunto. Ticket, data e hora do carregamento, KM, toneladas e modo de frete são opcionais e podem ser completados pela gerência.
++          Para enviar, basta escolher motorista e conjunto. Em Por tonelada, informe as toneladas se desejar. Em Viagem, Cegonha ou Caixinha, informe a quantidade de viagens. Ticket, data/hora e KM continuam opcionais.
+         </p>
+ 
+ 
+@@ -234,15 +242,29 @@
+                 className="h-14 font-display text-2xl tabular tracking-wide"
+               />
+             </Field>
+-            <Field label="Toneladas" hint="Opcional">
+-              <Input
+-                value={tons}
+-                onChange={(e) => setTons(e.target.value)}
+-                inputMode="decimal"
+-                placeholder="32,6"
+-                className="h-14 font-display text-2xl tabular tracking-wide"
+-              />
+-            </Field>
++            {freightMode === "ton" ? (
++              <Field label="Toneladas" hint="Opcional">
++                <Input
++                  value={tons}
++                  onChange={(e) => setTons(e.target.value)}
++                  inputMode="decimal"
++                  placeholder="32,6"
++                  className="h-14 font-display text-2xl tabular tracking-wide"
++                />
++              </Field>
++            ) : (
++              <Field label="Quantidade de viagens" hint="De 1 a 500">
++                <Input
++                  type="number"
++                  min={1}
++                  max={500}
++                  value={tripQuantity}
++                  onChange={(e) => setTripQuantity(e.target.value)}
++                  inputMode="numeric"
++                  className="h-14 font-display text-2xl tabular tracking-wide"
++                />
++              </Field>
++            )}
+           </div>
+ 
+           <Button
+@@ -277,7 +299,9 @@
+                     <p className="text-xs text-muted">
+                       {[
+                         r.km > 0 ? `${integer(r.km)} km` : null,
+-                        r.tons > 0 ? `${num(r.tons, 1)} t` : null,
++                        r.freightMode === "ton"
++                          ? (r.tons > 0 ? `${num(r.tons, 1)} t` : null)
++                          : `${r.quantity} viagem${r.quantity === 1 ? "" : "s"}`,
+                         freightModeLabel(r.freightMode),
+                       ].filter(Boolean).join(" · ")}
+                     </p>
