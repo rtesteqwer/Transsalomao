@@ -1,1 +1,1 @@
-validate-finance-v7-patch-2026-09-12-11-02-BRT
+validate-finance-v7-overlay-exact-2026-09-12-10-40-BRT
