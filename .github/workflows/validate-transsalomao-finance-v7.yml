@@ -37,19 +37,17 @@ jobs:
           cd app
           patch -p1 < ../deploy/reform-v5-fixed-quantity-price/trans-v5.patch
           patch -p1 < ../deploy/reform-v6-mode-selector/trans-v6-mode-selector.patch
-      - name: Apply finance V7 overlay
+      - name: Apply finance V7 patch
         shell: bash
         run: |
           set -euo pipefail
-          cat deploy/reform-v7-commissions-expenses/part-{00..02}.txt | base64 -d > /tmp/transsalomao-src/v7.tar.xz
-          xz -t /tmp/transsalomao-src/v7.tar.xz
-          tar -xJf /tmp/transsalomao-src/v7.tar.xz -C app
-          test -f app/migrations/0008_driver_expenses_advances.sql
-          grep -Fq 'Resultado líquido' app/src/routes/dono/index.tsx
-          grep -Fq 'Resumo e comissões por motorista' app/src/routes/dono/index.tsx
-          grep -Fq 'Adiantamento' app/src/routes/dono/despesas.tsx
-          grep -Fq 'Comissões por motorista' app/src/lib/pdf.ts
-          grep -Fq 'Separadas por motorista, cavalo ou carreta' app/src/lib/pdf.ts
+          cd app
+          patch -p1 < ../deploy/reform-v7-finance/trans-v7-finance.patch
+          test -f migrations/0008_driver_expenses.sql
+          grep -Fq 'Adiantamento' src/routes/dono/despesas.tsx
+          grep -Fq 'Faturamento − comissões (sem descontar diesel)' src/routes/dono/index.tsx
+          grep -Fq 'Comissões por motorista' src/lib/pdf.ts
+          grep -Fq 'Despesas totais' src/routes/dono/totais.tsx
       - name: Typecheck application source
         shell: bash
         run: |
