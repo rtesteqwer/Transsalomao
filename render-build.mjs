@@ -71,35 +71,21 @@ if (fs.existsSync(formatPath)) {
     tonPrecisionPattern,
     'minimumFractionDigits: 0,\n  maximumFractionDigits: 20,',
   );
-  if (after === before) {
-    throw new Error('Tonnage formatter precision block not found; refusing to deploy a rounding regression');
-  }
+  if (after === before) throw new Error('Tonnage formatter precision block not found; refusing to deploy a rounding regression');
   fs.writeFileSync(formatPath, after);
   console.log('[render] tonnage formatter now preserves exact decimal precision');
 }
 
-// Temporary diagnostics for the remaining Caixa rounding and restricted-driver auth.
-function logMatches(dir, matcher, tag) {
-  if (!fs.existsSync(dir)) return;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      logMatches(full, matcher, tag);
-      continue;
-    }
-    if (!/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) continue;
-    const text = fs.readFileSync(full, 'utf8');
-    const lines = text.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i += 1) {
-      if (!matcher.test(lines[i])) continue;
-      const from = Math.max(0, i - 4);
-      const to = Math.min(lines.length, i + 5);
-      console.log(`[${tag}] ${path.relative(target, full)}:${i + 1}`);
-      console.log(lines.slice(from, to).map((line, idx) => `${from + idx + 1}: ${line}`).join('\n'));
-    }
-  }
+function logSlice(rel, start, end, tag) {
+  const file = path.join(target, rel);
+  if (!fs.existsSync(file)) return;
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  console.log(`[${tag}] ${rel}:${start}-${end}`);
+  console.log(lines.slice(start - 1, end).map((line, idx) => `${start + idx}: ${line}`).join('\n'));
 }
-logMatches(path.join(target, 'src'), /caixa|Caixa|CAIXA|toFixed\(1\)|maximumFractionDigits\s*:\s*1|Math\.round|klebersom|Klebersom|senha|password|login|management-auth/i, 'targeted-diagnostic');
+logSlice('src/routes/dono/lancamentos.tsx', 118, 230, 'caixa-source');
+logSlice('src/routes/dono/route.tsx', 1, 150, 'management-route-source');
+logSlice('src/components/owner/shell.tsx', 1, 140, 'management-shell-source');
 
 const configCandidates = ['vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs','nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs'];
 for (const rel of configCandidates) {
