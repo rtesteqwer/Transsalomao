@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const cwd = process.cwd();
-const target = path.join(cwd, '.trasteste_app');
+const target = path.join(cwd, '.transteste_app');
 
 fs.rmSync(target, { recursive: true, force: true });
 fs.mkdirSync(target, { recursive: true });
@@ -44,4 +44,4 @@ pkg.scripts.start = 'vite preview --host 0.0.0.0 --port $PORT';
 fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 console.log('[render] start script configured for Render');
 console.log('[render] production SSR mode enabled');
-console.log('[render] trasteste source reconstructed at .trasteste_app');
+console.log('[render] transteste source reconstructed at .transteste_app');
