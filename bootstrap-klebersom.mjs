@@ -3,6 +3,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+// Este build deve manter a versão estável anterior ao fundo e acrescentar
+// somente o acesso exclusivo do Klebersom. O diretório vazio impede o overlay
+// visual mais recente de ser aplicado pelo bootstrap principal.
+const emptyOverlay = path.resolve('deploy/klebersom-empty-overlay');
+fs.mkdirSync(emptyOverlay, { recursive: true });
+process.env.TRANS_OVERLAY_DIR = emptyOverlay;
+process.env.TRANS_KLEBERSOM_PATCH = '1';
+
 const sourcePath = path.resolve('bootstrap.mjs');
 const source = fs.readFileSync(sourcePath, 'utf8');
 const marker = '// REMOÇÃO DEFINITIVA DA BIOMETRIA';
