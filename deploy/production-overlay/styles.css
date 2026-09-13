@@ -1,0 +1,157 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --font-sans: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Barlow Condensed", "Barlow", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-bg: #0c0d0f;
+  --color-surface: #15171b;
+  --color-surface-2: #1c1f25;
+  --color-fg: #ecece8;
+  --color-muted: #8b8e96;
+  --color-subtle: #6b6e76;
+  --color-accent: #c5ccd6;
+  --color-accent-fg: #0c0d0f;
+  --color-border: #2a2d33;
+  --color-ok: #8faf86;
+  --color-warn: #c4a574;
+  --color-danger: #c47a72;
+  --color-ring: #c5ccd6;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 28px;
+
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--color-bg);
+    color: var(--color-fg);
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    font-family: var(--font-display);
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.road-line {
+  background-image: repeating-linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--color-fg) 22%, transparent) 0 10px,
+    transparent 10px 18px
+  );
+}
+
+/* Fundo global removido. A arte permanece somente na tela inicial. */
+body {
+  min-height: 100dvh;
+  background: #07090c;
+}
+
+body::before,
+body::after {
+  content: none;
+  display: none;
+}
+
+.poster-nav {
+  background: #050607;
+}
+
+.poster-hotspot {
+  -webkit-tap-highlight-color: transparent;
+  border: 1px solid rgba(229, 166, 66, 0.78);
+  background: linear-gradient(180deg, rgba(8, 10, 13, 0.94), rgba(5, 7, 10, 0.97));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+    0 10px 26px rgba(0, 0, 0, 0.24);
+  transition:
+    box-shadow 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease,
+    border-color 160ms ease;
+}
+
+.poster-hotspot svg {
+  width: clamp(18px, 5.2vw, 39px);
+  height: clamp(18px, 5.2vw, 39px);
+  color: #efbd6d;
+  stroke-width: 2.2;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+
+.poster-label {
+  font-size: clamp(7px, 2.15vw, 14px);
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.poster-hotspot:hover,
+.poster-hotspot:focus-visible {
+  border-color: rgba(246, 196, 107, 0.98);
+  background: linear-gradient(180deg, rgba(20, 17, 12, 0.96), rgba(7, 8, 10, 0.98));
+  box-shadow:
+    inset 0 0 0 1px rgba(246, 196, 107, 0.18),
+    0 0 26px rgba(226, 162, 65, 0.2);
+}
+
+.poster-hotspot:active {
+  transform: scale(0.985);
+}
+
+.poster-domain {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (min-width: 900px) {
+  .poster-nav {
+    min-height: 100dvh;
+  }
+}
