@@ -76,6 +76,12 @@ jobs:
           xz -t /tmp/transsalomao-src/v10.tar.xz
           tar -xJf /tmp/transsalomao-src/v10.tar.xz -C app
 
+          base64 -d deploy/pdf-compact-v11/overlay.b64 > /tmp/transsalomao-src/pdf-compact-v11.tar.xz
+          xz -t /tmp/transsalomao-src/pdf-compact-v11.tar.xz
+          tar -xJf /tmp/transsalomao-src/pdf-compact-v11.tar.xz -C app
+          grep -Fq 'const tripRowHeight = 38' app/src/lib/pdf.ts
+          grep -Fq 'laterPageCapacityTopStart = 246' app/src/lib/pdf.ts
+
           grep -Fq 'Adiantamentos de comissão' app/src/routes/dono/despesas.tsx
           grep -Fq 'Saldo de comissão' app/src/routes/dono/totais.tsx
           grep -Fq 'commissionBalance' app/src/lib/pdf.ts
