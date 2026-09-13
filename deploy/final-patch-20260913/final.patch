@@ -1,0 +1,64 @@
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -48,7 +48,7 @@
+     height: "9.5%",
+   },
+   {
+-    to: "/dono/viagens",
++    to: "/motorista",
+     label: "Registrar viagens",
+     line1: "REGISTRAR",
+     line2: "VIAGENS",
+@@ -71,9 +71,9 @@
+   },
+   {
+     to: "/dono/cadastros",
+-    label: "Cadastros e equipe",
+-    line1: "CADASTROS",
+-    line2: "E EQUIPE",
++    label: "Nossa equipe",
++    line1: "NOSSA",
++    line2: "EQUIPE",
+     icon: Users,
+     left: "73.5%",
+     top: "70.0%",
+--- a/src/lib/calc.ts
++++ b/src/lib/calc.ts
+@@ -214,7 +214,7 @@
+     const n = Number.parseInt(t.code.replace(/\D/g, ""), 10);
+     return Number.isFinite(n) ? Math.max(acc, n) : acc;
+   }, 0);
+-  return `VG-${String(max + 1).padStart(4, "0")}`;
++  return String(max + 1);
+ }
+ 
+ export function lastKmForFleet(trips: Trip[], fleetId: string) {
+--- a/migrations/0005_renumber_tickets.sql
++++ b/migrations/0005_renumber_tickets.sql
+@@ -1,23 +1,3 @@
+--- Padroniza todos os tickets, inclusive os já lançados, em sequência curta iniciando em 1.
+--- Usa nomes temporários para respeitar a restrição UNIQUE de trips.code durante a renumeração.
+-DO $$
+-DECLARE r record;
+-BEGIN
+-  FOR r IN SELECT id, row_number() over (order by date, id) AS n FROM trips LOOP
+-    UPDATE trips SET code = '__TS_TMP_' || r.n::text WHERE id = r.id;
+-  END LOOP;
+-  FOR r IN SELECT id, row_number() over (order by date, id) AS n FROM trips LOOP
+-    UPDATE trips SET code = r.n::text WHERE id = r.id;
+-  END LOOP;
+-
+-  -- Relatórios aceitos acompanham exatamente o novo número da viagem.
+-  UPDATE reports r SET ticket = t.code FROM trips t WHERE r.trip_id = t.id;
+-
+-  -- Tickets ainda sem viagem continuam a sequência, em ordem de lançamento.
+-  FOR r IN
+-    SELECT id, row_number() over (order by created_at, id) + (SELECT count(*) FROM trips) AS n
+-    FROM reports WHERE trip_id IS NULL
+-  LOOP
+-    UPDATE reports SET ticket = r.n::text WHERE id = r.id;
+-  END LOOP;
+-END $$;
++-- A numeração curta dos tickets já foi aplicada diretamente no banco de produção.
++-- Este arquivo fica como marcador de migração para impedir nova renumeração durante o deploy.
++SELECT 1;
