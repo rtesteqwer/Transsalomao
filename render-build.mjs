@@ -92,6 +92,72 @@ if (fs.existsSync(caixaPath)) {
   console.log(`[render] Caixa exact tonnage enabled in ${replacements} display(s)`);
 }
 
+// Add a second credential to the existing management login. This account receives
+// a valid management cookie only so it can be redirected to its own read-only area.
+// It is explicitly rejected by assertManagementSession, so it cannot invoke admin APIs.
+const managementServerPath = path.join(target, 'src', 'lib', 'management-auth.server.ts');
+if (fs.existsSync(managementServerPath)) {
+  let auth = fs.readFileSync(managementServerPath, 'utf8');
+  if (!auth.includes('function restrictedLogin()')) {
+    const secretNeedle = 'function sessionSecret() {';
+    if (!auth.includes(secretNeedle)) throw new Error('Management sessionSecret hook not found');
+    auth = auth.replace(secretNeedle, [
+      'function restrictedLogin() {',
+      '  return process.env.KLEBERSOM_ACCESS_LOGIN?.trim() || "KlebersomDutra";',
+      '}',
+      '',
+      'function restrictedPassword() {',
+      '  return process.env.KLEBERSOM_ACCESS_PASSWORD || "";',
+      '}',
+      '',
+      secretNeedle,
+    ].join('\n'));
+  }
+
+  const tokenNeedle = '  if (username !== loginName()) return null;';
+  if (!auth.includes(tokenNeedle)) throw new Error('Management token validation hook not found');
+  auth = auth.replace(tokenNeedle, '  if (username !== loginName() && username !== restrictedLogin()) return null;');
+
+  const loginNeedle = '  if (username !== loginName() || password !== loginPassword()) {';
+  if (!auth.includes(loginNeedle)) throw new Error('Management login validation hook not found');
+  auth = auth.replace(loginNeedle, [
+    '  const validAdmin = username === loginName() && password === loginPassword();',
+    '  const validRestricted = username === restrictedLogin() && password === restrictedPassword();',
+    '  if (!validAdmin && !validRestricted) {',
+  ].join('\n'));
+
+  const assertNeedle = '  if (!session) {';
+  const assertIndex = auth.indexOf('export function assertManagementSession()');
+  if (assertIndex === -1) throw new Error('assertManagementSession not found');
+  const assertTail = auth.slice(assertIndex);
+  if (!assertTail.includes(assertNeedle)) throw new Error('Management assertion condition not found');
+  const patchedAssertTail = assertTail.replace(assertNeedle, '  if (!session || session.username === restrictedLogin()) {');
+  auth = auth.slice(0, assertIndex) + patchedAssertTail;
+
+  fs.writeFileSync(managementServerPath, auth);
+  console.log('[render] restricted Klebersom credential accepted by Gerência login and blocked from admin APIs');
+}
+
+// After a successful management login with the restricted username, go straight to
+// the read-only Klebersom dashboard instead of loading DonoShell.
+const managementRoutePath = path.join(target, 'src', 'routes', 'dono', 'route.tsx');
+if (fs.existsSync(managementRoutePath)) {
+  let route = fs.readFileSync(managementRoutePath, 'utf8');
+  if (!route.includes('window.location.assign("/klebersom")')) {
+    const refetchNeedle = 'await session.refetch();';
+    if (!route.includes(refetchNeedle)) throw new Error('Management login success hook not found');
+    route = route.replace(refetchNeedle, [
+      'if (username.trim().toLowerCase() === "klebersomdutra") {',
+      '                    window.location.assign("/klebersom");',
+      '                    return;',
+      '                  }',
+      '                  await session.refetch();',
+    ].join('\n'));
+  }
+  fs.writeFileSync(managementRoutePath, route);
+  console.log('[render] Gerência login redirects KlebersomDutra to restricted dashboard');
+}
+
 // Install the isolated, read-only Klebersom dashboard. Credentials and driver id
 // stay in protected Render environment variables, never in the public repository source.
 const overrides = [
