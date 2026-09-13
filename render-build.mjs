@@ -20,10 +20,10 @@ fs.cpSync = (src, dest, options) => {
   return originalCpSync(src, dest, options);
 };
 
-// Render may set a production npm mode during builds. This app needs its
-// devDependencies (Vite/Nitro plugins) available while compiling.
+// Keep production React/SSR semantics, but explicitly include devDependencies
+// because Vite/Nitro build plugins live there.
 process.env.NITRO_PRESET = process.env.NITRO_PRESET || 'node-server';
-process.env.NODE_ENV = 'development';
+process.env.NODE_ENV = 'production';
 process.env.NPM_CONFIG_PRODUCTION = 'false';
 process.env.npm_config_production = 'false';
 process.env.NPM_CONFIG_INCLUDE = 'dev';
@@ -37,11 +37,11 @@ if (!fs.existsSync(pkgPath)) {
 }
 
 // The original package is designed for Vercel and has no start script.
-// Nitro explicitly recommends `vite preview` for this prebuilt output, so add
-// a Render-only start command without changing the production source.
+// Use Vite preview to serve the prebuilt SSR bundle on Render.
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 pkg.scripts = pkg.scripts || {};
 pkg.scripts.start = 'vite preview --host 0.0.0.0 --port $PORT';
 fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 console.log('[render] start script configured for Render');
+console.log('[render] production SSR mode enabled');
 console.log('[render] trasteste source reconstructed at .trasteste_app');
