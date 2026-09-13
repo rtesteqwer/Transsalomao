@@ -63,6 +63,7 @@ function assertNoLegacyTicketGenerators(dir) {
 }
 assertNoLegacyTicketGenerators(path.join(target, 'src'));
 
+// Preserve exact tonnage throughout the app instead of forcing one decimal.
 const formatPath = path.join(target, 'src', 'lib', 'format.ts');
 if (fs.existsSync(formatPath)) {
   const before = fs.readFileSync(formatPath, 'utf8');
@@ -76,16 +77,36 @@ if (fs.existsSync(formatPath)) {
   console.log('[render] tonnage formatter now preserves exact decimal precision');
 }
 
-function logSlice(rel, start, end, tag) {
-  const file = path.join(target, rel);
-  if (!fs.existsSync(file)) return;
-  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
-  console.log(`[${tag}] ${rel}:${start}-${end}`);
-  console.log(lines.slice(start - 1, end).map((line, idx) => `${start + idx}: ${line}`).join('\n'));
+// Caixa has its own number formatter. Replace every tonnage rendering there with
+// exact locale formatting so 38.47 is never rendered as 38.5/38.50 by a fixed-digit helper.
+const caixaPath = path.join(target, 'src', 'routes', 'dono', 'lancamentos.tsx');
+if (fs.existsSync(caixaPath)) {
+  const before = fs.readFileSync(caixaPath, 'utf8');
+  let replacements = 0;
+  const after = before.replace(/\{num\(([^,)]+\.tons),\s*\d+\)\}\s*t/g, (_match, expression) => {
+    replacements += 1;
+    return `{new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 20 }).format(${expression})} t`;
+  });
+  if (replacements === 0) throw new Error('Caixa tonnage display pattern not found; refusing to keep rounded values');
+  fs.writeFileSync(caixaPath, after);
+  console.log(`[render] Caixa exact tonnage enabled in ${replacements} display(s)`);
 }
-logSlice('src/routes/dono/lancamentos.tsx', 118, 230, 'caixa-source');
-logSlice('src/routes/dono/route.tsx', 1, 150, 'management-route-source');
-logSlice('src/components/owner/shell.tsx', 1, 140, 'management-shell-source');
+
+// Install the isolated, read-only Klebersom dashboard. Credentials and driver id
+// stay in protected Render environment variables, never in the public repository source.
+const overrides = [
+  ['render-overrides/klebersom-access.server.ts', 'src/lib/klebersom-access.server.ts'],
+  ['render-overrides/klebersom-access.ts', 'src/lib/klebersom-access.ts'],
+  ['render-overrides/klebersom.tsx', 'src/routes/klebersom.tsx'],
+];
+for (const [sourceRel, targetRel] of overrides) {
+  const source = path.join(cwd, sourceRel);
+  if (!fs.existsSync(source)) throw new Error(`Missing Render override: ${sourceRel}`);
+  const destination = path.join(target, targetRel);
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(source, destination);
+  console.log(`[render] installed ${targetRel}`);
+}
 
 const configCandidates = ['vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs','nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs'];
 for (const rel of configCandidates) {
