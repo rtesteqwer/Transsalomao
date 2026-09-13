@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#07111F"
+        android:pathData="M0,0 H108 V108 H0 Z" />
+
+    <!-- T estilizado -->
+    <path
+        android:fillColor="#F8FBFF"
+        android:pathData="M8,14 H52 V28 H37 V63 H23 V28 H8 Z" />
+
+    <!-- S estilizado -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#F8FBFF"
+        android:strokeWidth="9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M84,20 C70,16 58,20 57,30 C56,38 64,42 75,44 C87,47 93,51 92,60 C91,70 80,76 62,73" />
+
+    <!-- Carreta simplificada em azul radiante -->
+    <path
+        android:fillColor="#008CFF"
+        android:pathData="M16,72 H66 V88 H16 Z M66,70 H82 L93,78 V88 H66 Z M82,74 V80 H90 L84,74 Z" />
+
+    <path
+        android:fillColor="#07111F"
+        android:pathData="M30,89 m-6,0 a6,6 0,1 0,12 0 a6,6 0,1 0,-12 0 M76,89 m-6,0 a6,6 0,1 0,12 0 a6,6 0,1 0,-12 0 M91,89 m-5,0 a5,5 0,1 0,10 0 a5,5 0,1 0,-10 0" />
+
+    <path
+        android:fillColor="#F8FBFF"
+        android:pathData="M82,76 H88 L91,80 H82 Z" />
+</vector>
