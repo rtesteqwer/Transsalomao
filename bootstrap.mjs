@@ -51,12 +51,15 @@ replaceFile('src/lib/calc.ts', (s) => s
   .replace(/return `LCT-[^;]+;/g, 'return String(max + 1);'));
 fs.writeFileSync(path.join(work, 'migrations', '0005_renumber_tickets.sql'), '-- Tickets 1..79 já foram corrigidos no banco de produção e preservados em auditoria.\n-- Não renumerar novamente no deploy.\nSELECT 1;\n');
 
-// Optional release overlay supplied by the deployment wrapper: exact home UI/styles and background asset.
+// Optional release overlay supplied by the deployment wrapper: exact UI/styles/background and biometric-free routes.
 const overlay = process.env.TRANS_OVERLAY_DIR;
 if (overlay && fs.existsSync(overlay)) {
   const copies = [
     ['index.tsx', 'src/routes/index.tsx'],
     ['styles.css', 'src/styles.css'],
+    ['motorista.tsx', 'src/routes/motorista.tsx'],
+    ['dono-route.tsx', 'src/routes/dono/route.tsx'],
+    ['owner-shell.tsx', 'src/components/owner/shell.tsx'],
     ['trans-salomao-background.webp', 'public/trans-salomao-background.webp'],
   ];
   for (const [src, dest] of copies) {
