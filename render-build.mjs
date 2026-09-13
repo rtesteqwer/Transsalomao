@@ -22,8 +22,14 @@ fs.cpSync = (src, dest, options) => {
   return originalCpSync(src, dest, options);
 };
 
+// Render may set a production npm mode during builds. This app needs its
+// devDependencies (Vite/Nitro plugins) available while compiling.
 process.env.NITRO_PRESET = process.env.NITRO_PRESET || 'node-server';
-process.env.NODE_ENV = process.env.NODE_ENV || 'production';
+process.env.NODE_ENV = 'development';
+process.env.NPM_CONFIG_PRODUCTION = 'false';
+process.env.npm_config_production = 'false';
+process.env.NPM_CONFIG_INCLUDE = 'dev';
+process.env.npm_config_include = 'dev';
 
 await import('./bootstrap.mjs');
 
