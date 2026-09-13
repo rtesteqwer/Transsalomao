@@ -1,16 +1,17 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Client } from "pg";
 import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
+import { managementSession } from "@/lib/management-auth.server";
 
 const COOKIE_NAME = "transsalomao_klebersom";
 const SESSION_SECONDS = 60 * 60 * 12;
 
 function configuredLogin() {
-  return process.env.KLEBERSOM_LOGIN?.trim() || "";
+  return process.env.KLEBERSOM_ACCESS_LOGIN?.trim() || process.env.KLEBERSOM_LOGIN?.trim() || "KlebersomDutra";
 }
 
 function configuredPassword() {
-  return process.env.KLEBERSOM_PASSWORD || "";
+  return process.env.KLEBERSOM_ACCESS_PASSWORD || process.env.KLEBERSOM_PASSWORD || "";
 }
 
 function configuredDriverId() {
@@ -53,6 +54,22 @@ export function klebersomSession() {
   return parseToken(getCookie(COOKIE_NAME));
 }
 
+export function klebersomAuthorizedSession() {
+  const own = klebersomSession();
+  if (own) return own;
+
+  const management = managementSession();
+  const driverId = configuredDriverId();
+  if (management?.username === configuredLogin() && driverId) {
+    return {
+      username: management.username,
+      driverId,
+      expiresAt: management.expiresAt,
+    };
+  }
+  return null;
+}
+
 export function loginKlebersom(username: string, password: string) {
   if (!configuredLogin() || !configuredPassword() || !configuredDriverId()) {
     return { ok: false as const, message: "Acesso do motorista não configurado." };
@@ -86,8 +103,8 @@ function dateValue(value: unknown) {
 }
 
 export async function getKlebersomDashboardData() {
-  const session = klebersomSession();
-  if (!session) throw new Error("Sessão expirada. Faça login novamente.");
+  const session = klebersomAuthorizedSession();
+  if (!session) throw new Error("Sessão expirada. Faça login novamente pelo Painel da Gerência.");
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DATABASE_URL não configurado.");
