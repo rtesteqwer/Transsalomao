@@ -7,9 +7,6 @@ const target = path.join(cwd, '.transteste_app');
 
 fs.rmSync(target, { recursive: true, force: true });
 fs.mkdirSync(target, { recursive: true });
-
-// Reuse the exact production bootstrap, but keep the reconstructed app in a
-// stable folder that Render can start after the build finishes.
 fs.mkdtempSync = () => target;
 
 const originalCpSync = fs.cpSync.bind(fs);
@@ -21,8 +18,6 @@ fs.cpSync = (src, dest, options) => {
   return originalCpSync(src, dest, options);
 };
 
-// Keep production React/SSR semantics, but explicitly include devDependencies
-// because Vite/Nitro build plugins live there.
 process.env.NITRO_PRESET = 'node-server';
 process.env.NODE_ENV = 'production';
 process.env.NPM_CONFIG_PRODUCTION = 'false';
@@ -32,9 +27,6 @@ process.env.npm_config_include = 'dev';
 
 await import('./bootstrap.mjs');
 
-// Temporary diagnostic: list every remaining legacy ticket generator after the
-// production bootstrap patches have been applied. This lets us remove the UI
-// fallback without guessing or touching the production branch.
 const sourceRoot = path.join(target, 'src');
 function scanLegacyTicketCodes(dir) {
   if (!fs.existsSync(dir)) return;
@@ -48,28 +40,22 @@ function scanLegacyTicketCodes(dir) {
     const text = fs.readFileSync(full, 'utf8');
     if (!text.includes('LCT-') && !text.includes('VG-')) continue;
     const rel = path.relative(target, full);
-    text.split(/\r?\n/).forEach((line, index) => {
+    const lines = text.split(/\r?\n/);
+    lines.forEach((line, index) => {
       if (line.includes('LCT-') || line.includes('VG-')) {
-        console.log(`[ticket-diagnostic] ${rel}:${index + 1}: ${line.trim()}`);
+        const start = Math.max(0, index - 8);
+        const end = Math.min(lines.length, index + 10);
+        console.log(`[ticket-diagnostic-context] ${rel}:${index + 1}\n${lines.slice(start, end).map((value, offset) => `${start + offset + 1}: ${value}`).join('\n')}`);
       }
     });
   }
 }
 scanLegacyTicketCodes(sourceRoot);
 
-// The reconstructed source was originally prepared for Vercel. Force every
-// explicit Nitro preset in local config files to a native Node server for Render.
 const configCandidates = [
-  'vite.config.ts',
-  'vite.config.js',
-  'vite.config.mts',
-  'vite.config.mjs',
-  'nitro.config.ts',
-  'nitro.config.js',
-  'nitro.config.mts',
-  'nitro.config.mjs',
+  'vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs',
+  'nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs',
 ];
-
 for (const rel of configCandidates) {
   const file = path.join(target, rel);
   if (!fs.existsSync(file)) continue;
@@ -83,31 +69,21 @@ for (const rel of configCandidates) {
   }
 }
 
-// Fast mode for the Render test environment.
-// Internal screens do not repaint/download a large global truck background.
 const stylesPath = path.join(target, 'src', 'styles.css');
 if (fs.existsSync(stylesPath)) {
   let styles = fs.readFileSync(stylesPath, 'utf8');
   styles = styles.replace(/background-attachment\s*:\s*fixed\s*;/gi, 'background-attachment: scroll;');
-  styles += `\n\n/* transteste: maximum-speed visual mode */\nhtml { background: #07111f; }\nbody {\n  background-image: none !important;\n  background-attachment: scroll !important;\n  background-color: #07111f;\n}\nbody::before, body::after {\n  background-image: none !important;\n  background-attachment: scroll !important;\n}\n@media (max-width: 900px) {\n  body, body::before, body::after { background-attachment: scroll !important; }\n  [class*=\"backdrop-blur\"] {\n    -webkit-backdrop-filter: none !important;\n    backdrop-filter: none !important;\n  }\n}\n`;
+  styles += `\n\n/* transteste: maximum-speed visual mode */\nhtml { background: #07111f; }\nbody { background-image: none !important; background-attachment: scroll !important; background-color: #07111f; }\nbody::before, body::after { background-image: none !important; background-attachment: scroll !important; }\n@media (max-width: 900px) { body, body::before, body::after { background-attachment: scroll !important; } [class*=\"backdrop-blur\"] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; } }\n`;
   fs.writeFileSync(stylesPath, styles);
   console.log('[render] fast visual mode applied: no global heavy background');
 }
 
-// Rebuild after the Render-specific patches. Remove stale native output first.
 fs.rmSync(path.join(target, '.output'), { recursive: true, force: true });
-execSync('npm run build', {
-  cwd: target,
-  stdio: 'inherit',
-  env: { ...process.env, NITRO_PRESET: 'node-server' },
-});
+execSync('npm run build', { cwd: target, stdio: 'inherit', env: { ...process.env, NITRO_PRESET: 'node-server' } });
 console.log('[render] Render-native production bundle rebuilt');
 
 const pkgPath = path.join(target, 'package.json');
-if (!fs.existsSync(pkgPath)) {
-  throw new Error('Render build failed: reconstructed app package.json not found');
-}
-
+if (!fs.existsSync(pkgPath)) throw new Error('Render build failed: reconstructed app package.json not found');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 pkg.scripts = pkg.scripts || {};
 const nativeEntry = path.join(target, '.output', 'server', 'index.mjs');
@@ -115,7 +91,6 @@ if (fs.existsSync(nativeEntry)) {
   pkg.scripts.start = 'node .output/server/index.mjs';
   console.log('[render] native Nitro Node server enabled');
 } else {
-  // Safe fallback so a preset incompatibility cannot take the test site offline.
   pkg.scripts.start = 'vite preview --host 0.0.0.0 --port $PORT';
   console.log('[render] native entry missing; falling back to Vite Preview');
 }
