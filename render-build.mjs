@@ -27,6 +27,7 @@ process.env.npm_config_include = 'dev';
 
 await import('./bootstrap.mjs');
 
+// Keep ticket numbering strictly numeric and shared between trips/reports.
 const apiPath = path.join(target, 'src', 'lib', 'api.ts');
 if (fs.existsSync(apiPath)) {
   const before = fs.readFileSync(apiPath, 'utf8');
@@ -41,11 +42,8 @@ if (fs.existsSync(apiPath)) {
     '    const autoTicket = String((numericTickets.length ? Math.max(...numericTickets) : 0) + 1);',
   ].join('\n');
   const after = before.replace(legacyLine, numericGenerator);
-  if (after === before && before.includes('LCT-')) throw new Error('Legacy LCT ticket generator still present and could not be patched safely');
-  if (after !== before) {
-    fs.writeFileSync(apiPath, after);
-    console.log('[render] legacy LCT ticket generator replaced by shared numeric sequence');
-  }
+  if (after === before && before.includes('LCT-')) throw new Error('Legacy LCT ticket generator still present');
+  if (after !== before) fs.writeFileSync(apiPath, after);
 }
 
 function assertNoLegacyTicketGenerators(dir) {
@@ -63,22 +61,17 @@ function assertNoLegacyTicketGenerators(dir) {
 }
 assertNoLegacyTicketGenerators(path.join(target, 'src'));
 
-// Preserve exact tonnage throughout the app instead of forcing one decimal.
+// Never round tonnage to one decimal.
 const formatPath = path.join(target, 'src', 'lib', 'format.ts');
 if (fs.existsSync(formatPath)) {
   const before = fs.readFileSync(formatPath, 'utf8');
-  const tonPrecisionPattern = /minimumFractionDigits\s*:\s*1\s*,\s*\n\s*maximumFractionDigits\s*:\s*1\s*,/m;
-  const after = before.replace(
-    tonPrecisionPattern,
-    'minimumFractionDigits: 0,\n  maximumFractionDigits: 20,',
-  );
-  if (after === before) throw new Error('Tonnage formatter precision block not found; refusing to deploy a rounding regression');
+  const pattern = /minimumFractionDigits\s*:\s*1\s*,\s*\n\s*maximumFractionDigits\s*:\s*1\s*,/m;
+  const after = before.replace(pattern, 'minimumFractionDigits: 0,\n  maximumFractionDigits: 20,');
+  if (after === before) throw new Error('Tonnage formatter precision block not found');
   fs.writeFileSync(formatPath, after);
-  console.log('[render] tonnage formatter now preserves exact decimal precision');
 }
 
-// Caixa has its own number formatter. Replace every tonnage rendering there with
-// exact locale formatting so 38.47 is never rendered as 38.5/38.50 by a fixed-digit helper.
+// Caixa has its own formatter, so force exact tonnage there too.
 const caixaPath = path.join(target, 'src', 'routes', 'dono', 'lancamentos.tsx');
 if (fs.existsSync(caixaPath)) {
   const before = fs.readFileSync(caixaPath, 'utf8');
@@ -87,80 +80,34 @@ if (fs.existsSync(caixaPath)) {
     replacements += 1;
     return `{new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 20 }).format(${expression})} t`;
   });
-  if (replacements === 0) throw new Error('Caixa tonnage display pattern not found; refusing to keep rounded values');
+  if (replacements === 0) throw new Error('Caixa tonnage display pattern not found');
   fs.writeFileSync(caixaPath, after);
   console.log(`[render] Caixa exact tonnage enabled in ${replacements} display(s)`);
 }
 
-// Add a second credential to the existing management login. This account receives
-// a valid management cookie only so it can be redirected to its own read-only area.
-// It is explicitly rejected by assertManagementSession, so it cannot invoke admin APIs.
-const managementServerPath = path.join(target, 'src', 'lib', 'management-auth.server.ts');
-if (fs.existsSync(managementServerPath)) {
-  let auth = fs.readFileSync(managementServerPath, 'utf8');
-  if (!auth.includes('function restrictedLogin()')) {
-    const secretNeedle = 'function sessionSecret() {';
-    if (!auth.includes(secretNeedle)) throw new Error('Management sessionSecret hook not found');
-    auth = auth.replace(secretNeedle, [
-      'function restrictedLogin() {',
-      '  return process.env.KLEBERSOM_ACCESS_LOGIN?.trim() || "KlebersomDutra";',
-      '}',
-      '',
-      'function restrictedPassword() {',
-      '  return process.env.KLEBERSOM_ACCESS_PASSWORD || "";',
-      '}',
-      '',
-      secretNeedle,
-    ].join('\n'));
-  }
-
-  const tokenNeedle = '  if (username !== loginName()) return null;';
-  if (!auth.includes(tokenNeedle)) throw new Error('Management token validation hook not found');
-  auth = auth.replace(tokenNeedle, '  if (username !== loginName() && username !== restrictedLogin()) return null;');
-
-  const loginNeedle = '  if (username !== loginName() || password !== loginPassword()) {';
-  if (!auth.includes(loginNeedle)) throw new Error('Management login validation hook not found');
-  auth = auth.replace(loginNeedle, [
-    '  const validAdmin = username === loginName() && password === loginPassword();',
-    '  const validRestricted = username === restrictedLogin() && password === restrictedPassword();',
-    '  if (!validAdmin && !validRestricted) {',
-  ].join('\n'));
-
-  const assertNeedle = '  if (!session) {';
-  const assertIndex = auth.indexOf('export function assertManagementSession()');
-  if (assertIndex === -1) throw new Error('assertManagementSession not found');
-  const assertTail = auth.slice(assertIndex);
-  if (!assertTail.includes(assertNeedle)) throw new Error('Management assertion condition not found');
-  const patchedAssertTail = assertTail.replace(assertNeedle, '  if (!session || session.username === restrictedLogin()) {');
-  auth = auth.slice(0, assertIndex) + patchedAssertTail;
-
-  fs.writeFileSync(managementServerPath, auth);
-  console.log('[render] restricted Klebersom credential accepted by Gerência login and blocked from admin APIs');
-}
-
-// After a successful management login with the restricted username, go straight to
-// the read-only Klebersom dashboard instead of loading DonoShell.
+// The same Gerência login form accepts admin and driver credentials. The server-side
+// auth override decides the role. Drivers are redirected before any admin query can run.
 const managementRoutePath = path.join(target, 'src', 'routes', 'dono', 'route.tsx');
 if (fs.existsSync(managementRoutePath)) {
   let route = fs.readFileSync(managementRoutePath, 'utf8');
-  if (!route.includes('window.location.assign("/klebersom")')) {
-    const refetchNeedle = 'await session.refetch();';
-    if (!route.includes(refetchNeedle)) throw new Error('Management login success hook not found');
-    route = route.replace(refetchNeedle, [
-      'if (username.trim().toLowerCase() === "klebersomdutra") {',
-      '                    window.location.assign("/klebersom");',
-      '                    return;',
-      '                  }',
-      '                  await session.refetch();',
-    ].join('\n'));
-  }
+  const invalidateNeedle = 'await qc.invalidateQueries({ queryKey: sessionKey });';
+  if (!route.includes(invalidateNeedle)) throw new Error('Management login success hook not found');
+  route = route.replace(invalidateNeedle, [
+    'if (result.role === "driver") {',
+    '                    window.location.assign("/klebersom");',
+    '                    return;',
+    '                  }',
+    '                  await qc.invalidateQueries({ queryKey: sessionKey });',
+  ].join('\n'));
   fs.writeFileSync(managementRoutePath, route);
-  console.log('[render] Gerência login redirects KlebersomDutra to restricted dashboard');
+  console.log('[render] Gerência login is role-aware: drivers redirect to isolated dashboard');
 }
 
-// Install the isolated, read-only Klebersom dashboard. Credentials and driver id
-// stay in protected Render environment variables, never in the public repository source.
+// Security overrides: only literal admin can own a management session. Every other
+// configured account uses a separate signed driver session tied to one driver_id.
 const overrides = [
+  ['render-overrides/management-auth.server.ts', 'src/lib/management-auth.server.ts'],
+  ['render-overrides/management-auth.ts', 'src/lib/management-auth.ts'],
   ['render-overrides/klebersom-access.server.ts', 'src/lib/klebersom-access.server.ts'],
   ['render-overrides/klebersom-access.ts', 'src/lib/klebersom-access.ts'],
   ['render-overrides/klebersom.tsx', 'src/routes/klebersom.tsx'],
@@ -174,16 +121,25 @@ for (const [sourceRel, targetRel] of overrides) {
   console.log(`[render] installed ${targetRel}`);
 }
 
+const finalManagementAuth = fs.readFileSync(path.join(target, 'src', 'lib', 'management-auth.server.ts'), 'utf8');
+if (!finalManagementAuth.includes('username !== "admin"')) {
+  throw new Error('Admin-only management invariant missing');
+}
+const finalDriverAuth = fs.readFileSync(path.join(target, 'src', 'lib', 'klebersom-access.server.ts'), 'utf8');
+if (finalDriverAuth.includes('managementSession')) {
+  throw new Error('Driver auth must never fall back to a management session');
+}
+console.log('[render] security invariant OK: admin-only Gerência, driver_id isolated sessions');
+
 const configCandidates = ['vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs','nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs'];
 for (const rel of configCandidates) {
   const file = path.join(target, rel);
   if (!fs.existsSync(file)) continue;
   const before = fs.readFileSync(file, 'utf8');
-  const after = before.replace(/preset\s*:\s*(['"`])vercel\1/g, 'preset: "node-server"').replace(/preset\s*:\s*(['"`])vercel-edge\1/g, 'preset: "node-server"');
-  if (after !== before) {
-    fs.writeFileSync(file, after);
-    console.log(`[render] patched ${rel}: Nitro preset -> node-server`);
-  }
+  const after = before
+    .replace(/preset\s*:\s*(['"`])vercel\1/g, 'preset: "node-server"')
+    .replace(/preset\s*:\s*(['"`])vercel-edge\1/g, 'preset: "node-server"');
+  if (after !== before) fs.writeFileSync(file, after);
 }
 
 const stylesPath = path.join(target, 'src', 'styles.css');
@@ -192,7 +148,6 @@ if (fs.existsSync(stylesPath)) {
   styles = styles.replace(/background-attachment\s*:\s*fixed\s*;/gi, 'background-attachment: scroll;');
   styles += `\n\n/* transteste: maximum-speed visual mode */\nhtml { background: #07111f; }\nbody { background-image: none !important; background-attachment: scroll !important; background-color: #07111f; }\nbody::before, body::after { background-image: none !important; background-attachment: scroll !important; }\n@media (max-width: 900px) { body, body::before, body::after { background-attachment: scroll !important; } [class*=\"backdrop-blur\"] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; } }\n`;
   fs.writeFileSync(stylesPath, styles);
-  console.log('[render] fast visual mode applied: no global heavy background');
 }
 
 fs.rmSync(path.join(target, '.output'), { recursive: true, force: true });
@@ -200,17 +155,13 @@ execSync('npm run build', { cwd: target, stdio: 'inherit', env: { ...process.env
 console.log('[render] Render-native production bundle rebuilt');
 
 const pkgPath = path.join(target, 'package.json');
-if (!fs.existsSync(pkgPath)) throw new Error('Render build failed: reconstructed app package.json not found');
+if (!fs.existsSync(pkgPath)) throw new Error('Render build failed: package.json not found');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 pkg.scripts = pkg.scripts || {};
 const nativeEntry = path.join(target, '.output', 'server', 'index.mjs');
-if (fs.existsSync(nativeEntry)) {
-  pkg.scripts.start = 'node .output/server/index.mjs';
-  console.log('[render] native Nitro Node server enabled');
-} else {
-  pkg.scripts.start = 'vite preview --host 0.0.0.0 --port $PORT';
-  console.log('[render] native entry missing; falling back to Vite Preview');
-}
+pkg.scripts.start = fs.existsSync(nativeEntry)
+  ? 'node .output/server/index.mjs'
+  : 'vite preview --host 0.0.0.0 --port $PORT';
 fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 console.log('[render] production SSR mode enabled');
 console.log('[render] transteste source reconstructed at .transteste_app');
