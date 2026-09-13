@@ -51,9 +51,14 @@ replaceFile('src/lib/calc.ts', (s) => s
   .replace(/return `LCT-[^;]+;/g, 'return String(max + 1);'));
 fs.writeFileSync(path.join(work, 'migrations', '0005_renumber_tickets.sql'), '-- Tickets 1..79 já foram corrigidos no banco de produção e preservados em auditoria.\n-- Não renumerar novamente no deploy.\nSELECT 1;\n');
 
-// Optional release overlay supplied by the deployment wrapper.
-const overlay = process.env.TRANS_OVERLAY_DIR;
-if (overlay && fs.existsSync(overlay)) {
+// Usa o overlay enviado pelo wrapper quando existir; caso contrário, usa o
+// overlay versionado no próprio repositório. Assim a tela inicial e o fundo
+// correto são preservados também nos deploys disparados pelo GitHub Actions.
+const requestedOverlay = process.env.TRANS_OVERLAY_DIR;
+const overlay = requestedOverlay && fs.existsSync(requestedOverlay)
+  ? requestedOverlay
+  : path.join(deploy, 'production-overlay');
+if (fs.existsSync(overlay)) {
   const copies = [
     ['index.tsx', 'src/routes/index.tsx'],
     ['styles.css', 'src/styles.css'],
@@ -72,13 +77,16 @@ if (overlay && fs.existsSync(overlay)) {
   }
 }
 
-// Biometria removida de forma definitiva. Mantemos apenas um componente de
-// compatibilidade que libera a tela imediatamente e apaga cadastros antigos do
-// navegador. Nenhuma chamada a WebAuthn, digital, Face ID ou bridge nativa é feita.
+// REMOÇÃO DEFINITIVA DA BIOMETRIA
+// O arquivo abaixo existe apenas para compatibilidade com as rotas antigas que
+// ainda importam BrandLink/BiometricGate. BiometricGate agora é um simples
+// pass-through: não chama WebAuthn, digital, Face ID nem bridge nativa.
 const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');
 fs.mkdirSync(path.dirname(biometricGatePath), { recursive: true });
-fs.writeFileSync(biometricGatePath, `import { useEffect, type ReactNode } from "react";\n\nexport function BiometricGate({ children }: { scope?: string; children: ReactNode }) {\n  useEffect(() => {\n    try {\n      for (let i = localStorage.length - 1; i >= 0; i -= 1) {\n        const key = localStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) localStorage.removeItem(key);\n      }\n      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {\n        const key = sessionStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) sessionStorage.removeItem(key);\n      }\n    } catch {}\n  }, []);\n  return <>{children}</>;\n}\n`);
+fs.writeFileSync(biometricGatePath, `import { Link } from "@tanstack/react-router";\nimport { ShieldCheck } from "lucide-react";\nimport { useEffect, type ReactNode } from "react";\n\nexport { ShieldCheck };\n\nexport function BrandMark({ className = "" }: { className?: string }) {\n  return (\n    <svg viewBox="0 0 32 32" className={\`size-8 \${className}\`} aria-hidden="true">\n      <rect width="32" height="32" rx="8" className="fill-surface-2" />\n      <rect x="6" y="9" width="20" height="14" rx="3" className="stroke-accent" fill="none" strokeWidth="1.75" />\n      <path d="M6 16h3.2c.6 0 1 .4 1 1v0c0 .6.4 1 1 1h8.6c.6 0 1-.4 1-1v0c0-.6.4-1 1-1H26" className="stroke-accent" fill="none" strokeWidth="1.5" strokeLinecap="round" />\n      <circle cx="11" cy="23.5" r="1.6" className="fill-accent" />\n      <circle cx="21" cy="23.5" r="1.6" className="fill-accent" />\n    </svg>\n  );\n}\n\nexport function BrandLink({ to = "/", subtitle }: { to?: string; subtitle?: string }) {\n  return (\n    <Link to={to as any} className="flex items-center gap-3 min-w-0">\n      <BrandMark />\n      <span className="min-w-0">\n        <span className="block font-display text-xl font-semibold tracking-wide leading-none">Trans Salomão</span>\n        {subtitle ? <span className="mt-1 block text-[11px] uppercase tracking-[0.16em] text-muted truncate">{subtitle}</span> : null}\n      </span>\n    </Link>\n  );\n}\n\n// Mantido só para uma chamada legada de limpeza na rota da Gerência.\nexport function biometricSessionKey(scope: string) {\n  return \`transsalomao.biometric.unlocked.\${scope}\`;\n}\n\nexport function BiometricGate({ children }: { scope?: string; children: ReactNode }) {\n  useEffect(() => {\n    try {\n      for (let i = localStorage.length - 1; i >= 0; i -= 1) {\n        const key = localStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) localStorage.removeItem(key);\n      }\n      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {\n        const key = sessionStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) sessionStorage.removeItem(key);\n      }\n    } catch {}\n  }, []);\n  return <>{children}</>;\n}\n`);
+
 for (const rel of [
+  'src/lib/biometric.ts',
   'native/android/BiometricBridge.kt',
   'native/android/biometric-webview-bridge.js',
 ]) {
