@@ -51,7 +51,7 @@ replaceFile('src/lib/calc.ts', (s) => s
   .replace(/return `LCT-[^;]+;/g, 'return String(max + 1);'));
 fs.writeFileSync(path.join(work, 'migrations', '0005_renumber_tickets.sql'), '-- Tickets 1..79 já foram corrigidos no banco de produção e preservados em auditoria.\n-- Não renumerar novamente no deploy.\nSELECT 1;\n');
 
-// Optional release overlay supplied by the deployment wrapper: exact UI/styles/background and biometric-free routes.
+// Optional release overlay supplied by the deployment wrapper.
 const overlay = process.env.TRANS_OVERLAY_DIR;
 if (overlay && fs.existsSync(overlay)) {
   const copies = [
@@ -71,6 +71,20 @@ if (overlay && fs.existsSync(overlay)) {
     console.log(`[bootstrap] overlay ${dest}`);
   }
 }
+
+// Biometria removida de forma definitiva. Mantemos apenas um componente de
+// compatibilidade que libera a tela imediatamente e apaga cadastros antigos do
+// navegador. Nenhuma chamada a WebAuthn, digital, Face ID ou bridge nativa é feita.
+const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');
+fs.mkdirSync(path.dirname(biometricGatePath), { recursive: true });
+fs.writeFileSync(biometricGatePath, `import { useEffect, type ReactNode } from "react";\n\nexport function BiometricGate({ children }: { scope?: string; children: ReactNode }) {\n  useEffect(() => {\n    try {\n      for (let i = localStorage.length - 1; i >= 0; i -= 1) {\n        const key = localStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) localStorage.removeItem(key);\n      }\n      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {\n        const key = sessionStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) sessionStorage.removeItem(key);\n      }\n    } catch {}\n  }, []);\n  return <>{children}</>;\n}\n`);
+for (const rel of [
+  'native/android/BiometricBridge.kt',
+  'native/android/biometric-webview-bridge.js',
+]) {
+  fs.rmSync(path.join(work, rel), { force: true });
+}
+console.log('[bootstrap] biometric authentication removed');
 
 console.log('[bootstrap] installing and building final source');
 execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });
