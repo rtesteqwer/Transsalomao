@@ -1,0 +1,217 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { Client } from "pg";
+import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
+
+const COOKIE_NAME = "transsalomao_klebersom";
+const SESSION_SECONDS = 60 * 60 * 12;
+
+function configuredLogin() {
+  return process.env.KLEBERSOM_LOGIN?.trim() || "";
+}
+
+function configuredPassword() {
+  return process.env.KLEBERSOM_PASSWORD || "";
+}
+
+function configuredDriverId() {
+  return process.env.KLEBERSOM_DRIVER_ID?.trim() || "";
+}
+
+function sessionSecret() {
+  const value = process.env.KLEBERSOM_SESSION_SECRET?.trim();
+  if (!value) throw new Error("KLEBERSOM_SESSION_SECRET não configurado.");
+  return value;
+}
+
+function signature(payload: string) {
+  return createHmac("sha256", sessionSecret()).update(payload).digest("hex");
+}
+
+function makeToken(username: string, driverId: string) {
+  const expiresAt = Math.floor(Date.now() / 1000) + SESSION_SECONDS;
+  const payload = `${username}|${driverId}|${expiresAt}`;
+  return `${payload}|${signature(payload)}`;
+}
+
+function parseToken(token: string | undefined) {
+  if (!token) return null;
+  const parts = token.split("|");
+  if (parts.length !== 4) return null;
+  const [username, driverId, expiresRaw, supplied] = parts;
+  const expiresAt = Number(expiresRaw);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) return null;
+  if (username !== configuredLogin() || driverId !== configuredDriverId()) return null;
+  const payload = `${username}|${driverId}|${expiresAt}`;
+  const expected = signature(payload);
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return { username, driverId, expiresAt };
+}
+
+export function klebersomSession() {
+  return parseToken(getCookie(COOKIE_NAME));
+}
+
+export function loginKlebersom(username: string, password: string) {
+  if (!configuredLogin() || !configuredPassword() || !configuredDriverId()) {
+    return { ok: false as const, message: "Acesso do motorista não configurado." };
+  }
+  if (username !== configuredLogin() || password !== configuredPassword()) {
+    return { ok: false as const, message: "Login ou senha inválidos." };
+  }
+  setCookie(COOKIE_NAME, makeToken(username, configuredDriverId()), {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: SESSION_SECONDS,
+  });
+  return { ok: true as const };
+}
+
+export function logoutKlebersom() {
+  deleteCookie(COOKIE_NAME, { path: "/" });
+  return { ok: true as const };
+}
+
+function numberValue(value: unknown) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function dateValue(value: unknown) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value ?? "").slice(0, 10);
+}
+
+export async function getKlebersomDashboardData() {
+  const session = klebersomSession();
+  if (!session) throw new Error("Sessão expirada. Faça login novamente.");
+
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL não configurado.");
+
+  const client = new Client({ connectionString });
+  await client.connect();
+  try {
+    const [driverResult, tripsResult, expensesResult, fuelingsResult] = await Promise.all([
+      client.query(
+        `select id, name, commission_pct, status from drivers where id = $1 limit 1`,
+        [session.driverId],
+      ),
+      client.query(
+        `select t.id, t.code, t.date, t.net_weight, t.price_per_ton, t.price_per_trip,
+                t.freight_mode, t.fleet_id, f.name as fleet_name,
+                f.tractor_plate, f.trailer_plate
+           from trips t
+           left join fleets f on f.id = t.fleet_id
+          where t.driver_id = $1
+          order by t.date desc, case when t.code ~ '^[0-9]+$' then t.code::int else 0 end desc`,
+        [session.driverId],
+      ),
+      client.query(
+        `select id, date, fleet_id, asset_type, category, description, amount, notes
+           from expenses
+          where driver_id = $1
+          order by date desc, created_at desc`,
+        [session.driverId],
+      ),
+      client.query(
+        `select id, date, fleet_id, station, km, liters, price_per_liter, notes
+           from fuelings
+          where driver_id = $1
+          order by date desc, created_at desc`,
+        [session.driverId],
+      ),
+    ]);
+
+    const driverRow = driverResult.rows[0];
+    if (!driverRow) throw new Error("Motorista vinculado ao acesso não encontrado.");
+
+    const commissionPct = numberValue(driverRow.commission_pct);
+    const trips = tripsResult.rows.map((row) => {
+      const netWeight = numberValue(row.net_weight);
+      const pricePerTon = numberValue(row.price_per_ton);
+      const pricePerTrip = numberValue(row.price_per_trip);
+      const freightMode = String(row.freight_mode ?? "ton");
+      const freight = freightMode === "ton" ? netWeight * pricePerTon : pricePerTrip;
+      const commission = freight * commissionPct;
+      return {
+        id: String(row.id),
+        code: String(row.code),
+        date: dateValue(row.date),
+        netWeight,
+        pricePerTon,
+        pricePerTrip,
+        freightMode,
+        freight,
+        commission,
+        fleetId: String(row.fleet_id ?? ""),
+        fleetName: String(row.fleet_name ?? ""),
+        tractorPlate: String(row.tractor_plate ?? ""),
+        trailerPlate: String(row.trailer_plate ?? ""),
+      };
+    });
+
+    const expenses = expensesResult.rows.map((row) => ({
+      id: String(row.id),
+      date: dateValue(row.date),
+      fleetId: String(row.fleet_id ?? ""),
+      assetType: String(row.asset_type ?? ""),
+      category: String(row.category ?? ""),
+      description: String(row.description ?? ""),
+      amount: numberValue(row.amount),
+      notes: String(row.notes ?? ""),
+    }));
+
+    const fuelings = fuelingsResult.rows.map((row) => {
+      const liters = numberValue(row.liters);
+      const pricePerLiter = numberValue(row.price_per_liter);
+      return {
+        id: String(row.id),
+        date: dateValue(row.date),
+        fleetId: String(row.fleet_id ?? ""),
+        station: String(row.station ?? ""),
+        km: numberValue(row.km),
+        liters,
+        pricePerLiter,
+        amount: liters * pricePerLiter,
+        notes: String(row.notes ?? ""),
+      };
+    });
+
+    const billing = trips.reduce((total, trip) => total + trip.freight, 0);
+    const commission = trips.reduce((total, trip) => total + trip.commission, 0);
+    const explicitExpenses = expenses.reduce((total, expense) => total + expense.amount, 0);
+    const fuelExpenses = fuelings.reduce((total, fueling) => total + fueling.amount, 0);
+    const totalExpenses = explicitExpenses + fuelExpenses;
+    const result = billing - commission - totalExpenses;
+    const totalTons = trips.reduce((total, trip) => total + trip.netWeight, 0);
+
+    return {
+      username: session.username,
+      driver: {
+        id: String(driverRow.id),
+        name: String(driverRow.name),
+        commissionPct,
+        status: String(driverRow.status ?? ""),
+      },
+      totals: {
+        billing,
+        commission,
+        explicitExpenses,
+        fuelExpenses,
+        totalExpenses,
+        result,
+        totalTons,
+        trips: trips.length,
+      },
+      trips,
+      expenses,
+      fuelings,
+    };
+  } finally {
+    await client.end();
+  }
+}
