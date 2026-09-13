@@ -61,20 +61,22 @@ function assertNoLegacyTicketGenerators(dir) {
 }
 assertNoLegacyTicketGenerators(path.join(target, 'src'));
 
-// Site-wide rule: every displayed weight/tonnage uses exactly two decimal places.
-// Calculations and stored values remain untouched; only presentation is formatted.
+// Site-wide display rule: every weight/tonnage uses exactly two decimal places.
+// The original numeric value remains untouched for storage and freight calculations.
 const formatPath = path.join(target, 'src', 'lib', 'format.ts');
 if (fs.existsSync(formatPath)) {
   const before = fs.readFileSync(formatPath, 'utf8');
-  const pattern = /minimumFractionDigits\s*:\s*1\s*,\s*\n\s*maximumFractionDigits\s*:\s*1\s*,/m;
-  let after = before.replace(pattern, 'minimumFractionDigits: 2,\n  maximumFractionDigits: 2,');
-  after = after.replace(/minimumFractionDigits\s*:\s*0\s*,\s*\n\s*maximumFractionDigits\s*:\s*20\s*,/m, 'minimumFractionDigits: 2,\n  maximumFractionDigits: 2,');
-  if (after === before) throw new Error('Tonnage formatter precision block not found');
+  let after = before
+    .replace(/minimumFractionDigits\s*:\s*1\s*,\s*\n\s*maximumFractionDigits\s*:\s*1\s*,/m, 'minimumFractionDigits: 2,\n  maximumFractionDigits: 2,')
+    .replace(/minimumFractionDigits\s*:\s*0\s*,\s*\n\s*maximumFractionDigits\s*:\s*20\s*,/m, 'minimumFractionDigits: 2,\n  maximumFractionDigits: 2,');
+  if (after === before && !/minimumFractionDigits\s*:\s*2[\s\S]{0,80}maximumFractionDigits\s*:\s*2/.test(before)) {
+    throw new Error('Tonnage formatter precision block not found');
+  }
   fs.writeFileSync(formatPath, after);
   console.log('[render] site-wide weight formatter fixed at exactly 2 decimal places');
 }
 
-// Caixa has its own formatter, so enforce two decimals there too.
+// Caixa has its own tonnage formatter, so enforce exactly two decimals there too.
 const caixaPath = path.join(target, 'src', 'routes', 'dono', 'lancamentos.tsx');
 if (fs.existsSync(caixaPath)) {
   const before = fs.readFileSync(caixaPath, 'utf8');
@@ -83,36 +85,116 @@ if (fs.existsSync(caixaPath)) {
     replacements += 1;
     return `{new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(${expression})} t`;
   });
-  if (replacements === 0) throw new Error('Caixa tonnage display pattern not found');
+  if (replacements === 0 && !before.includes('minimumFractionDigits: 2, maximumFractionDigits: 2')) {
+    throw new Error('Caixa tonnage display pattern not found');
+  }
   fs.writeFileSync(caixaPath, after);
   console.log(`[render] Caixa weight formatter fixed at 2 decimals in ${replacements} display(s)`);
 }
 
-// Temporary targeted diagnostics for the report implementation. Only source-code lines
-// around report/export/PDF keywords are logged; no credentials or database data are printed.
-function logReportSource(rel) {
-  const file = path.join(target, rel);
-  if (!fs.existsSync(file)) return;
-  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
-  const wanted = new Set();
-  for (let i = 0; i < lines.length; i += 1) {
-    if (/(csv|excel|xlsx|pdf|relat|download|export|generate|print|tons\(|netWeight|peso)/i.test(lines[i])) {
-      for (let j = Math.max(0, i - 2); j <= Math.min(lines.length - 1, i + 3); j += 1) wanted.add(j);
-    }
-  }
-  console.log(`[report-diagnostic] BEGIN ${rel}`);
-  for (const index of [...wanted].sort((a, b) => a - b).slice(0, 240)) {
-    console.log(`[report-diagnostic] ${rel}:${index + 1}: ${lines[index]}`);
-  }
-  console.log(`[report-diagnostic] END ${rel}`);
-}
-logReportSource('src/routes/dono/totais.tsx');
-logReportSource('src/lib/pdf.ts');
-logReportSource('src/lib/format.ts');
+// Admin Relatórios: remove CSV from the UI and export a colored Excel-compatible
+// spreadsheet with exactly one row per freight. PDF remains available separately.
+const totalsPath = path.join(target, 'src', 'routes', 'dono', 'totais.tsx');
+if (fs.existsSync(totalsPath)) {
+  let totals = fs.readFileSync(totalsPath, 'utf8');
+  const exportStart = totals.indexOf('  function exportCurrent() {');
+  const returnStart = exportStart >= 0 ? totals.indexOf('\n\n  return (', exportStart) : -1;
+  if (exportStart < 0 || returnStart < 0) throw new Error('Relatórios CSV export block not found');
 
-// The same Gerência login form accepts admin and driver credentials. Insert the
-// driver redirect at the stable success-notification point; authorization itself is
-// enforced server-side by the admin-only management override below.
+  const excelFn = [
+    '  function exportExcelColorido() {',
+    '    const esc = (value: unknown) => String(value ?? "")',
+    '      .replace(/&/g, "&amp;")',
+    '      .replace(/</g, "&lt;")',
+    '      .replace(/>/g, "&gt;")',
+    '      .replace(/\\"/g, "&quot;");',
+    '    const modeLabel = (mode: unknown) => {',
+    '      const value = String(mode ?? "");',
+    '      if (value === "ton") return "Por tonelada";',
+    '      if (value === "trip") return "Por viagem";',
+    '      if (value === "cegonha") return "Cegonha";',
+    '      if (value === "caixinha") return "Caixinha";',
+    '      return value || "—";',
+    '    };',
+    '    const body = computed.map((trip: any, index: number) => {',
+    '      const bg = index % 2 === 0 ? "#EEF5FF" : "#FFFFFF";',
+    '      const ticket = trip.code ?? trip.ticket ?? trip.id ?? "—";',
+    '      const tripDate = trip.date ? formatDate(trip.date) : "—";',
+    '      const commission = Number(trip.commissionValue ?? trip.commission ?? 0);',
+    '      return "<tr style=\\"background:" + bg + ";height:22px\\">" +',
+    '        "<td>" + esc(ticket) + "</td>" +',
+    '        "<td>" + esc(tripDate) + "</td>" +',
+    '        "<td>" + esc(trip.driverName ?? "—") + "</td>" +',
+    '        "<td>" + esc(trip.fleetName ?? "—") + "</td>" +',
+    '        "<td>" + esc(modeLabel(trip.freightMode)) + "</td>" +',
+    '        "<td style=\\"background:#FFF4CC;font-weight:700\\">" + esc(tons(Number(trip.netWeight ?? 0))) + "</td>" +',
+    '        "<td>" + esc(integer(Number(trip.kmDriven ?? 0)) + " km") + "</td>" +',
+    '        "<td style=\\"background:#E8F7EC;font-weight:700\\">" + esc(brl(Number(trip.freight ?? 0))) + "</td>" +',
+    '        "<td style=\\"background:#FFF0DF\\">" + esc(brl(commission)) + "</td>" +',
+    '        "<td style=\\"background:#FDECEC\\">" + esc(brl(Number(trip.dieselCost ?? 0))) + "</td>" +',
+    '        "<td style=\\"background:#E5F3FF;font-weight:700\\">" + esc(brl(Number(trip.grossResult ?? 0))) + "</td></tr>";',
+    '    }).join("");',
+    '    const html = "<!doctype html><html><head><meta charset=\\"utf-8\\"><style>" +',
+    '      "body{font-family:Arial,sans-serif;color:#132033}h1{font-size:20px;margin:0 0 4px}p{margin:0 0 12px;color:#546173}" +',
+    '      "table{border-collapse:collapse;width:100%;font-size:11px}th{background:#102A43;color:#fff;font-weight:700;padding:7px;border:1px solid #7C8DA0;text-align:left}" +',
+    '      "td{padding:6px;border:1px solid #B8C4D0;white-space:nowrap}</style></head><body>" +',
+    '      "<h1>Trans Salomão — Relatório de Fretes</h1><p>Uma linha por frete · pesos com 2 casas decimais</p>" +',
+    '      "<table><thead><tr><th>Ticket</th><th>Data</th><th>Motorista</th><th>Conjunto</th><th>Modalidade</th><th>Peso líquido</th><th>KM</th><th>Faturamento</th><th>Comissão</th><th>Diesel</th><th>Resultado</th></tr></thead><tbody>" + body + "</tbody></table></body></html>";',
+    '    const blob = new Blob(["\\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });',
+    '    const url = URL.createObjectURL(blob);',
+    '    const a = document.createElement("a");',
+    '    a.href = url;',
+    '    a.download = "relatorio-fretes-trans-salomao-colorido.xls";',
+    '    document.body.appendChild(a);',
+    '    a.click();',
+    '    a.remove();',
+    '    URL.revokeObjectURL(url);',
+    '  }',
+  ].join('\n');
+
+  totals = totals.slice(0, exportStart) + excelFn + totals.slice(returnStart);
+  const csvButton = /<button type="button" onClick=\{exportCurrent\} className="h-11 rounded-md border border-border px-4 text-sm text-fg hover:bg-surface-2">\s*Exportar CSV\s*<\/button>/m;
+  if (!csvButton.test(totals)) throw new Error('Relatórios CSV button not found');
+  totals = totals.replace(csvButton, '<button type="button" onClick={exportExcelColorido} className="h-11 rounded-md border border-border px-4 text-sm font-semibold text-fg hover:bg-surface-2">\n            Excel colorido\n          </button>');
+  totals = totals.replace('Gere PDFs no padrão visual da Trans Salomão e consulte totais por motorista, conjunto e combustível.', 'Gere PDF ou Excel colorido. Cada frete ocupa uma única linha e todo peso é exibido com 2 casas decimais.');
+  fs.writeFileSync(totalsPath, totals);
+  console.log('[render] admin Relatórios: CSV removed; colored Excel + PDF only, one freight per Excel row');
+}
+
+// PDF: replace the former multi-line trip card by one compact line per freight.
+// The report summary is preserved; only the freight history rows are compacted.
+const pdfPath = path.join(target, 'src', 'lib', 'pdf.ts');
+if (fs.existsSync(pdfPath)) {
+  let pdf = fs.readFileSync(pdfPath, 'utf8');
+  const tripCardPattern = /function drawTripCard\(page: PdfPage, trip: ComputedTrip, top: number\) \{[\s\S]*?\n\}\n\nfunction drawFuelingSectionTitle/;
+  if (!tripCardPattern.test(pdf)) throw new Error('PDF trip card block not found');
+  const compactTripCard = [
+    'function drawTripCard(page: PdfPage, trip: ComputedTrip, top: number) {',
+    '  const height = 22;',
+    '  const y = PAGE_H - top - height;',
+    '  page.rect(MARGIN, y, CONTENT_W, height, colors.surface, colors.border, 0.55);',
+    '  const row = truncate(',
+    '    `${formatDate(trip.date)} | ${trip.code} | ${trip.driverName} | ${trip.fleetName} | ${freightModeLabel(trip.freightMode)} | Peso ${tons(trip.netWeight)} | KM ${integer(trip.kmDriven)} | Frete ${brl(trip.freight)} | Diesel ${brl(trip.dieselCost)} | Resultado ${brl(trip.grossResult)}`,',
+    '    150,',
+    '  );',
+    '  page.text(row, MARGIN + 7, topToY(top + 14), { size: 6.6, color: colors.fg });',
+    '}',
+    '',
+    'function drawFuelingSectionTitle',
+  ].join('\n');
+  pdf = pdf.replace(tripCardPattern, compactTripCard);
+  // Compact common legacy spacing/fit checks used by the trip-card loop.
+  pdf = pdf
+    .replace(/top \+ 74/g, 'top + 22')
+    .replace(/top \+= 84;/g, 'top += 26;')
+    .replace(/top \+= 82;/g, 'top += 26;')
+    .replace(/top \+= 80;/g, 'top += 26;');
+  fs.writeFileSync(pdfPath, pdf);
+  console.log('[render] PDF freight history compacted to exactly one visual line per freight');
+}
+
+// The same Gerência login form accepts admin and driver credentials. Drivers are
+// redirected before any administrative query can run.
 const managementRoutePath = path.join(target, 'src', 'routes', 'dono', 'route.tsx');
 if (fs.existsSync(managementRoutePath)) {
   let route = fs.readFileSync(managementRoutePath, 'utf8');
@@ -142,8 +224,8 @@ if (fs.existsSync(managementRoutePath)) {
   console.log('[render] Gerência login is role-aware: drivers redirect to isolated dashboard');
 }
 
-// Security overrides: only literal admin can own a management session. Every other
-// configured account uses a separate signed driver session tied to one driver_id.
+// Security overrides: only literal admin/admin can own a management session. Every
+// driver account uses a separate signed driver session tied to exactly one driver_id.
 const overrides = [
   ['render-overrides/management-auth.server.ts', 'src/lib/management-auth.server.ts'],
   ['render-overrides/management-auth.ts', 'src/lib/management-auth.ts'],
@@ -161,16 +243,10 @@ for (const [sourceRel, targetRel] of overrides) {
 }
 
 const finalManagementAuth = fs.readFileSync(path.join(target, 'src', 'lib', 'management-auth.server.ts'), 'utf8');
-if (!finalManagementAuth.includes('username !== "admin"')) {
-  throw new Error('Admin-only management invariant missing');
-}
-if (!finalManagementAuth.includes('return "admin";')) {
-  throw new Error('admin/admin invariant missing');
-}
+if (!finalManagementAuth.includes('username !== "admin"')) throw new Error('Admin-only management invariant missing');
+if (!finalManagementAuth.includes('return "admin";')) throw new Error('admin/admin invariant missing');
 const finalDriverAuth = fs.readFileSync(path.join(target, 'src', 'lib', 'klebersom-access.server.ts'), 'utf8');
-if (finalDriverAuth.includes('managementSession')) {
-  throw new Error('Driver auth must never fall back to a management session');
-}
+if (finalDriverAuth.includes('managementSession')) throw new Error('Driver auth must never fall back to a management session');
 console.log('[render] security invariant OK: admin/admin only for Gerência, driver_id isolated sessions');
 
 const configCandidates = ['vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs','nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs'];
