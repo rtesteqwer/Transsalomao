@@ -13,7 +13,7 @@ async function readKlebersomFleetState(sql: Awaited<ReturnType<typeof getSql>>):
   }
 
   const driverId = str(driver.id);
-  const [trips, reports, fuelings, allFleets] = await Promise.all([
+  const [trips, reports, directFuelings, allFuelings, allFleets] = await Promise.all([
     sql<Record<string, unknown>>`
       select * from trips
       where driver_id = ${driverId}
@@ -29,17 +29,41 @@ async function readKlebersomFleetState(sql: Awaited<ReturnType<typeof getSql>>):
       where driver_id = ${driverId}
       order by date desc, created_at desc
     `,
+    sql<Record<string, unknown>>`select * from fuelings order by date desc, created_at desc`,
     sql<Record<string, unknown>>`select * from fleets order by name`,
   ]);
 
   const fleetIds = new Set<string>();
-  for (const row of trips) if (str(row.fleet_id)) fleetIds.add(str(row.fleet_id));
-  for (const row of reports) if (str(row.fleet_id)) fleetIds.add(str(row.fleet_id));
-  for (const row of fuelings) if (str(row.fleet_id)) fleetIds.add(str(row.fleet_id));
+  for (const row of trips) {
+    const id = str(row.fleet_id);
+    if (id) fleetIds.add(id);
+  }
+  for (const row of reports) {
+    const id = str(row.fleet_id);
+    if (id) fleetIds.add(id);
+  }
+  for (const row of directFuelings) {
+    const id = str(row.fleet_id);
+    if (id) fleetIds.add(id);
+  }
 
-  const fleets = allFleets.filter((row) =>
-    fleetIds.has(str(row.id)) || lower(str(row.name)) === 'volvo klebersom',
-  );
+  // Inclui também abastecimentos do(s) conjunto(s) do Klebersom que tenham sido
+  // lançados sem driver_id, para espelhar tudo que pertence à operação dele.
+  const fuelings = allFuelings.filter((row) => {
+    const rowDriverId = str(row.driver_id);
+    const rowFleetId = str(row.fleet_id);
+    return rowDriverId === driverId || (!rowDriverId && fleetIds.has(rowFleetId));
+  });
+  for (const row of fuelings) {
+    const id = str(row.fleet_id);
+    if (id) fleetIds.add(id);
+  }
+
+  const fleets = allFleets.filter((row) => {
+    const rowId = str(row.id);
+    const rowName = str(row.name).trim().toLocaleLowerCase("pt-BR");
+    return fleetIds.has(rowId) || rowName === 'volvo klebersom';
+  });
 
   return {
     drivers: [mapDriver(driver)],
@@ -53,7 +77,10 @@ async function readKlebersomFleetState(sql: Awaited<ReturnType<typeof getSql>>):
 export const getKlebersomFleetState = createServerFn({ method: "GET" }).handler(
   async (): Promise<FleetState> => {
     const { assertPartnerOrAdminSession } = await import("@/lib/management-auth.server");
-    assertPartnerOrAdminSession();
+    const session = assertPartnerOrAdminSession();
+    if (session.role !== "partner" && session.role !== "admin") {
+      throw new Error("Usuário sem permissão para acessar os dados do Klebersom.");
+    }
     const sql = await getSql();
     return readKlebersomFleetState(sql);
   },
