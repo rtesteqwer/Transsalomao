@@ -78,7 +78,7 @@ if (process.env.TRANS_KLEBERSOM_PATCH === '1') {
   const required = [
     ['src/lib/api.ts', 'drv_d0d50a32b1'],
     ['src/lib/api.ts', 'klebersom dutra da silva'],
-    ['src/lib/api.ts', 'where driver_id = ${driverId}'],
+    ['src/lib/api.ts', 'where driver_id = '],
     ['src/lib/management-auth.server.ts', 'klebersomDutra'],
     ['src/lib/management-auth.server.ts', 'assertAdminSession'],
     ['src/lib/management-auth.ts', 'role: session.role'],
