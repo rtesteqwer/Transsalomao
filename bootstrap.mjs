@@ -54,6 +54,10 @@ fs.writeFileSync(patchFile, patch);
 console.log('[bootstrap] applying incremental 2026-09-13 patch over current production source');
 execFileSync('git', ['apply', '--reject', '--whitespace=nowarn', patchFile], { cwd: work, stdio: 'inherit' });
 
+const finalPatchFile = path.join(deploy, 'final-patch-20260913', 'final.patch');
+console.log('[bootstrap] applying final icon links and short-ticket sequence patch');
+execFileSync('git', ['apply', '--whitespace=nowarn', finalPatchFile], { cwd: work, stdio: 'inherit' });
+
 console.log('[bootstrap] current source merged with 2026-09-13 update');
 execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });
 execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });
