@@ -34,7 +34,11 @@ layer(['reform-fix2-20260911/part-00.txt','reform-fix2-20260911/part-01.txt','re
 
 layer(['reform-final2-20260911/part-00.txt','reform-final2-20260911/part-01.txt','reform-final2-20260911/part-02.txt','reform-final2-20260911/part-03.txt'], 'af9d4bc77acbc9618017c6370a4875c30f5b30638be935c9960cc85c2930d0af', '2c6d85831cfd378c249f007ca20c5aba255fe004d0bf4d10a0e9b6bf2b09fb36', 21968, 'final2');
 
-console.log('[bootstrap] exact source reconstructed');
+layer([
+  'update-20260913/part-00.txt','update-20260913/part-01.txt','update-20260913/part-02.txt','update-20260913/part-03.txt','update-20260913/part-04.txt','update-20260913/part-05.txt'
+], 'f5d879ae93a307e6d1268e3dd8c129402ba407998f72e58a8ddf4702600b564b', '878fbeb480886d101aabf8b66ab950db5ad1b3888c78d8ee4b6f4867c0b14161', 30976, 'update-20260913');
+
+console.log('[bootstrap] exact source reconstructed with 2026-09-13 update');
 execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });
 execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });
 const from = path.join(work, '.vercel', 'output');
