@@ -27,14 +27,12 @@ process.env.npm_config_include = 'dev';
 
 await import('./bootstrap.mjs');
 
-// Remove the last legacy LCT generator that remained in submitReport. When a
-// ticket is omitted, use one shared numeric sequence across trips and reports.
 const apiPath = path.join(target, 'src', 'lib', 'api.ts');
 if (fs.existsSync(apiPath)) {
   const before = fs.readFileSync(apiPath, 'utf8');
   const legacyLine = '    const autoTicket = `LCT-${new Date().toISOString().replace(/\\D/g, "").slice(2, 14)}-${id.slice(-4).toUpperCase()}`;';
   const numericGenerator = [
-    '    const nextTicketRows = await sql<{ next_ticket: number }>`',
+    '    const nextTicketRows = await sql`',
     '      select coalesce(max(ticket_no), 0) + 1 as next_ticket',
     '      from (',
     "        select code::int as ticket_no from trips where code ~ '^[0-9]+$'",
@@ -42,19 +40,16 @@ if (fs.existsSync(apiPath)) {
     "        select ticket::int as ticket_no from reports where ticket ~ '^[0-9]+$' and status <> 'recusado'",
     '      ) sequence_numbers',
     '    `;',
-    '    const autoTicket = String(nextTicketRows[0]?.next_ticket ?? 1);',
+    '    const autoTicket = String(Number(nextTicketRows[0]?.next_ticket ?? 1));',
   ].join('\n');
   const after = before.replace(legacyLine, numericGenerator);
-  if (after === before && before.includes('LCT-')) {
-    throw new Error('Legacy LCT ticket generator still present and could not be patched safely');
-  }
+  if (after === before && before.includes('LCT-')) throw new Error('Legacy LCT ticket generator still present and could not be patched safely');
   if (after !== before) {
     fs.writeFileSync(apiPath, after);
     console.log('[render] legacy LCT ticket generator replaced by shared numeric sequence');
   }
 }
 
-// Safety check: no executable source may still generate LCT/VG ticket codes.
 function assertNoLegacyTicketGenerators(dir) {
   if (!fs.existsSync(dir)) return;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -65,24 +60,17 @@ function assertNoLegacyTicketGenerators(dir) {
     }
     if (!/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) continue;
     const text = fs.readFileSync(full, 'utf8');
-    if (text.includes('LCT-') || text.includes('VG-')) {
-      throw new Error(`Legacy ticket generator still present in ${path.relative(target, full)}`);
-    }
+    if (text.includes('LCT-') || text.includes('VG-')) throw new Error(`Legacy ticket generator still present in ${path.relative(target, full)}`);
   }
 }
 assertNoLegacyTicketGenerators(path.join(target, 'src'));
 
-const configCandidates = [
-  'vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs',
-  'nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs',
-];
+const configCandidates = ['vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs','nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs'];
 for (const rel of configCandidates) {
   const file = path.join(target, rel);
   if (!fs.existsSync(file)) continue;
   const before = fs.readFileSync(file, 'utf8');
-  const after = before
-    .replace(/preset\s*:\s*(['"`])vercel\1/g, 'preset: "node-server"')
-    .replace(/preset\s*:\s*(['"`])vercel-edge\1/g, 'preset: "node-server"');
+  const after = before.replace(/preset\s*:\s*(['"`])vercel\1/g, 'preset: "node-server"').replace(/preset\s*:\s*(['"`])vercel-edge\1/g, 'preset: "node-server"');
   if (after !== before) {
     fs.writeFileSync(file, after);
     console.log(`[render] patched ${rel}: Nitro preset -> node-server`);
