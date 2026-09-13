@@ -63,6 +63,27 @@ function assertNoLegacyTicketGenerators(dir) {
 }
 assertNoLegacyTicketGenerators(path.join(target, 'src'));
 
+// Diagnostic only: identify every place that can round/format weights or freight values.
+function logRoundingCandidates(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      logRoundingCandidates(full);
+      continue;
+    }
+    if (!/\.(?:ts|tsx)$/.test(entry.name)) continue;
+    const text = fs.readFileSync(full, 'utf8');
+    const lines = text.split(/\r?\n/);
+    lines.forEach((line, index) => {
+      if (/(toFixed\s*\(|Math\.round|maximumFractionDigits|minimumFractionDigits|formatNumber|formatWeight|formatTon|loadedTons|netWeight|net_weight|loaded_tons)/i.test(line)) {
+        console.log(`[rounding-diagnostic] ${path.relative(target, full)}:${index + 1}: ${line.trim()}`);
+      }
+    });
+  }
+}
+logRoundingCandidates(path.join(target, 'src'));
+
 const configCandidates = ['vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs','nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs'];
 for (const rel of configCandidates) {
   const file = path.join(target, rel);
