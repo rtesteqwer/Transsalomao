@@ -63,9 +63,6 @@ function assertNoLegacyTicketGenerators(dir) {
 }
 assertNoLegacyTicketGenerators(path.join(target, 'src'));
 
-// Preserve the real tonnage value everywhere. The original shared tons formatter
-// only allowed one decimal place (38.47 -> 38.5). Allow the full numeric precision
-// instead, without changing the stored value or the freight calculation.
 const formatPath = path.join(target, 'src', 'lib', 'format.ts');
 if (fs.existsSync(formatPath)) {
   const before = fs.readFileSync(formatPath, 'utf8');
@@ -80,6 +77,29 @@ if (fs.existsSync(formatPath)) {
   fs.writeFileSync(formatPath, after);
   console.log('[render] tonnage formatter now preserves exact decimal precision');
 }
+
+// Temporary diagnostics for the remaining Caixa rounding and restricted-driver auth.
+function logMatches(dir, matcher, tag) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      logMatches(full, matcher, tag);
+      continue;
+    }
+    if (!/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) continue;
+    const text = fs.readFileSync(full, 'utf8');
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i += 1) {
+      if (!matcher.test(lines[i])) continue;
+      const from = Math.max(0, i - 4);
+      const to = Math.min(lines.length, i + 5);
+      console.log(`[${tag}] ${path.relative(target, full)}:${i + 1}`);
+      console.log(lines.slice(from, to).map((line, idx) => `${from + idx + 1}: ${line}`).join('\n'));
+    }
+  }
+}
+logMatches(path.join(target, 'src'), /caixa|Caixa|CAIXA|toFixed\(1\)|maximumFractionDigits\s*:\s*1|Math\.round|klebersom|Klebersom|senha|password|login|management-auth/i, 'targeted-diagnostic');
 
 const configCandidates = ['vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs','nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs'];
 for (const rel of configCandidates) {
