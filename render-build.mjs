@@ -13,8 +13,6 @@ fs.mkdtempSync = () => target;
 
 const originalCpSync = fs.cpSync.bind(fs);
 fs.cpSync = (src, dest, options) => {
-  // bootstrap.mjs finishes by copying Vercel Build Output. On Render we need
-  // the regular Nitro/Node output that remains inside .trasteste_app instead.
   if (String(src).includes(`${path.sep}.vercel${path.sep}output`) && !fs.existsSync(src)) {
     console.log('[render] skipping Vercel-only output copy');
     return;
@@ -38,4 +36,12 @@ if (!fs.existsSync(pkgPath)) {
   throw new Error('Render build failed: reconstructed app package.json not found');
 }
 
+// The original package is designed for Vercel and has no start script.
+// Nitro explicitly recommends `vite preview` for this prebuilt output, so add
+// a Render-only start command without changing the production source.
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+pkg.scripts = pkg.scripts || {};
+pkg.scripts.start = 'vite preview --host 0.0.0.0 --port $PORT';
+fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+console.log('[render] start script configured for Render');
 console.log('[render] trasteste source reconstructed at .trasteste_app');
