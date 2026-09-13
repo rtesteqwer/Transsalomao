@@ -32,6 +32,31 @@ process.env.npm_config_include = 'dev';
 
 await import('./bootstrap.mjs');
 
+// Temporary diagnostic: list every remaining legacy ticket generator after the
+// production bootstrap patches have been applied. This lets us remove the UI
+// fallback without guessing or touching the production branch.
+const sourceRoot = path.join(target, 'src');
+function scanLegacyTicketCodes(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      scanLegacyTicketCodes(full);
+      continue;
+    }
+    if (!/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) continue;
+    const text = fs.readFileSync(full, 'utf8');
+    if (!text.includes('LCT-') && !text.includes('VG-')) continue;
+    const rel = path.relative(target, full);
+    text.split(/\r?\n/).forEach((line, index) => {
+      if (line.includes('LCT-') || line.includes('VG-')) {
+        console.log(`[ticket-diagnostic] ${rel}:${index + 1}: ${line.trim()}`);
+      }
+    });
+  }
+}
+scanLegacyTicketCodes(sourceRoot);
+
 // The reconstructed source was originally prepared for Vercel. Force every
 // explicit Nitro preset in local config files to a native Node server for Render.
 const configCandidates = [
