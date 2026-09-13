@@ -1,26 +1,54 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Client } from "pg";
 import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
-import { managementSession } from "@/lib/management-auth.server";
 
-const COOKIE_NAME = "transsalomao_klebersom";
+const COOKIE_NAME = "transsalomao_motorista";
+const LEGACY_COOKIE_NAME = "transsalomao_klebersom";
 const SESSION_SECONDS = 60 * 60 * 12;
 
-function configuredLogin() {
-  return process.env.KLEBERSOM_ACCESS_LOGIN?.trim() || process.env.KLEBERSOM_LOGIN?.trim() || "KlebersomDutra";
+type DriverAccount = {
+  username: string;
+  password: string;
+  driverId: string;
+};
+
+function driverAccounts(): DriverAccount[] {
+  const accounts: DriverAccount[] = [];
+  const raw = process.env.DRIVER_ACCOUNTS_JSON?.trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const username = String(item?.username ?? "").trim();
+          const password = String(item?.password ?? "");
+          const driverId = String(item?.driverId ?? "").trim();
+          if (username && password && driverId) accounts.push({ username, password, driverId });
+        }
+      }
+    } catch {
+      throw new Error("DRIVER_ACCOUNTS_JSON inválido.");
+    }
+  }
+
+  const legacyUsername = (process.env.KLEBERSOM_LOGIN ?? process.env.KLEBERSOM_ACCESS_LOGIN ?? "").trim();
+  const legacyPassword = process.env.KLEBERSOM_PASSWORD ?? process.env.KLEBERSOM_ACCESS_PASSWORD ?? "";
+  const legacyDriverId = process.env.KLEBERSOM_DRIVER_ID?.trim() ?? "";
+  if (legacyUsername && legacyPassword && legacyDriverId) {
+    const already = accounts.some((account) => account.username.toLowerCase() === legacyUsername.toLowerCase());
+    if (!already) accounts.push({ username: legacyUsername, password: legacyPassword, driverId: legacyDriverId });
+  }
+  return accounts;
 }
 
-function configuredPassword() {
-  return process.env.KLEBERSOM_ACCESS_PASSWORD || process.env.KLEBERSOM_PASSWORD || "";
-}
-
-function configuredDriverId() {
-  return process.env.KLEBERSOM_DRIVER_ID?.trim() || "";
+function accountByUsername(username: string) {
+  const normalized = username.trim().toLowerCase();
+  return driverAccounts().find((account) => account.username.toLowerCase() === normalized) ?? null;
 }
 
 function sessionSecret() {
-  const value = process.env.KLEBERSOM_SESSION_SECRET?.trim();
-  if (!value) throw new Error("KLEBERSOM_SESSION_SECRET não configurado.");
+  const value = process.env.DRIVER_SESSION_SECRET?.trim() || process.env.KLEBERSOM_SESSION_SECRET?.trim();
+  if (!value) throw new Error("Segredo de sessão dos motoristas não configurado.");
   return value;
 }
 
@@ -41,54 +69,48 @@ function parseToken(token: string | undefined) {
   const [username, driverId, expiresRaw, supplied] = parts;
   const expiresAt = Number(expiresRaw);
   if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) return null;
-  if (username !== configuredLogin() || driverId !== configuredDriverId()) return null;
+
+  const account = accountByUsername(username);
+  if (!account || account.driverId !== driverId) return null;
+
   const payload = `${username}|${driverId}|${expiresAt}`;
   const expected = signature(payload);
   const a = Buffer.from(supplied);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return { username, driverId, expiresAt };
+  return { username: account.username, driverId, expiresAt };
 }
 
 export function klebersomSession() {
   return parseToken(getCookie(COOKIE_NAME));
 }
 
+// Kept under the previous exported name so the existing route/client API stays compatible.
+// Critically, this NEVER falls back to a Gerência/admin cookie.
 export function klebersomAuthorizedSession() {
-  const own = klebersomSession();
-  if (own) return own;
-
-  const management = managementSession();
-  const driverId = configuredDriverId();
-  if (management?.username === configuredLogin() && driverId) {
-    return {
-      username: management.username,
-      driverId,
-      expiresAt: management.expiresAt,
-    };
-  }
-  return null;
+  return klebersomSession();
 }
 
 export function loginKlebersom(username: string, password: string) {
-  if (!configuredLogin() || !configuredPassword() || !configuredDriverId()) {
-    return { ok: false as const, message: "Acesso do motorista não configurado." };
-  }
-  if (username !== configuredLogin() || password !== configuredPassword()) {
+  const account = accountByUsername(username);
+  if (!account || password !== account.password) {
     return { ok: false as const, message: "Login ou senha inválidos." };
   }
-  setCookie(COOKIE_NAME, makeToken(username, configuredDriverId()), {
+
+  deleteCookie(LEGACY_COOKIE_NAME, { path: "/" });
+  setCookie(COOKIE_NAME, makeToken(account.username, account.driverId), {
     path: "/",
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     maxAge: SESSION_SECONDS,
   });
-  return { ok: true as const };
+  return { ok: true as const, role: "driver" as const, username: account.username, driverId: account.driverId };
 }
 
 export function logoutKlebersom() {
   deleteCookie(COOKIE_NAME, { path: "/" });
+  deleteCookie(LEGACY_COOKIE_NAME, { path: "/" });
   return { ok: true as const };
 }
 
@@ -104,7 +126,7 @@ function dateValue(value: unknown) {
 
 export async function getKlebersomDashboardData() {
   const session = klebersomAuthorizedSession();
-  if (!session) throw new Error("Sessão expirada. Faça login novamente pelo Painel da Gerência.");
+  if (!session) throw new Error("Sessão de motorista expirada. Faça login novamente pelo Painel da Gerência.");
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DATABASE_URL não configurado.");
@@ -112,15 +134,17 @@ export async function getKlebersomDashboardData() {
   const client = new Client({ connectionString });
   await client.connect();
   try {
-    const [driverResult, tripsResult, expensesResult, fuelingsResult] = await Promise.all([
+    const [driverResult, tripsResult, expensesResult, fuelingsResult, reportsResult] = await Promise.all([
       client.query(
         `select id, name, commission_pct, status from drivers where id = $1 limit 1`,
         [session.driverId],
       ),
       client.query(
-        `select t.id, t.code, t.date, t.net_weight, t.price_per_ton, t.price_per_trip,
-                t.freight_mode, t.fleet_id, f.name as fleet_name,
-                f.tractor_plate, f.trailer_plate
+        `select t.id, t.code, t.date, t.client, t.origin, t.destination,
+                t.loaded_tons, t.gross_weight, t.net_weight, t.price_per_ton, t.price_per_trip,
+                t.freight_mode, t.trip_billing_type, t.km_start, t.km_end,
+                t.diesel_liters, t.diesel_price, t.fleet_id,
+                f.name as fleet_name, f.tractor_plate, f.trailer_plate
            from trips t
            left join fleets f on f.id = t.fleet_id
           where t.driver_id = $1
@@ -128,17 +152,35 @@ export async function getKlebersomDashboardData() {
         [session.driverId],
       ),
       client.query(
-        `select id, date, fleet_id, asset_type, category, description, amount, notes
-           from expenses
-          where driver_id = $1
-          order by date desc, created_at desc`,
+        `select e.id, e.date, e.fleet_id, e.asset_type, e.category, e.description, e.amount, e.notes,
+                f.name as fleet_name, f.tractor_plate, f.trailer_plate
+           from expenses e
+           left join fleets f on f.id = e.fleet_id
+          where e.driver_id = $1
+          order by e.date desc, e.created_at desc`,
         [session.driverId],
       ),
       client.query(
-        `select id, date, fleet_id, station, km, liters, price_per_liter, notes
-           from fuelings
-          where driver_id = $1
-          order by date desc, created_at desc`,
+        `select fu.id, fu.date, fu.fleet_id, fu.station, fu.km, fu.liters, fu.price_per_liter, fu.notes,
+                f.name as fleet_name, f.tractor_plate, f.trailer_plate
+           from fuelings fu
+           left join fleets f on f.id = fu.fleet_id
+          where fu.driver_id = $1
+          order by fu.date desc, fu.created_at desc`,
+        [session.driverId],
+      ),
+      client.query(
+        `select r.id, r.ticket, r.trip_id, r.fleet_id, r.km, r.tons, r.status,
+                r.created_at, r.loading_date, r.loading_time, r.quantity,
+                r.freight_mode, r.trip_billing_type,
+                t.date as trip_date, t.net_weight, t.price_per_ton, t.price_per_trip,
+                f.name as fleet_name, f.tractor_plate, f.trailer_plate
+           from reports r
+           left join trips t on t.id = r.trip_id and t.driver_id = $1
+           left join fleets f on f.id = r.fleet_id
+          where r.driver_id = $1
+          order by coalesce(r.loading_date, t.date, r.created_at::date) desc,
+                   case when r.ticket ~ '^[0-9]+$' then r.ticket::int else 0 end desc`,
         [session.driverId],
       ),
     ]);
@@ -148,22 +190,42 @@ export async function getKlebersomDashboardData() {
 
     const commissionPct = numberValue(driverRow.commission_pct);
     const trips = tripsResult.rows.map((row) => {
+      const loadedTons = numberValue(row.loaded_tons);
+      const grossWeight = numberValue(row.gross_weight);
       const netWeight = numberValue(row.net_weight);
       const pricePerTon = numberValue(row.price_per_ton);
       const pricePerTrip = numberValue(row.price_per_trip);
       const freightMode = String(row.freight_mode ?? "ton");
       const freight = freightMode === "ton" ? netWeight * pricePerTon : pricePerTrip;
       const commission = freight * commissionPct;
+      const kmStart = numberValue(row.km_start);
+      const kmEnd = numberValue(row.km_end);
+      const kmRun = kmEnd >= kmStart ? kmEnd - kmStart : 0;
+      const dieselLiters = numberValue(row.diesel_liters);
+      const dieselPrice = numberValue(row.diesel_price);
       return {
         id: String(row.id),
         code: String(row.code),
         date: dateValue(row.date),
+        client: String(row.client ?? ""),
+        origin: String(row.origin ?? ""),
+        destination: String(row.destination ?? ""),
+        loadedTons,
+        grossWeight,
         netWeight,
         pricePerTon,
         pricePerTrip,
         freightMode,
+        tripBillingType: String(row.trip_billing_type ?? ""),
         freight,
         commission,
+        afterCommission: freight - commission,
+        kmStart,
+        kmEnd,
+        kmRun,
+        dieselLiters,
+        dieselPrice,
+        dieselCost: dieselLiters * dieselPrice,
         fleetId: String(row.fleet_id ?? ""),
         fleetName: String(row.fleet_name ?? ""),
         tractorPlate: String(row.tractor_plate ?? ""),
@@ -175,6 +237,9 @@ export async function getKlebersomDashboardData() {
       id: String(row.id),
       date: dateValue(row.date),
       fleetId: String(row.fleet_id ?? ""),
+      fleetName: String(row.fleet_name ?? ""),
+      tractorPlate: String(row.tractor_plate ?? ""),
+      trailerPlate: String(row.trailer_plate ?? ""),
       assetType: String(row.asset_type ?? ""),
       category: String(row.category ?? ""),
       description: String(row.description ?? ""),
@@ -189,12 +254,44 @@ export async function getKlebersomDashboardData() {
         id: String(row.id),
         date: dateValue(row.date),
         fleetId: String(row.fleet_id ?? ""),
+        fleetName: String(row.fleet_name ?? ""),
+        tractorPlate: String(row.tractor_plate ?? ""),
+        trailerPlate: String(row.trailer_plate ?? ""),
         station: String(row.station ?? ""),
         km: numberValue(row.km),
         liters,
         pricePerLiter,
         amount: liters * pricePerLiter,
         notes: String(row.notes ?? ""),
+      };
+    });
+
+    const reports = reportsResult.rows.map((row) => {
+      const tons = numberValue(row.tons);
+      const netWeight = numberValue(row.net_weight);
+      const pricePerTon = numberValue(row.price_per_ton);
+      const pricePerTrip = numberValue(row.price_per_trip);
+      const freightMode = String(row.freight_mode ?? "ton");
+      const freight = row.trip_id
+        ? (freightMode === "ton" ? netWeight * pricePerTon : pricePerTrip)
+        : 0;
+      return {
+        id: String(row.id),
+        ticket: String(row.ticket ?? ""),
+        tripId: String(row.trip_id ?? ""),
+        date: dateValue(row.loading_date ?? row.trip_date ?? row.created_at),
+        km: numberValue(row.km),
+        tons,
+        status: String(row.status ?? ""),
+        quantity: Number(row.quantity ?? 0),
+        freightMode,
+        tripBillingType: String(row.trip_billing_type ?? ""),
+        freight,
+        commission: freight * commissionPct,
+        fleetId: String(row.fleet_id ?? ""),
+        fleetName: String(row.fleet_name ?? ""),
+        tractorPlate: String(row.tractor_plate ?? ""),
+        trailerPlate: String(row.trailer_plate ?? ""),
       };
     });
 
@@ -205,6 +302,7 @@ export async function getKlebersomDashboardData() {
     const totalExpenses = explicitExpenses + fuelExpenses;
     const result = billing - commission - totalExpenses;
     const totalTons = trips.reduce((total, trip) => total + trip.netWeight, 0);
+    const totalKm = trips.reduce((total, trip) => total + trip.kmRun, 0);
 
     return {
       username: session.username,
@@ -222,11 +320,14 @@ export async function getKlebersomDashboardData() {
         totalExpenses,
         result,
         totalTons,
+        totalKm,
         trips: trips.length,
+        reports: reports.length,
       },
       trips,
       expenses,
       fuelings,
+      reports,
     };
   } finally {
     await client.end();
