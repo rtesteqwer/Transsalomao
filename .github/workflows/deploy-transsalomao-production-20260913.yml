@@ -1,0 +1,57 @@
+name: Deploy Trans Salomao Production 20260913
+
+on:
+  push:
+    paths:
+      - 'deploy/deploy-production-20260913.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify 2026-09-13 update layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat deploy/update-20260913/part-00.txt deploy/update-20260913/part-01.txt deploy/update-20260913/part-02.txt deploy/update-20260913/part-03.txt deploy/update-20260913/part-04.txt deploy/update-20260913/part-05.txt > /tmp/update.b64
+          test "$(wc -c < /tmp/update.b64)" -eq 41304
+          printf '%s  %s\n' 'f5d879ae93a307e6d1268e3dd8c129402ba407998f72e58a8ddf4702600b564b' '/tmp/update.b64' | sha256sum -c -
+          base64 -d /tmp/update.b64 > /tmp/update.tar.xz
+          test "$(wc -c < /tmp/update.tar.xz)" -eq 30976
+          printf '%s  %s\n' '878fbeb480886d101aabf8b66ab950db5ad1b3888c78d8ee4b6f4867c0b14161' '/tmp/update.tar.xz' | sha256sum -c -
+          xz -t /tmp/update.tar.xz
+          echo 'UPDATE_20260913_HASH_OK'
+
+      - name: Link Trans Salomao production project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+
+      - name: Deploy production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="$(npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
+          echo "DEPLOYMENT_URL=$URL" >> "$GITHUB_ENV"
+          echo "Published: $URL"
+
+      - name: Verify production URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-delay 3 --max-time 30 "$DEPLOYMENT_URL" >/dev/null
+          echo "PRODUCTION_HTTP_OK"
