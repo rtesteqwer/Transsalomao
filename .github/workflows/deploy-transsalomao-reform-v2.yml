@@ -90,6 +90,13 @@ jobs:
           npx tsc --noEmit --checkJs false
           npm run build:dev
 
+      - name: Export PDF source for layout maintenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: transsalomao-pdf-source
+          path: app/src/lib/pdf.ts
+          retention-days: 1
+
       - name: Link production project
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
