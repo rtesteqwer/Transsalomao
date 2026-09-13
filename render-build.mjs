@@ -85,20 +85,34 @@ if (fs.existsSync(caixaPath)) {
   console.log(`[render] Caixa exact tonnage enabled in ${replacements} display(s)`);
 }
 
-// The same Gerência login form accepts admin and driver credentials. The server-side
-// auth override decides the role. Drivers are redirected before any admin query can run.
+// The same Gerência login form accepts admin and driver credentials. Insert the
+// driver redirect at the stable success-notification point; authorization itself is
+// enforced server-side by the admin-only management override below.
 const managementRoutePath = path.join(target, 'src', 'routes', 'dono', 'route.tsx');
 if (fs.existsSync(managementRoutePath)) {
   let route = fs.readFileSync(managementRoutePath, 'utf8');
-  const invalidateNeedle = 'await qc.invalidateQueries({ queryKey: sessionKey });';
-  if (!route.includes(invalidateNeedle)) throw new Error('Management login success hook not found');
-  route = route.replace(invalidateNeedle, [
-    'if (result.role === "driver") {',
-    '                    window.location.assign("/klebersom");',
-    '                    return;',
-    '                  }',
-    '                  await qc.invalidateQueries({ queryKey: sessionKey });',
-  ].join('\n'));
+  if (!route.includes('window.location.assign("/klebersom")')) {
+    const successNeedle = 'toast.success("Acesso liberado para a Gerência.");';
+    if (route.includes(successNeedle)) {
+      route = route.replace(successNeedle, [
+        'if (result.role === "driver") {',
+        '                    window.location.assign("/klebersom");',
+        '                    return;',
+        '                  }',
+        '                  toast.success("Acesso liberado para a Gerência.");',
+      ].join('\n'));
+    } else {
+      const genericSuccess = /toast\.success\([^;]+\);/;
+      if (!genericSuccess.test(route)) throw new Error('Management success notification hook not found');
+      route = route.replace(genericSuccess, (match) => [
+        'if (result.role === "driver") {',
+        '                    window.location.assign("/klebersom");',
+        '                    return;',
+        '                  }',
+        `                  ${match}`,
+      ].join('\n'));
+    }
+  }
   fs.writeFileSync(managementRoutePath, route);
   console.log('[render] Gerência login is role-aware: drivers redirect to isolated dashboard');
 }
