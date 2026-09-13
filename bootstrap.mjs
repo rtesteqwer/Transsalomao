@@ -25,8 +25,7 @@ function replaceFile(rel, fn) {
   const p = path.join(work, rel);
   if (!fs.existsSync(p)) return;
   const before = fs.readFileSync(p, 'utf8');
-  const after = fn(before);
-  fs.writeFileSync(p, after);
+  fs.writeFileSync(p, fn(before));
 }
 
 layer([
@@ -38,27 +37,37 @@ layer(['reform-final2-20260911/part-00.txt','reform-final2-20260911/part-01.txt'
 
 const patchB64 = read('update-patch-20260913/update.patch.xz.b64');
 if (patchB64.length !== 19208 || sha(patchB64) !== '916a9e465494455256ab8fac76acc76c8b34140325f3815103c16bf4c37133f6') throw new Error('update patch integrity mismatch');
-const patchXz = Buffer.from(patchB64, 'base64');
 const patchArchive = path.join(os.tmpdir(), `update-patch-${Date.now()}.xz`);
-fs.writeFileSync(patchArchive, patchXz);
+fs.writeFileSync(patchArchive, Buffer.from(patchB64, 'base64'));
 const patch = execFileSync('xz', ['-dc', patchArchive]);
 const patchFile = path.join(os.tmpdir(), `update-patch-${Date.now()}.patch`);
 fs.writeFileSync(patchFile, patch);
-console.log('[bootstrap] applying 2026-09-13 update; already-applied/conflicting hunks are preserved from the newer source');
-try {
-  execFileSync('git', ['apply', '--reject', '--whitespace=nowarn', patchFile], { cwd: work, stdio: 'inherit' });
-} catch {
-  console.log('[bootstrap] patch had rejected hunks; continuing with successfully applied/newer source hunks');
-}
+console.log('[bootstrap] applying 2026-09-13 update; rejected hunks are treated as already-newer/conflicting source');
+try { execFileSync('git', ['apply', '--reject', '--whitespace=nowarn', patchFile], { cwd: work, stdio: 'inherit' }); }
+catch { console.log('[bootstrap] continuing after rejected hunks'); }
 
-// Enforce current production rules without touching the already-corrected 1..79 database records.
 replaceFile('src/lib/calc.ts', (s) => s
   .replace(/return `VG-\$\{String\(max \+ 1\)\.padStart\(4, "0"\)\}`;/g, 'return String(max + 1);')
   .replace(/return `LCT-[^;]+;/g, 'return String(max + 1);'));
-replaceFile('src/routes/index.tsx', (s) => s
-  .replace('to: "/dono/viagens",\n    label: "Registrar viagens"', 'to: "/motorista",\n    label: "Registrar viagens"')
-  .replace('label: "Cadastros e equipe",\n    line1: "CADASTROS",\n    line2: "E EQUIPE"', 'label: "Nossa equipe",\n    line1: "NOSSA",\n    line2: "EQUIPE"'));
 fs.writeFileSync(path.join(work, 'migrations', '0005_renumber_tickets.sql'), '-- Tickets 1..79 já foram corrigidos no banco de produção e preservados em auditoria.\n-- Não renumerar novamente no deploy.\nSELECT 1;\n');
+
+// Optional release overlay supplied by the deployment wrapper: exact home UI/styles and background asset.
+const overlay = process.env.TRANS_OVERLAY_DIR;
+if (overlay && fs.existsSync(overlay)) {
+  const copies = [
+    ['index.tsx', 'src/routes/index.tsx'],
+    ['styles.css', 'src/styles.css'],
+    ['trans-salomao-background.webp', 'public/trans-salomao-background.webp'],
+  ];
+  for (const [src, dest] of copies) {
+    const from = path.join(overlay, src);
+    if (!fs.existsSync(from)) continue;
+    const to = path.join(work, dest);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+    console.log(`[bootstrap] overlay ${dest}`);
+  }
+}
 
 console.log('[bootstrap] installing and building final source');
 execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });
