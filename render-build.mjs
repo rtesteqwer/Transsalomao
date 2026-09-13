@@ -27,7 +27,7 @@ process.env.npm_config_include = 'dev';
 
 await import('./bootstrap.mjs');
 
-// Keep ticket numbering strictly numeric and shared between trips/reports.
+// Tickets strictly numeric.
 const apiPath = path.join(target, 'src', 'lib', 'api.ts');
 if (fs.existsSync(apiPath)) {
   const before = fs.readFileSync(apiPath, 'utf8');
@@ -61,22 +61,20 @@ function assertNoLegacyTicketGenerators(dir) {
 }
 assertNoLegacyTicketGenerators(path.join(target, 'src'));
 
-// Site-wide display rule: every weight/tonnage uses exactly two decimal places.
-// The original numeric value remains untouched for storage and freight calculations.
+// Every displayed weight uses exactly two decimals. Stored/calculated values stay exact.
 const formatPath = path.join(target, 'src', 'lib', 'format.ts');
 if (fs.existsSync(formatPath)) {
   const before = fs.readFileSync(formatPath, 'utf8');
-  let after = before
+  const after = before
     .replace(/minimumFractionDigits\s*:\s*1\s*,\s*\n\s*maximumFractionDigits\s*:\s*1\s*,/m, 'minimumFractionDigits: 2,\n  maximumFractionDigits: 2,')
     .replace(/minimumFractionDigits\s*:\s*0\s*,\s*\n\s*maximumFractionDigits\s*:\s*20\s*,/m, 'minimumFractionDigits: 2,\n  maximumFractionDigits: 2,');
   if (after === before && !/minimumFractionDigits\s*:\s*2[\s\S]{0,80}maximumFractionDigits\s*:\s*2/.test(before)) {
     throw new Error('Tonnage formatter precision block not found');
   }
   fs.writeFileSync(formatPath, after);
-  console.log('[render] site-wide weight formatter fixed at exactly 2 decimal places');
+  console.log('[render] site-wide weights fixed at exactly 2 decimals');
 }
 
-// Caixa has its own tonnage formatter, so enforce exactly two decimals there too.
 const caixaPath = path.join(target, 'src', 'routes', 'dono', 'lancamentos.tsx');
 if (fs.existsSync(caixaPath)) {
   const before = fs.readFileSync(caixaPath, 'utf8');
@@ -89,25 +87,27 @@ if (fs.existsSync(caixaPath)) {
     throw new Error('Caixa tonnage display pattern not found');
   }
   fs.writeFileSync(caixaPath, after);
-  console.log(`[render] Caixa weight formatter fixed at 2 decimals in ${replacements} display(s)`);
 }
 
-// Admin Relatórios: remove CSV from the UI and export a colored Excel-compatible
-// spreadsheet with exactly one row per freight. PDF remains available separately.
+// Real XLSX writer for mobile Excel compatibility.
+execSync('npm install xlsx-js-style@1.2.0 --no-save --ignore-scripts --no-audit --no-fund', {
+  cwd: target,
+  stdio: 'inherit',
+  env: process.env,
+});
+
+// Admin Relatórios: PDF + genuine XLSX only.
 const totalsPath = path.join(target, 'src', 'routes', 'dono', 'totais.tsx');
 if (fs.existsSync(totalsPath)) {
   let totals = fs.readFileSync(totalsPath, 'utf8');
   const exportStart = totals.indexOf('  function exportCurrent() {');
   const returnStart = exportStart >= 0 ? totals.indexOf('\n\n  return (', exportStart) : -1;
-  if (exportStart < 0 || returnStart < 0) throw new Error('Relatórios CSV export block not found');
+  if (exportStart < 0 || returnStart < 0) throw new Error('Relatórios export block not found');
 
   const excelFn = [
-    '  function exportExcelColorido() {',
-    '    const esc = (value: unknown) => String(value ?? "")',
-    '      .replace(/&/g, "&amp;")',
-    '      .replace(/</g, "&lt;")',
-    '      .replace(/>/g, "&gt;")',
-    '      .replace(/\\"/g, "&quot;");',
+    '  async function exportExcelColorido() {',
+    '    const XLSX = await import("xlsx-js-style");',
+    '    const headers = ["Ticket", "Data", "Motorista", "Conjunto", "Modalidade", "Peso líquido", "KM", "Faturamento", "Comissão", "Diesel", "Resultado"];',
     '    const modeLabel = (mode: unknown) => {',
     '      const value = String(mode ?? "");',
     '      if (value === "ton") return "Por tonelada";',
@@ -116,35 +116,53 @@ if (fs.existsSync(totalsPath)) {
     '      if (value === "caixinha") return "Caixinha";',
     '      return value || "—";',
     '    };',
-    '    const body = computed.map((trip: any, index: number) => {',
-    '      const bg = index % 2 === 0 ? "#EEF5FF" : "#FFFFFF";',
-    '      const ticket = trip.code ?? trip.ticket ?? trip.id ?? "—";',
-    '      const tripDate = trip.date ? formatDate(trip.date) : "—";',
-    '      const commission = Number(trip.commissionValue ?? trip.commission ?? 0);',
-    '      return "<tr style=\\"background:" + bg + ";height:22px\\">" +',
-    '        "<td>" + esc(ticket) + "</td>" +',
-    '        "<td>" + esc(tripDate) + "</td>" +',
-    '        "<td>" + esc(trip.driverName ?? "—") + "</td>" +',
-    '        "<td>" + esc(trip.fleetName ?? "—") + "</td>" +',
-    '        "<td>" + esc(modeLabel(trip.freightMode)) + "</td>" +',
-    '        "<td style=\\"background:#FFF4CC;font-weight:700\\">" + esc(tons(Number(trip.netWeight ?? 0))) + "</td>" +',
-    '        "<td>" + esc(integer(Number(trip.kmDriven ?? 0)) + " km") + "</td>" +',
-    '        "<td style=\\"background:#E8F7EC;font-weight:700\\">" + esc(brl(Number(trip.freight ?? 0))) + "</td>" +',
-    '        "<td style=\\"background:#FFF0DF\\">" + esc(brl(commission)) + "</td>" +',
-    '        "<td style=\\"background:#FDECEC\\">" + esc(brl(Number(trip.dieselCost ?? 0))) + "</td>" +',
-    '        "<td style=\\"background:#E5F3FF;font-weight:700\\">" + esc(brl(Number(trip.grossResult ?? 0))) + "</td></tr>";',
-    '    }).join("");',
-    '    const html = "<!doctype html><html><head><meta charset=\\"utf-8\\"><style>" +',
-    '      "body{font-family:Arial,sans-serif;color:#132033}h1{font-size:20px;margin:0 0 4px}p{margin:0 0 12px;color:#546173}" +',
-    '      "table{border-collapse:collapse;width:100%;font-size:11px}th{background:#102A43;color:#fff;font-weight:700;padding:7px;border:1px solid #7C8DA0;text-align:left}" +',
-    '      "td{padding:6px;border:1px solid #B8C4D0;white-space:nowrap}</style></head><body>" +',
-    '      "<h1>Trans Salomão — Relatório de Fretes</h1><p>Uma linha por frete · pesos com 2 casas decimais</p>" +',
-    '      "<table><thead><tr><th>Ticket</th><th>Data</th><th>Motorista</th><th>Conjunto</th><th>Modalidade</th><th>Peso líquido</th><th>KM</th><th>Faturamento</th><th>Comissão</th><th>Diesel</th><th>Resultado</th></tr></thead><tbody>" + body + "</tbody></table></body></html>";',
-    '    const blob = new Blob(["\\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });',
+    '    const rows = computed.map((trip: any) => [',
+    '      trip.code ?? trip.ticket ?? trip.id ?? "—",',
+    '      trip.date ? formatDate(trip.date) : "—",',
+    '      trip.driverName ?? "—",',
+    '      trip.fleetName ?? "—",',
+    '      modeLabel(trip.freightMode),',
+    '      tons(Number(trip.netWeight ?? 0)),',
+    '      `${integer(Number(trip.kmDriven ?? 0))} km`,',
+    '      brl(Number(trip.freight ?? 0)),',
+    '      brl(Number(trip.commissionValue ?? trip.commission ?? 0)),',
+    '      brl(Number(trip.dieselCost ?? 0)),',
+    '      brl(Number(trip.grossResult ?? 0)),',
+    '    ]);',
+    '    const aoa = [["TRANS SALOMÃO — RELATÓRIO DE FRETES"], [], headers, ...rows];',
+    '    const ws = XLSX.utils.aoa_to_sheet(aoa);',
+    '    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];',
+    '    ws["!cols"] = [10, 12, 28, 22, 16, 15, 11, 16, 16, 15, 16].map((wch) => ({ wch }));',
+    '    ws["!rows"] = [{ hpt: 27 }, { hpt: 8 }, { hpt: 22 }];',
+    '    const dark = "07111F";',
+    '    const white = "FFFFFF";',
+    '    const black = "111111";',
+    '    const blue = "008CFF";',
+    '    const border = { style: "thin", color: { rgb: blue } };',
+    '    for (let c = 0; c < headers.length; c += 1) {',
+    '      const titleCell = XLSX.utils.encode_cell({ r: 0, c });',
+    '      if (!ws[titleCell]) ws[titleCell] = { t: "s", v: "" };',
+    '      ws[titleCell].s = { fill: { fgColor: { rgb: dark } }, font: { color: { rgb: white }, bold: true, sz: c === 0 ? 18 : 11 }, alignment: { horizontal: "left", vertical: "center" }, border: { bottom: { style: "medium", color: { rgb: blue } } } };',
+    '      const headerCell = XLSX.utils.encode_cell({ r: 2, c });',
+    '      ws[headerCell].s = { fill: { fgColor: { rgb: dark } }, font: { color: { rgb: white }, bold: true }, alignment: { horizontal: "center", vertical: "center" }, border: { top: border, bottom: border, left: border, right: border } };',
+    '    }',
+    '    for (let r = 3; r < rows.length + 3; r += 1) {',
+    '      for (let c = 0; c < headers.length; c += 1) {',
+    '        const address = XLSX.utils.encode_cell({ r, c });',
+    '        if (!ws[address]) continue;',
+    '        ws[address].s = { fill: { fgColor: { rgb: white } }, font: { color: { rgb: black } }, alignment: { vertical: "center" }, border: { top: border, bottom: border, left: border, right: border } };',
+    '      }',
+    '    }',
+    '    ws["!autofilter"] = { ref: `A3:${XLSX.utils.encode_col(headers.length - 1)}${rows.length + 3}` };',
+    '    const wb = XLSX.utils.book_new();',
+    '    XLSX.utils.book_append_sheet(wb, ws, "Fretes");',
+    '    (wb as any).Workbook = { Views: [{ RTL: false }] };',
+    '    const out = XLSX.write(wb, { bookType: "xlsx", type: "array", cellStyles: true });',
+    '    const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });',
     '    const url = URL.createObjectURL(blob);',
     '    const a = document.createElement("a");',
     '    a.href = url;',
-    '    a.download = "relatorio-fretes-trans-salomao-colorido.xls";',
+    '    a.download = "relatorio-fretes-trans-salomao.xlsx";',
     '    document.body.appendChild(a);',
     '    a.click();',
     '    a.remove();',
@@ -154,47 +172,72 @@ if (fs.existsSync(totalsPath)) {
 
   totals = totals.slice(0, exportStart) + excelFn + totals.slice(returnStart);
   const csvButton = /<button type="button" onClick=\{exportCurrent\} className="h-11 rounded-md border border-border px-4 text-sm text-fg hover:bg-surface-2">\s*Exportar CSV\s*<\/button>/m;
-  if (!csvButton.test(totals)) throw new Error('Relatórios CSV button not found');
-  totals = totals.replace(csvButton, '<button type="button" onClick={exportExcelColorido} className="h-11 rounded-md border border-border px-4 text-sm font-semibold text-fg hover:bg-surface-2">\n            Excel colorido\n          </button>');
-  totals = totals.replace('Gere PDFs no padrão visual da Trans Salomão e consulte totais por motorista, conjunto e combustível.', 'Gere PDF ou Excel colorido. Cada frete ocupa uma única linha e todo peso é exibido com 2 casas decimais.');
+  const existingExcelButton = /<button type="button" onClick=\{exportExcelColorido\} className="h-11 rounded-md border border-border px-4 text-sm font-semibold text-fg hover:bg-surface-2">[\s\S]*?Excel colorido[\s\S]*?<\/button>/m;
+  if (csvButton.test(totals)) {
+    totals = totals.replace(csvButton, '<button type="button" onClick={exportExcelColorido} className="h-11 rounded-md border border-accent bg-bg px-4 text-sm font-semibold text-fg hover:bg-surface-2">\n            Excel colorido (.xlsx)\n          </button>');
+  } else if (existingExcelButton.test(totals)) {
+    totals = totals.replace(existingExcelButton, '<button type="button" onClick={exportExcelColorido} className="h-11 rounded-md border border-accent bg-bg px-4 text-sm font-semibold text-fg hover:bg-surface-2">\n            Excel colorido (.xlsx)\n          </button>');
+  } else {
+    throw new Error('Relatórios Excel button not found');
+  }
+  totals = totals.replace(/Gere PDF ou Excel colorido\.[^<]*/g, 'Gere PDF ou Excel colorido (.xlsx). Cada frete ocupa uma única linha e todo peso é exibido com 2 casas decimais.');
   fs.writeFileSync(totalsPath, totals);
-  console.log('[render] admin Relatórios: CSV removed; colored Excel + PDF only, one freight per Excel row');
+  console.log('[render] Relatórios now export genuine mobile-compatible XLSX');
 }
 
-// PDF: replace the former multi-line trip card by one compact line per freight.
-// The report summary is preserved; only the freight history rows are compacted.
+// PDF: remove "Por viagem" and "KM/L abastecimentos" summary metrics and use a
+// real column grid for each freight so long names never overlap neighboring fields.
 const pdfPath = path.join(target, 'src', 'lib', 'pdf.ts');
 if (fs.existsSync(pdfPath)) {
   let pdf = fs.readFileSync(pdfPath, 'utf8');
+
+  pdf = pdf
+    .replace(/^\s*drawMetricCard\([^\n]*"Por viagem"[^\n]*\);\s*$/gm, '')
+    .replace(/^\s*drawMetricCard\([^\n]*"KM\/L abastecimentos"[^\n]*\);\s*$/gm, '');
+
   const tripCardPattern = /function drawTripCard\(page: PdfPage, trip: ComputedTrip, top: number\) \{[\s\S]*?\n\}\n\nfunction drawFuelingSectionTitle/;
   if (!tripCardPattern.test(pdf)) throw new Error('PDF trip card block not found');
   const compactTripCard = [
     'function drawTripCard(page: PdfPage, trip: ComputedTrip, top: number) {',
     '  const height = 22;',
     '  const y = PAGE_H - top - height;',
-    '  page.rect(MARGIN, y, CONTENT_W, height, colors.surface, colors.border, 0.55);',
-    '  const row = truncate(',
-    '    `${formatDate(trip.date)} | ${trip.code} | ${trip.driverName} | ${trip.fleetName} | ${freightModeLabel(trip.freightMode)} | Peso ${tons(trip.netWeight)} | KM ${integer(trip.kmDriven)} | Frete ${brl(trip.freight)} | Diesel ${brl(trip.dieselCost)} | Resultado ${brl(trip.grossResult)}`,',
-    '    150,',
-    '  );',
-    '  page.text(row, MARGIN + 7, topToY(top + 14), { size: 6.6, color: colors.fg });',
+    '  const blue: [number, number, number] = [0, 0.55, 1];',
+    '  const white: [number, number, number] = [1, 1, 1];',
+    '  const black: [number, number, number] = [0.04, 0.05, 0.07];',
+    '  page.rect(MARGIN, y, CONTENT_W, height, white, blue, 0.7);',
+    '  const columns = [',
+    '    { x: MARGIN + 5, text: truncate(formatDate(trip.date), 10), size: 5.8 },',
+    '    { x: MARGIN + 55, text: truncate(String(trip.code), 10), size: 5.8 },',
+    '    { x: MARGIN + 102, text: truncate(trip.driverName, 20), size: 5.8 },',
+    '    { x: MARGIN + 195, text: truncate(trip.fleetName, 16), size: 5.8 },',
+    '    { x: MARGIN + 278, text: truncate(tons(trip.netWeight), 12), size: 5.8 },',
+    '    { x: MARGIN + 338, text: truncate(brl(trip.freight), 15), size: 5.8 },',
+    '    { x: MARGIN + 408, text: truncate(brl(trip.dieselCost), 14), size: 5.8 },',
+    '    { x: MARGIN + 470, text: truncate(brl(trip.grossResult), 15), size: 5.8 },',
+    '  ];',
+    '  for (const col of columns) page.text(col.text, col.x, topToY(top + 14), { size: col.size, color: black });',
     '}',
     '',
     'function drawFuelingSectionTitle',
   ].join('\n');
   pdf = pdf.replace(tripCardPattern, compactTripCard);
-  // Compact common legacy spacing/fit checks used by the trip-card loop.
+
   pdf = pdf
     .replace(/top \+ 74/g, 'top + 22')
     .replace(/top \+= 84;/g, 'top += 26;')
     .replace(/top \+= 82;/g, 'top += 26;')
     .replace(/top \+= 80;/g, 'top += 26;');
+
+  // Radiant blue report accents while keeping black text on white content areas.
+  pdf = pdf
+    .replace(/(\bborder\s*:\s*)\[[^\]]+\]/, '$1[0, 0.55, 1]')
+    .replace(/(\baccent\s*:\s*)\[[^\]]+\]/, '$1[0, 0.55, 1]');
+
   fs.writeFileSync(pdfPath, pdf);
-  console.log('[render] PDF freight history compacted to exactly one visual line per freight');
+  console.log('[render] PDF compacted: one non-overlapping line per freight; Por viagem and KM/L removed');
 }
 
-// The same Gerência login form accepts admin and driver credentials. Drivers are
-// redirected before any administrative query can run.
+// Same Gerência login form; drivers redirect to isolated dashboard.
 const managementRoutePath = path.join(target, 'src', 'routes', 'dono', 'route.tsx');
 if (fs.existsSync(managementRoutePath)) {
   let route = fs.readFileSync(managementRoutePath, 'utf8');
@@ -221,11 +264,9 @@ if (fs.existsSync(managementRoutePath)) {
     }
   }
   fs.writeFileSync(managementRoutePath, route);
-  console.log('[render] Gerência login is role-aware: drivers redirect to isolated dashboard');
 }
 
-// Security overrides: only literal admin/admin can own a management session. Every
-// driver account uses a separate signed driver session tied to exactly one driver_id.
+// Only admin/admin can own a management session; drivers use isolated driver_id sessions.
 const overrides = [
   ['render-overrides/management-auth.server.ts', 'src/lib/management-auth.server.ts'],
   ['render-overrides/management-auth.ts', 'src/lib/management-auth.ts'],
@@ -239,7 +280,6 @@ for (const [sourceRel, targetRel] of overrides) {
   const destination = path.join(target, targetRel);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.copyFileSync(source, destination);
-  console.log(`[render] installed ${targetRel}`);
 }
 
 const finalManagementAuth = fs.readFileSync(path.join(target, 'src', 'lib', 'management-auth.server.ts'), 'utf8');
@@ -247,7 +287,7 @@ if (!finalManagementAuth.includes('username !== "admin"')) throw new Error('Admi
 if (!finalManagementAuth.includes('return "admin";')) throw new Error('admin/admin invariant missing');
 const finalDriverAuth = fs.readFileSync(path.join(target, 'src', 'lib', 'klebersom-access.server.ts'), 'utf8');
 if (finalDriverAuth.includes('managementSession')) throw new Error('Driver auth must never fall back to a management session');
-console.log('[render] security invariant OK: admin/admin only for Gerência, driver_id isolated sessions');
+console.log('[render] security invariant OK: admin/admin only for Gerência');
 
 const configCandidates = ['vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs','nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs'];
 for (const rel of configCandidates) {
@@ -260,11 +300,12 @@ for (const rel of configCandidates) {
   if (after !== before) fs.writeFileSync(file, after);
 }
 
+// Site-wide dark/white contrast with radiant blue accents.
 const stylesPath = path.join(target, 'src', 'styles.css');
 if (fs.existsSync(stylesPath)) {
   let styles = fs.readFileSync(stylesPath, 'utf8');
   styles = styles.replace(/background-attachment\s*:\s*fixed\s*;/gi, 'background-attachment: scroll;');
-  styles += `\n\n/* transteste: maximum-speed visual mode */\nhtml { background: #07111f; }\nbody { background-image: none !important; background-attachment: scroll !important; background-color: #07111f; }\nbody::before, body::after { background-image: none !important; background-attachment: scroll !important; }\n@media (max-width: 900px) { body, body::before, body::after { background-attachment: scroll !important; } [class*=\"backdrop-blur\"] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; } }\n`;
+  styles += `\n\n/* transteste: radiant blue visual system */\n:root {\n  --bg: #07111f !important; --color-bg: #07111f !important;\n  --fg: #f8fbff !important; --color-fg: #f8fbff !important;\n  --surface: #0b1828 !important; --color-surface: #0b1828 !important;\n  --surface-2: #10243a !important; --color-surface-2: #10243a !important;\n  --muted: #a9bdd0 !important; --color-muted: #a9bdd0 !important;\n  --border: #008cff !important; --color-border: #008cff !important;\n  --accent: #008cff !important; --color-accent: #008cff !important;\n  --primary: #008cff !important; --color-primary: #008cff !important;\n  --ring: #008cff !important; --color-ring: #008cff !important;\n}\nhtml, body { background: #07111f !important; color: #f8fbff !important; }\nbody { background-image: none !important; background-attachment: scroll !important; }\nbody::before, body::after { background-image: none !important; background-attachment: scroll !important; }\n.text-accent, [class*=\"text-accent\"] { color: #008cff !important; }\n.border-accent, [class*=\"border-accent\"], .border-border { border-color: #008cff !important; }\n.bg-accent { background: #008cff !important; color: #07111f !important; }\n.text-white:not([class*=\"bg-\"]), [class*=\"text-white\"]:not([class*=\"bg-\"]) { background-color: #07111f; }\n.text-black:not([class*=\"bg-\"]), [class*=\"text-black\"]:not([class*=\"bg-\"]) { background-color: #ffffff; }\nbutton:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline-color: #008cff !important; box-shadow: 0 0 0 2px rgba(0,140,255,.35) !important; }\n::selection { background: #008cff; color: #07111f; }\n@media (max-width: 900px) { body, body::before, body::after { background-attachment: scroll !important; } [class*=\"backdrop-blur\"] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; } }\n`;
   fs.writeFileSync(stylesPath, styles);
 }
 
@@ -281,5 +322,4 @@ pkg.scripts.start = fs.existsSync(nativeEntry)
   ? 'node .output/server/index.mjs'
   : 'vite preview --host 0.0.0.0 --port $PORT';
 fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
-console.log('[render] production SSR mode enabled');
 console.log('[render] transteste source reconstructed at .transteste_app');
