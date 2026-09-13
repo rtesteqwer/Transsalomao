@@ -61,29 +61,54 @@ function assertNoLegacyTicketGenerators(dir) {
 }
 assertNoLegacyTicketGenerators(path.join(target, 'src'));
 
-// Never round tonnage to one decimal.
+// Site-wide rule: every displayed weight/tonnage uses exactly two decimal places.
+// Calculations and stored values remain untouched; only presentation is formatted.
 const formatPath = path.join(target, 'src', 'lib', 'format.ts');
 if (fs.existsSync(formatPath)) {
   const before = fs.readFileSync(formatPath, 'utf8');
   const pattern = /minimumFractionDigits\s*:\s*1\s*,\s*\n\s*maximumFractionDigits\s*:\s*1\s*,/m;
-  const after = before.replace(pattern, 'minimumFractionDigits: 0,\n  maximumFractionDigits: 20,');
+  let after = before.replace(pattern, 'minimumFractionDigits: 2,\n  maximumFractionDigits: 2,');
+  after = after.replace(/minimumFractionDigits\s*:\s*0\s*,\s*\n\s*maximumFractionDigits\s*:\s*20\s*,/m, 'minimumFractionDigits: 2,\n  maximumFractionDigits: 2,');
   if (after === before) throw new Error('Tonnage formatter precision block not found');
   fs.writeFileSync(formatPath, after);
+  console.log('[render] site-wide weight formatter fixed at exactly 2 decimal places');
 }
 
-// Caixa has its own formatter, so force exact tonnage there too.
+// Caixa has its own formatter, so enforce two decimals there too.
 const caixaPath = path.join(target, 'src', 'routes', 'dono', 'lancamentos.tsx');
 if (fs.existsSync(caixaPath)) {
   const before = fs.readFileSync(caixaPath, 'utf8');
   let replacements = 0;
   const after = before.replace(/\{num\(([^,)]+\.tons),\s*\d+\)\}\s*t/g, (_match, expression) => {
     replacements += 1;
-    return `{new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 20 }).format(${expression})} t`;
+    return `{new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(${expression})} t`;
   });
   if (replacements === 0) throw new Error('Caixa tonnage display pattern not found');
   fs.writeFileSync(caixaPath, after);
-  console.log(`[render] Caixa exact tonnage enabled in ${replacements} display(s)`);
+  console.log(`[render] Caixa weight formatter fixed at 2 decimals in ${replacements} display(s)`);
 }
+
+// Temporary targeted diagnostics for the report implementation. Only source-code lines
+// around report/export/PDF keywords are logged; no credentials or database data are printed.
+function logReportSource(rel) {
+  const file = path.join(target, rel);
+  if (!fs.existsSync(file)) return;
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  const wanted = new Set();
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/(csv|excel|xlsx|pdf|relat|download|export|generate|print|tons\(|netWeight|peso)/i.test(lines[i])) {
+      for (let j = Math.max(0, i - 2); j <= Math.min(lines.length - 1, i + 3); j += 1) wanted.add(j);
+    }
+  }
+  console.log(`[report-diagnostic] BEGIN ${rel}`);
+  for (const index of [...wanted].sort((a, b) => a - b).slice(0, 240)) {
+    console.log(`[report-diagnostic] ${rel}:${index + 1}: ${lines[index]}`);
+  }
+  console.log(`[report-diagnostic] END ${rel}`);
+}
+logReportSource('src/routes/dono/totais.tsx');
+logReportSource('src/lib/pdf.ts');
+logReportSource('src/lib/format.ts');
 
 // The same Gerência login form accepts admin and driver credentials. Insert the
 // driver redirect at the stable success-notification point; authorization itself is
@@ -139,11 +164,14 @@ const finalManagementAuth = fs.readFileSync(path.join(target, 'src', 'lib', 'man
 if (!finalManagementAuth.includes('username !== "admin"')) {
   throw new Error('Admin-only management invariant missing');
 }
+if (!finalManagementAuth.includes('return "admin";')) {
+  throw new Error('admin/admin invariant missing');
+}
 const finalDriverAuth = fs.readFileSync(path.join(target, 'src', 'lib', 'klebersom-access.server.ts'), 'utf8');
 if (finalDriverAuth.includes('managementSession')) {
   throw new Error('Driver auth must never fall back to a management session');
 }
-console.log('[render] security invariant OK: admin-only Gerência, driver_id isolated sessions');
+console.log('[render] security invariant OK: admin/admin only for Gerência, driver_id isolated sessions');
 
 const configCandidates = ['vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs','nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs'];
 for (const rel of configCandidates) {
