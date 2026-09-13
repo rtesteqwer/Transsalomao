@@ -9,13 +9,12 @@ function loginName() {
 }
 
 function loginPassword() {
-  return process.env.MANAGEMENT_PASSWORD?.trim() || "admin";
+  return "admin";
 }
 
 function sessionSecret() {
   return (
     process.env.MANAGEMENT_SESSION_SECRET?.trim() ||
-    process.env.MANAGEMENT_PASSWORD?.trim() ||
     "transsalomao-test-session"
   );
 }
