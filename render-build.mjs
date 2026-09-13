@@ -32,15 +32,13 @@ if (fs.existsSync(apiPath)) {
   const before = fs.readFileSync(apiPath, 'utf8');
   const legacyLine = '    const autoTicket = `LCT-${new Date().toISOString().replace(/\\D/g, "").slice(2, 14)}-${id.slice(-4).toUpperCase()}`;';
   const numericGenerator = [
-    '    const nextTicketRows = await sql`',
-    '      select coalesce(max(ticket_no), 0) + 1 as next_ticket',
-    '      from (',
-    "        select code::int as ticket_no from trips where code ~ '^[0-9]+$'",
-    '        union all',
-    "        select ticket::int as ticket_no from reports where ticket ~ '^[0-9]+$' and status <> 'recusado'",
-    '      ) sequence_numbers',
-    '    `;',
-    '    const autoTicket = String(Number(nextTicketRows[0]?.next_ticket ?? 1));',
+    '    const tripCodes = await sql<{ code: string }>`select code from trips`;',
+    '    const reportTickets = await sql<{ ticket: string }>`select ticket from reports where status <> \'recusado\'`;',
+    '    const numericTickets = [',
+    '      ...tripCodes.map((row) => Number(row.code)),',
+    '      ...reportTickets.map((row) => Number(row.ticket)),',
+    '    ].filter((value) => Number.isFinite(value) && value > 0);',
+    '    const autoTicket = String((numericTickets.length ? Math.max(...numericTickets) : 0) + 1);',
   ].join('\n');
   const after = before.replace(legacyLine, numericGenerator);
   if (after === before && before.includes('LCT-')) throw new Error('Legacy LCT ticket generator still present and could not be patched safely');
