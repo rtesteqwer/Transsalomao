@@ -49,13 +49,41 @@ if (process.env.TRANS_KLEBERSOM_PATCH === '1') {
     console.log('[bootstrap] Klebersom overlay ' + dest);
   }
 
+  // Sincroniza o login KlebersomDutra com o cadastro já existente
+  // "Klebersom Dutra Da Silva". A leitura passa a seguir o driver_id do cadastro,
+  // incluindo todas as viagens, lançamentos e abastecimentos vinculados a ele.
+  const apiPath = path.join(work, 'src/lib/api.ts');
+  const syncFunctionPath = path.join(deploy, 'klebersom-sync-function.txt');
+  if (!fs.existsSync(apiPath) || !fs.existsSync(syncFunctionPath)) {
+    throw new Error('Klebersom sync source missing');
+  }
+  let apiSource = fs.readFileSync(apiPath, 'utf8');
+  const syncStart = apiSource.indexOf('async function readKlebersomFleetState');
+  const syncEnd = apiSource.indexOf('const driverSchema =', syncStart);
+  if (syncStart < 0 || syncEnd < 0) throw new Error('Klebersom sync markers not found in api.ts');
+  const syncFunction = fs.readFileSync(syncFunctionPath, 'utf8').trimEnd();
+  apiSource = apiSource.slice(0, syncStart) + syncFunction + '\n\n' + apiSource.slice(syncEnd);
+  fs.writeFileSync(apiPath, apiSource);
+
+  // Ajusta os textos da área exclusiva para refletir o vínculo pelo motorista,
+  // e não apenas por um conjunto específico.
+  const partnerRoutePath = path.join(work, 'src/routes/socio-klebersom.tsx');
+  let partnerRoute = fs.readFileSync(partnerRoutePath, 'utf8');
+  partnerRoute = partnerRoute
+    .replace('Nenhuma viagem do Klebersom com o VOLVO KLEBERSOM foi registrada ainda.', 'Nenhuma viagem vinculada a Klebersom Dutra Da Silva foi registrada ainda.')
+    .replace('Nenhum abastecimento vinculado ao VOLVO KLEBERSOM.', 'Nenhum abastecimento vinculado a Klebersom Dutra Da Silva.')
+    .replace('Esta área é somente leitura e mostra exclusivamente dados vinculados a Klebersom Dutra + VOLVO KLEBERSOM.', 'Esta área é somente leitura e espelha os dados vinculados ao cadastro de Klebersom Dutra Da Silva.');
+  fs.writeFileSync(partnerRoutePath, partnerRoute);
+
   const required = [
-    ['src/lib/api.ts', 'getKlebersomFleetState'],
+    ['src/lib/api.ts', 'drv_d0d50a32b1'],
+    ['src/lib/api.ts', 'klebersom dutra da silva'],
+    ['src/lib/api.ts', 'where driver_id = ${driverId}'],
     ['src/lib/management-auth.server.ts', 'klebersomDutra'],
     ['src/lib/management-auth.server.ts', 'assertAdminSession'],
     ['src/lib/management-auth.ts', 'role: session.role'],
     ['src/routes/dono/route.tsx', '/socio-klebersom'],
-    ['src/routes/socio-klebersom.tsx', 'Klebersom Dutra'],
+    ['src/routes/socio-klebersom.tsx', 'Klebersom Dutra Da Silva'],
   ];
   for (const [rel, token] of required) {
     const p = path.join(work, rel);
@@ -63,7 +91,7 @@ if (process.env.TRANS_KLEBERSOM_PATCH === '1') {
       throw new Error('Klebersom integration check failed: ' + rel + ' -> ' + token);
     }
   }
-  console.log('[bootstrap] Klebersom access integrated and validated');
+  console.log('[bootstrap] Klebersom access integrated, synced and validated');
 }
 `;
 
