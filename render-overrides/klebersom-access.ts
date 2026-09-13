@@ -7,8 +7,8 @@ const loginSchema = z.object({
 });
 
 export const getKlebersomSession = createServerFn({ method: "GET" }).handler(async () => {
-  const { klebersomSession } = await import("@/lib/klebersom-access.server");
-  const session = klebersomSession();
+  const { klebersomAuthorizedSession } = await import("@/lib/klebersom-access.server");
+  const session = klebersomAuthorizedSession();
   return session
     ? { authenticated: true as const, username: session.username }
     : { authenticated: false as const, username: null };
