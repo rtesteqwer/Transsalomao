@@ -34,11 +34,27 @@ layer(['reform-fix2-20260911/part-00.txt','reform-fix2-20260911/part-01.txt','re
 
 layer(['reform-final2-20260911/part-00.txt','reform-final2-20260911/part-01.txt','reform-final2-20260911/part-02.txt','reform-final2-20260911/part-03.txt'], 'af9d4bc77acbc9618017c6370a4875c30f5b30638be935c9960cc85c2930d0af', '2c6d85831cfd378c249f007ca20c5aba255fe004d0bf4d10a0e9b6bf2b09fb36', 21968, 'final2');
 
-layer([
-  'update-20260913/part-00.txt','update-20260913/part-01.txt','update-20260913/part-02.txt','update-20260913/part-03.txt','update-20260913/part-04.txt','update-20260913/part-05.txt'
-], 'f5d879ae93a307e6d1268e3dd8c129402ba407998f72e58a8ddf4702600b564b', '878fbeb480886d101aabf8b66ab950db5ad1b3888c78d8ee4b6f4867c0b14161', 30976, 'update-20260913');
+const patchB64 = read('update-patch-20260913/update.patch.xz.b64');
+if (patchB64.length !== 19208 || sha(patchB64) !== '916a9e465494455256ab8fac76acc76c8b34140325f3815103c16bf4c37133f6') {
+  throw new Error('update-patch-20260913: base64 integrity mismatch');
+}
+const patchXz = Buffer.from(patchB64, 'base64');
+if (patchXz.length !== 14404 || sha(patchXz) !== '7d8507bd3243bd18fb60f195a1ed3f4ec8e1e537fc81fd444e94c46ec9c86cd7') {
+  throw new Error('update-patch-20260913: xz integrity mismatch');
+}
+const patchArchive = path.join(os.tmpdir(), `update-patch-20260913-${Date.now()}.xz`);
+fs.writeFileSync(patchArchive, patchXz);
+execFileSync('xz', ['-t', patchArchive], { stdio: 'inherit' });
+const patch = execFileSync('xz', ['-dc', patchArchive]);
+if (patch.length !== 65481 || sha(patch) !== '818e1a19565f462365859eec8341031a0fe5ea683848bffc83a98270e6b71103') {
+  throw new Error('update-patch-20260913: patch integrity mismatch');
+}
+const patchFile = path.join(os.tmpdir(), `update-patch-20260913-${Date.now()}.patch`);
+fs.writeFileSync(patchFile, patch);
+console.log('[bootstrap] applying incremental 2026-09-13 patch over current production source');
+execFileSync('git', ['apply', '--reject', '--whitespace=nowarn', patchFile], { cwd: work, stdio: 'inherit' });
 
-console.log('[bootstrap] exact source reconstructed with 2026-09-13 update');
+console.log('[bootstrap] current source merged with 2026-09-13 update');
 execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });
 execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });
 const from = path.join(work, '.vercel', 'output');
