@@ -1,0 +1,31 @@
+name: Decode Klebersom Patch
+
+on:
+  push:
+    paths:
+      - 'deploy/decode-klebersom.trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d deploy/update-klebersom-20260913/update.patch.xz.b64 > /tmp/klebersom.patch.xz
+          xz -dc /tmp/klebersom.patch.xz > deploy/klebersom-readable.patch
+      - name: Commit readable patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'rtesteqwer'
+          git config user.email 'rtesteqwer@gmail.com'
+          git add deploy/klebersom-readable.patch
+          git diff --cached --quiet && exit 0
+          git commit -m 'Decode Klebersom patch for integration'
+          git push
