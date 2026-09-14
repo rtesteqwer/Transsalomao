@@ -31,6 +31,39 @@ if (!fs.existsSync(path.join(app, 'package.json'))) {
   throw new Error('Render source reconstruction did not produce the application');
 }
 
+// Painel Viagens (Vercel): diesel fica apenas nas áreas de combustível/relatórios.
+// Na listagem de viagens, mostramos toneladas quando houver peso líquido informado.
+const tripsPath = path.join(app, 'src', 'routes', 'dono', 'viagens.tsx');
+if (!fs.existsSync(tripsPath)) throw new Error('Painel Viagens source not found');
+{
+  let trips = fs.readFileSync(tripsPath, 'utf8');
+
+  // O CSV gerado dentro da aba Viagens também deixa de carregar a coluna diesel.
+  trips = trips.replace(/\n\s*diesel\s*:\s*[A-Za-z_$][\w$]*\.dieselCost\s*,?/g, '');
+
+  // Desktop: nome explícito da coluna.
+  if (/(["'])Peso\1/.test(trips)) {
+    trips = trips.replace(/(["'])Peso\1/, (_m, quote) => `${quote}Toneladas${quote}`);
+  }
+
+  // Mobile: substitui o bloco Diesel pelo peso/tonelagem da própria viagem.
+  const dieselCard = /<div>\s*<dt([^>]*)>Diesel<\/dt>\s*<dd([^>]*)>\{[^{}]*?\b([A-Za-z_$][\w$]*)\.dieselCost[^{}]*\}<\/dd>\s*<\/div>/m;
+  if (dieselCard.test(trips)) {
+    trips = trips.replace(dieselCard, (_match, dtAttrs, ddAttrs, item) => [
+      '<div>',
+      `  <dt${dtAttrs}>Toneladas</dt>`,
+      '  <dd' + ddAttrs + '>{Number(' + item + '.netWeight) > 0 ? `${new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(' + item + '.netWeight))} t` : "—"}</dd>',
+      '</div>',
+    ].join('\n'));
+  }
+
+  if (/>Diesel<\/dt>/.test(trips)) throw new Error('Diesel is still visible in Painel Viagens');
+  if (!trips.includes('Toneladas')) throw new Error('Toneladas label missing from Painel Viagens');
+
+  fs.writeFileSync(tripsPath, trips);
+  console.log('[vercel] Painel Viagens: diesel removido; toneladas exibidas quando houver');
+}
+
 const configCandidates = [
   'vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs',
   'nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs',
