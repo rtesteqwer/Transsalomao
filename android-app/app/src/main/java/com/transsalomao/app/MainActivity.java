@@ -29,7 +29,7 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 
 public class MainActivity extends Activity {
-    private static final String HOME_URL = "https://transsalomao.vercel.app/";
+    private static final String HOME_URL = "https://transsalomao.onrender.com/";
     private static final int FILE_CHOOSER_REQUEST = 1201;
 
     private WebView webView;
@@ -136,7 +136,7 @@ public class MainActivity extends Activity {
         String host = uri.getHost();
 
         if (("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
-                && host != null && host.equalsIgnoreCase("transsalomao.vercel.app")) {
+                && host != null && host.equalsIgnoreCase("transsalomao.onrender.com")) {
             return false;
         }
 
