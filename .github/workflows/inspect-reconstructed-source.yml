@@ -1,0 +1,39 @@
+name: Validate freight prices build
+
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-reconstructed-source.yml'
+      - 'render-overrides/**'
+      - 'bootstrap.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build reconstructed application
+        run: node bootstrap.mjs
+      - name: Verify driver advances
+        shell: bash
+        run: |
+          SRC="$(ls -dt /tmp/transsalomao-build-* | head -1)"
+          grep -q 'Adiantamento' "$SRC/src/routes/dono/despesas.tsx"
+          grep -q 'Motorista que recebeu o adiantamento' "$SRC/src/routes/dono/despesas.tsx"
+          grep -q 'driverId: r.driver_id' "$SRC/src/lib/api.ts"
+          grep -q 'Escolha o motorista que recebeu o adiantamento' "$SRC/src/lib/api.ts"
+          grep -q 'Comissão a pagar' "$SRC/src/routes/dono/totais.tsx"
+          grep -q 'advanceTotalForDriver' "$SRC/src/routes/dono/totais.tsx"
+          grep -q 'category !== "Adiantamento"' "$SRC/src/routes/dono/despesas.tsx"
+          grep -q 'COMISSÃO A PAGAR' render-overrides/admin-excel.snippet.ts
+          grep -q 'COMISSÃO A PAGAR' render-overrides/pdf-export.snippet.ts
+          test -f "$SRC/migrations/0010_driver_advances.sql"
+          echo 'ADVANCES_VALIDATION_OK'

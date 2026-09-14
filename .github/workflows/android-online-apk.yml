@@ -1,0 +1,52 @@
+name: Build Trans Salomao Online APK
+
+on:
+  push:
+    paths:
+      - 'android-online/**'
+      - '.github/workflows/android-online-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Android SDK 35
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build APK
+        run: gradle -p android-online :app:assembleDebug --stacktrace
+
+      - name: Prepare APK
+        run: cp android-online/app/build/outputs/apk/debug/app-debug.apk Trans-Salomao-Online.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Trans-Salomao-Online-APK
+          path: Trans-Salomao-Online.apk
+          if-no-files-found: error

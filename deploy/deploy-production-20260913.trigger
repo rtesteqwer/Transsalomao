@@ -1,4 +1,2 @@
-deploy requested 2026-09-14T12:46:00Z
-painel viagens mobile sem diesel
-toneladas no lugar do diesel
-verificação no bundle final
+deploy requested retry 2026-09-13T09:27:00-03:00
+update: incremental merge preserving despesas, cegonha and caixinha
