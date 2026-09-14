@@ -88,6 +88,11 @@ const driverModeTripDisplayPatch = path.join(repo, 'render-overrides', 'apply-dr
 if (!fs.existsSync(driverModeTripDisplayPatch)) throw new Error('Missing driver mode / trip display patch');
 execFileSync(process.execPath, [driverModeTripDisplayPatch, work], { cwd: repo, stdio: 'inherit' });
 
+// Lançamento do motorista: sem KM; Cegonha/Caixinha aceitam quantidade de viagens em lote.
+const driverBatchModesPatch = path.join(repo, 'render-overrides', 'apply-driver-batch-modes.mjs');
+if (!fs.existsSync(driverBatchModesPatch)) throw new Error('Missing driver batch modes patch');
+execFileSync(process.execPath, [driverBatchModesPatch, work], { cwd: repo, stdio: 'inherit' });
+
 // Biometria removida de forma definitiva. Mantemos apenas um componente de
 // compatibilidade que libera a tela imediatamente e apaga cadastros antigos do
 // navegador. Nenhuma chamada a WebAuthn, digital, Face ID ou bridge nativa é feita.
