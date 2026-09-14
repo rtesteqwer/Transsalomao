@@ -3,7 +3,10 @@ import https from 'node:https';
 import zlib from 'node:zlib';
 import { URL } from 'node:url';
 
-const upstreamOrigin = 'https://transteste.onrender.com';
+// Keep the Render address stable while serving the current production build.
+// Vercel is used as the upstream so the Render proxy no longer depends on a
+// second free Render service waking up first.
+const upstreamOrigin = 'https://transsalomao.vercel.app';
 const publicOrigin = 'https://transsalomao.onrender.com';
 const port = Number(process.env.PORT || 10000);
 
@@ -33,8 +36,6 @@ const server = http.createServer((req, res) => {
   headers.host = upstreamUrl.host;
   headers['x-forwarded-host'] = 'transsalomao.onrender.com';
   headers['x-forwarded-proto'] = 'https';
-  // Prevent compressed upstream bodies whenever possible. This is especially important
-  // for Android WebView, which otherwise displayed the compressed bytes as text.
   headers['accept-encoding'] = 'identity';
 
   const proxyReq = https.request({
@@ -56,7 +57,7 @@ const server = http.createServer((req, res) => {
         }
         if (Array.isArray(responseHeaders['set-cookie'])) {
           responseHeaders['set-cookie'] = responseHeaders['set-cookie'].map((cookie) =>
-            cookie.replace(/Domain=transteste\.onrender\.com/ig, 'Domain=transsalomao.onrender.com')
+            cookie.replace(/Domain=transsalomao\.vercel\.app/ig, 'Domain=transsalomao.onrender.com')
           );
         }
 
@@ -77,6 +78,10 @@ const server = http.createServer((req, res) => {
         res.end('Trans Salomão temporariamente indisponível.');
       }
     });
+  });
+
+  proxyReq.setTimeout(30000, () => {
+    proxyReq.destroy(new Error('upstream timeout'));
   });
 
   proxyReq.on('error', (error) => {
