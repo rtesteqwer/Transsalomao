@@ -31,3 +31,7 @@ execFileSync(process.execPath, [caixaDeleteSync, target], { cwd: repo, stdio: 'i
 const pdfAdvancesSync = path.join(repo, 'render-overrides', 'apply-pdf-advances-sync.mjs');
 if (!fs.existsSync(pdfAdvancesSync)) throw new Error('compact-reports-safe: missing PDF advances sync patch');
 execFileSync(process.execPath, [pdfAdvancesSync, target], { cwd: repo, stdio: 'inherit' });
+
+const inspectSync = path.join(repo, 'render-overrides', 'inspect-diesel-rogerio.mjs');
+if (!fs.existsSync(inspectSync)) throw new Error('compact-reports-safe: missing diesel/Rogerio inspection patch');
+execFileSync(process.execPath, [inspectSync, target], { cwd: repo, stdio: 'inherit' });
