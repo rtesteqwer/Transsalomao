@@ -52,5 +52,6 @@ const dashboardDieselNetOrder = path.join(repo, 'render-overrides', 'apply-dashb
 if (!fs.existsSync(dashboardDieselNetOrder)) throw new Error('compact-reports-safe: missing dashboard diesel/net order patch');
 execFileSync(process.execPath, [dashboardDieselNetOrder, target], { cwd: repo, stdio: 'inherit' });
 
-const inspector = path.join(repo, 'render-overrides', 'inspect-dashboard-excel-cleanup.mjs');
-if (fs.existsSync(inspector)) execFileSync(process.execPath, [inspector, target], { cwd: repo, stdio: 'inherit' });
+const dashboardExcelSimplify = path.join(repo, 'render-overrides', 'apply-dashboard-excel-simplify.mjs');
+if (!fs.existsSync(dashboardExcelSimplify)) throw new Error('compact-reports-safe: missing dashboard/excel simplify patch');
+execFileSync(process.execPath, [dashboardExcelSimplify, target], { cwd: repo, stdio: 'inherit' });
