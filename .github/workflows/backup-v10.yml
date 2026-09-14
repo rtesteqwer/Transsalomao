@@ -1,0 +1,31 @@
+name: Backup TransSalomaoV10
+
+on:
+  push:
+    branches:
+      - transteste-render
+    paths:
+      - '.github/workflows/backup-v10.yml'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Upload backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: TransSalomaoV10
+          path: |
+            .
+            !.git/**
+            !node_modules/**
+            !.transteste_app/**
+          include-hidden-files: true
+          compression-level: 6
+          retention-days: 7
