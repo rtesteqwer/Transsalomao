@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.view.MotionEvent;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
@@ -66,7 +67,27 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " TransSalomaoApp/1.0");
+        settings.setTextZoom(100);
+        settings.setUserAgentString(settings.getUserAgentString() + " TransSalomaoApp/1.1");
+
+        // Keep the WebView fully touch-scrollable while retaining the browser-free shell.
+        webView.setVerticalScrollBarEnabled(true);
+        webView.setHorizontalScrollBarEnabled(false);
+        webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+        webView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        webView.setNestedScrollingEnabled(true);
+        webView.setFocusable(true);
+        webView.setFocusableInTouchMode(true);
+        webView.requestFocus(View.FOCUS_DOWN);
+        webView.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN ||
+                    event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                if (view.getParent() != null) {
+                    view.getParent().requestDisallowInterceptTouchEvent(true);
+                }
+            }
+            return false;
+        });
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -90,6 +111,21 @@ public class MainActivity extends Activity {
                 } catch (Exception ignored) {
                 }
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                // Some Android WebView versions can inherit restrictive touch/overflow rules
+                // from standalone-PWA CSS. Reinforce normal two-axis touch scrolling here.
+                view.evaluateJavascript(
+                        "(function(){" +
+                                "var h=document.documentElement,b=document.body;" +
+                                "if(h){h.style.overflowY='auto';h.style.touchAction='pan-x pan-y';h.style.webkitOverflowScrolling='touch';}" +
+                                "if(b){b.style.overflowY='auto';b.style.touchAction='pan-x pan-y';b.style.webkitOverflowScrolling='touch';}" +
+                                "})();",
+                        null
+                );
             }
         });
 
