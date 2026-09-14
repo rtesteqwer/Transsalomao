@@ -72,16 +72,16 @@ if (overlay && fs.existsSync(overlay)) {
   }
 }
 
-// Preços globais da Gerência para os modos de frete.
-// O wrapper adapta o patch à estrutura atual sem criar coluna inexistente.
+// Base de preços globais para os modos fixos.
 const freightPricesPatch = path.join(repo, 'render-overrides', 'run-freight-prices-safe.mjs');
 if (!fs.existsSync(freightPricesPatch)) throw new Error('Missing safe freight price patch');
 execFileSync(process.execPath, [freightPricesPatch, work], { cwd: repo, stdio: 'inherit' });
 
-// Completa a centralização para Por tonelada, Por viagem, Cegonha e Caixinha.
-const allFreightPricesPatch = path.join(repo, 'render-overrides', 'apply-all-freight-prices.mjs');
-if (!fs.existsSync(allFreightPricesPatch)) throw new Error('Missing all-mode freight price patch');
-execFileSync(process.execPath, [allFreightPricesPatch, work], { cwd: repo, stdio: 'inherit' });
+// Seleção/edição/exclusão em lote e regra final de preços:
+// Por tonelada individual por viagem; Por viagem/Cegonha/Caixinha globais.
+const tripBulkPricesPatch = path.join(repo, 'render-overrides', 'apply-trip-bulk-and-prices.mjs');
+if (!fs.existsSync(tripBulkPricesPatch)) throw new Error('Missing trip bulk price patch');
+execFileSync(process.execPath, [tripBulkPricesPatch, work], { cwd: repo, stdio: 'inherit' });
 
 // Biometria removida de forma definitiva. Mantemos apenas um componente de
 // compatibilidade que libera a tela imediatamente e apaga cadastros antigos do
