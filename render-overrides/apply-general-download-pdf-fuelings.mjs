@@ -31,7 +31,32 @@ const repo = process.cwd();
   const finalPdf = path.join(repo, 'render-overrides', 'pdf-export-final.snippet.ts');
   const activePdf = path.join(repo, 'render-overrides', 'pdf-export.snippet.ts');
   if (!fs.existsSync(finalPdf)) throw new Error('general-download-pdf-fuelings: final PDF snippet missing');
-  fs.copyFileSync(finalPdf, activePdf);
+
+  // Ordena todas as categorias datadas do PDF do mais recente para o mais antigo.
+  // Também ordena os grupos de fretes usando a data mais recente do grupo.
+  let pdf = fs.readFileSync(finalPdf, 'utf8');
+  const tripRowsNeedle = '  const tripRows = [...singles, ...grouped.values()].map((item: any) => {';
+  const tripRowsReplacement = `  const tripRows = [...singles, ...grouped.values()]\n    .sort((a: any, b: any) => {\n      const aDate = a.kind === "single" ? reportDateKey(a.trip?.date) : String(a.lastDate ?? a.firstDate ?? "");\n      const bDate = b.kind === "single" ? reportDateKey(b.trip?.date) : String(b.lastDate ?? b.firstDate ?? "");\n      return bDate.localeCompare(aDate);\n    })\n    .map((item: any) => {`;
+  if (!pdf.includes('return bDate.localeCompare(aDate);')) {
+    if (!pdf.includes(tripRowsNeedle)) throw new Error('general-download-pdf-fuelings: trip PDF sort anchor missing');
+    pdf = pdf.replace(tripRowsNeedle, tripRowsReplacement);
+  }
+
+  const fuelNeedle = '  const fuelingRows = fuelings.map((fueling: any) => {';
+  const fuelReplacement = `  const fuelingRows = [...fuelings]\n    .sort((a: any, b: any) => reportDateKey(b?.date).localeCompare(reportDateKey(a?.date)))\n    .map((fueling: any) => {`;
+  if (!pdf.includes('reportDateKey(b?.date).localeCompare(reportDateKey(a?.date))')) {
+    if (!pdf.includes(fuelNeedle)) throw new Error('general-download-pdf-fuelings: fueling PDF sort anchor missing');
+    pdf = pdf.replace(fuelNeedle, fuelReplacement);
+  }
+
+  const advanceNeedle = '  const advanceRows = advances.map((item: any) => [';
+  const advanceReplacement = `  const advanceRows = [...advances]\n    .sort((a: any, b: any) => reportDateKey(b?.date).localeCompare(reportDateKey(a?.date)))\n    .map((item: any) => [`;
+  if (!pdf.includes('const advanceRows = [...advances]')) {
+    if (!pdf.includes(advanceNeedle)) throw new Error('general-download-pdf-fuelings: advance PDF sort anchor missing');
+    pdf = pdf.replace(advanceNeedle, advanceReplacement);
+  }
+
+  fs.writeFileSync(activePdf, pdf);
 }
 
 // Mantem os dois downloads visiveis: geral conforme o periodo selecionado e
@@ -51,4 +76,4 @@ const repo = process.cwd();
   fs.writeFileSync(p, s);
 }
 
-console.log('[general-download-pdf-fuelings] PDF abastecimentos + Excel em uma única folha/página + downloads geral/mensal');
+console.log('[general-download-pdf-fuelings] PDF datas desc + abastecimentos + Excel em uma única folha/página + downloads geral/mensal');
