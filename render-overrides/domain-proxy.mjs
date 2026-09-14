@@ -6,7 +6,7 @@ import { URL } from 'node:url';
 // Keep the Render address stable while serving the current production build.
 // Vercel is used as the upstream so the Render proxy no longer depends on a
 // second free Render service waking up first.
-const upstreamOrigin = 'https://transsalomao.vercel.app';
+const upstreamOrigin = (process.env.PROXY_UPSTREAM || 'https://transsalomao.vercel.app').replace(/\/$/, '');
 const publicOrigin = 'https://transsalomao.onrender.com';
 const port = Number(process.env.PORT || 10000);
 
