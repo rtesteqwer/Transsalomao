@@ -47,3 +47,7 @@ execFileSync(process.execPath, [dashboardCommissionPrimary, target], { cwd: repo
 const reportPolishFuelings = path.join(repo, 'render-overrides', 'apply-report-polish-fuelings.mjs');
 if (!fs.existsSync(reportPolishFuelings)) throw new Error('compact-reports-safe: missing report polish/fuelings patch');
 execFileSync(process.execPath, [reportPolishFuelings, target], { cwd: repo, stdio: 'inherit' });
+
+const dashboardDieselNetOrder = path.join(repo, 'render-overrides', 'apply-dashboard-diesel-net-order.mjs');
+if (!fs.existsSync(dashboardDieselNetOrder)) throw new Error('compact-reports-safe: missing dashboard diesel/net order patch');
+execFileSync(process.execPath, [dashboardDieselNetOrder, target], { cwd: repo, stdio: 'inherit' });
