@@ -84,13 +84,6 @@ function replaceRequired(text, search, replacement, label) {
 
   s = replaceRequired(
     s,
-    '  const [freightMode, setFreightMode] = useState<FreightMode | "">("");',
-    '  const [freightMode, setFreightMode] = useState<FreightMode | "">("");',
-    'driver mode state exists',
-  );
-
-  s = replaceRequired(
-    s,
     '    if (!fleetId) return toast.error("Escolha o conjunto.");\n    try {',
     '    if (!fleetId) return toast.error("Escolha o conjunto.");\n    if (!freightMode) return toast.error("Escolha o modo de frete.");\n    try {',
     'require freight mode',
