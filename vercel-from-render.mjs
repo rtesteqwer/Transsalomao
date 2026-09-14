@@ -63,8 +63,8 @@ if (!fs.existsSync(from)) {
   throw new Error('Vercel build output was not generated from the Render version');
 }
 
-// Mobile/PWA hardening. The installed PWA opens in standalone mode (no browser address bar),
-// while a normal browser tab keeps the browser UI as required by Android/iOS security rules.
+// Mobile/PWA hardening. Installed PWA opens in standalone mode, while
+// vertical touch scrolling stays native in browsers and Android WebView.
 const staticDir = path.join(from, 'static');
 const manifestPath = path.join(staticDir, '__grok', 'manifest.webmanifest');
 fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
@@ -89,21 +89,55 @@ fs.writeFileSync(manifestPath, `${JSON.stringify({
 
 const mobileCss = `
 /* Trans Salomão mobile/PWA */
-html { width: 100%; min-height: 100%; min-height: 100dvh; overflow-x: hidden; background: #07111f; }
-body { width: 100%; min-height: 100%; min-height: 100dvh; margin: 0; overflow-x: hidden; overscroll-behavior-y: none; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+html {
+  width: 100%;
+  min-height: 100%;
+  min-height: 100dvh;
+  height: auto !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch;
+  background: #07111f;
+}
+body {
+  width: 100%;
+  min-height: 100%;
+  min-height: 100dvh;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+body > main {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  touch-action: pan-y pinch-zoom !important;
+}
 img, svg, video, canvas { max-width: 100%; }
 .overflow-x-auto { -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.overflow-y-auto { -webkit-overflow-scrolling: touch; touch-action: pan-y pinch-zoom !important; }
 @media (max-width: 767px) {
   html, body { max-width: 100vw; }
   input, select, textarea, button { font-size: 16px !important; }
   button, a, input, select, textarea { min-height: 44px; }
   main, section, header, nav, aside { max-width: 100vw; }
+  main { height: auto !important; max-height: none !important; overflow-y: visible !important; }
   table { font-size: 11px; }
-  .min-h-dvh { min-height: 100dvh !important; }
+  .min-h-dvh { min-height: 100dvh !important; height: auto !important; }
   .fixed.inset-x-0.bottom-0 { padding-bottom: env(safe-area-inset-bottom); }
 }
 @media (display-mode: standalone), (display-mode: fullscreen) {
-  html, body { background: #07111f !important; }
+  html, body { background: #07111f !important; overflow-y: auto !important; touch-action: pan-y pinch-zoom !important; }
   body { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); padding-bottom: env(safe-area-inset-bottom); }
 }
 `;
@@ -135,7 +169,7 @@ function patchOutputTree(dir) {
   }
 }
 patchOutputTree(from);
-console.log('[vercel] mobile layout + standalone PWA configured');
+console.log('[vercel] mobile layout + standalone PWA + vertical scroll configured');
 
 fs.rmSync(to, { recursive: true, force: true });
 fs.mkdirSync(path.dirname(to), { recursive: true });
