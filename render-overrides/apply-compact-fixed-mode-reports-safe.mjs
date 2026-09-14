@@ -20,5 +20,6 @@ fs.writeFileSync(temp, source);
 execFileSync(process.execPath, [temp, target], { cwd: repo, stdio: 'inherit' });
 fs.rmSync(temp, { force: true });
 
-const inspect = path.join(repo, 'render-overrides', 'inspect-viagens-caixa.mjs');
-if (fs.existsSync(inspect)) execFileSync(process.execPath, [inspect, target], { cwd: repo, stdio: 'inherit' });
+const simplifyUi = path.join(repo, 'render-overrides', 'apply-simplify-viagens-caixa.mjs');
+if (!fs.existsSync(simplifyUi)) throw new Error('compact-reports-safe: missing simplify Viagens/Caixa patch');
+execFileSync(process.execPath, [simplifyUi, target], { cwd: repo, stdio: 'inherit' });
