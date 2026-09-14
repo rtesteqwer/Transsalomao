@@ -12,7 +12,6 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
-import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
@@ -30,7 +29,7 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 
 public class MainActivity extends Activity {
-    private static final String HOME_URL = "https://transteste.onrender.com/";
+    private static final String HOME_URL = "https://transsalomao.vercel.app/";
     private static final int FILE_CHOOSER_REQUEST = 1201;
 
     private WebView webView;
@@ -137,7 +136,7 @@ public class MainActivity extends Activity {
         String host = uri.getHost();
 
         if (("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
-                && host != null && host.equalsIgnoreCase("transteste.onrender.com")) {
+                && host != null && host.equalsIgnoreCase("transsalomao.vercel.app")) {
             return false;
         }
 
