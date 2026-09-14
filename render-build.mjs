@@ -6,6 +6,23 @@ const cwd = process.cwd();
 const target = path.join(cwd, '.transteste_app');
 const readOverride = (name) => fs.readFileSync(path.join(cwd, 'render-overrides', name), 'utf8');
 
+// The canonical Render domain has no duplicated secrets. It securely proxies the
+// existing tested service while keeping transsalomao.onrender.com visible to users.
+const canonicalDomainProxy =
+  process.env.RENDER_SERVICE_ID === 'srv-dajjl98ae00c73a81v20' ||
+  process.env.RENDER_EXTERNAL_HOSTNAME === 'transsalomao.onrender.com';
+if (canonicalDomainProxy) {
+  fs.rmSync(target, { recursive: true, force: true });
+  fs.mkdirSync(target, { recursive: true });
+  fs.copyFileSync(path.join(cwd, 'render-overrides', 'domain-proxy.mjs'), path.join(target, 'server.mjs'));
+  fs.writeFileSync(
+    path.join(target, 'package.json'),
+    `${JSON.stringify({ name: 'transsalomao-domain-proxy', private: true, type: 'module', scripts: { start: 'node server.mjs' } }, null, 2)}\n`,
+  );
+  console.log('[render] canonical domain proxy prepared: transsalomao.onrender.com -> transteste.onrender.com');
+  process.exit(0);
+}
+
 fs.rmSync(target, { recursive: true, force: true });
 fs.mkdirSync(target, { recursive: true });
 fs.mkdtempSync = () => target;
