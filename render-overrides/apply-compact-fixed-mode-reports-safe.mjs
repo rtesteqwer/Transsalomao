@@ -35,3 +35,7 @@ execFileSync(process.execPath, [pdfAdvancesSync, target], { cwd: repo, stdio: 'i
 const excelDieselLogoSync = path.join(repo, 'render-overrides', 'apply-excel-diesel-logo-sync.mjs');
 if (!fs.existsSync(excelDieselLogoSync)) throw new Error('compact-reports-safe: missing Excel diesel/logo sync patch');
 execFileSync(process.execPath, [excelDieselLogoSync, target], { cwd: repo, stdio: 'inherit' });
+
+const inspectFinancial = path.join(repo, 'render-overrides', 'inspect-financial-site.mjs');
+if (!fs.existsSync(inspectFinancial)) throw new Error('compact-reports-safe: missing financial inspection patch');
+execFileSync(process.execPath, [inspectFinancial, target], { cwd: repo, stdio: 'inherit' });
