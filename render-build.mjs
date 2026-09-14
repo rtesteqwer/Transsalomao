@@ -182,6 +182,16 @@ if (fs.existsSync(managementRoutePath)) {
       ].join('\n'));
     }
   }
+
+  // Never expose administrative credentials in the login UI.
+  route = route
+    .replace(/const\s+\[username,\s*setUsername\]\s*=\s*useState\(["']admin["']\);?/, 'const [username, setUsername] = useState("");')
+    .replace(/placeholder=["']admin["']/g, 'placeholder="Digite seu login"')
+    .replace(/\n\s*<p className="mt-5 rounded-md border border-border bg-bg px-3 py-2 text-xs text-muted">[\s\S]*?Acesso inicial configurado:[\s\S]*?<\/p>/m, '');
+  if (route.includes('Acesso inicial configurado:') || /placeholder=["']admin["']/.test(route) || /useState\(["']admin["']\)/.test(route)) {
+    throw new Error('Admin credentials are still exposed in the management login UI');
+  }
+  console.log('[render] management login credentials hidden from UI');
   fs.writeFileSync(managementRoutePath, route);
 }
 
@@ -233,8 +243,8 @@ for (const rel of configCandidates) {
   if (!fs.existsSync(file)) continue;
   const before = fs.readFileSync(file, 'utf8');
   const after = before
-    .replace(/preset\s*:\s*(['"`])vercel\1/g, 'preset: "node-server"')
-    .replace(/preset\s*:\s*(['"`])vercel-edge\1/g, 'preset: "node-server"');
+    .replace(/preset\s*:\s*(["'`])vercel\1/g, 'preset: "node-server"')
+    .replace(/preset\s*:\s*(["'`])vercel-edge\1/g, 'preset: "node-server"');
   if (after !== before) fs.writeFileSync(file, after);
 }
 
