@@ -87,24 +87,27 @@ fs.copyFileSync(
     '${tons}, 0, ${tons}, ${reportFreightMode}, 0, ${configuredPrice},\n          ${kmStart}',
     'api accepted report insert price',
   );
-  s = replaceOnce(
-    s,
-    '  freightMode: z.enum(["ton", "trip", "cegonha", "caixinha"]),\n  pricePerTon:',
-    '  freightMode: z.enum(["ton", "trip", "cegonha", "caixinha"]),\n  tripBillingType: z.enum(["weight", "fixed"]).optional().default("fixed"),\n  pricePerTon:',
-    'api trip schema billing type',
-  );
+  if (s.includes('  freightMode: z.enum(["ton", "trip", "cegonha", "caixinha"]),\n  pricePerTon:')) {
+    s = s.replace(
+      '  freightMode: z.enum(["ton", "trip", "cegonha", "caixinha"]),\n  pricePerTon:',
+      '  freightMode: z.enum(["ton", "trip", "cegonha", "caixinha"]),\n  tripBillingType: z.enum(["weight", "fixed"]).optional().default("fixed"),\n  pricePerTon:',
+    );
+  }
   s = replaceOnce(
     s,
     '    const code = data.code.toUpperCase();\n    await sql`',
     `    const code = data.code.toUpperCase();\n    const pricePerTrip =\n      data.freightMode === "cegonha" || data.freightMode === "caixinha"\n        ? await getConfiguredTripPrice(sql, data.freightMode)\n        : data.pricePerTrip;\n    if (\n      (data.freightMode === "cegonha" || data.freightMode === "caixinha") &&\n      pricePerTrip <= 0\n    ) {\n      throw new Error(\n        \`Configure o preço de \${data.freightMode === "cegonha" ? "Cegonha" : "Caixinha"} em Cadastros > Preços de frete antes de salvar a viagem.\`,\n      );\n    }\n    await sql\``,
     'api upsertTrip global price',
   );
-  s = replaceOnce(
-    s,
-    '${data.netWeight}, ${data.freightMode}, ${data.tripBillingType}, ${data.pricePerTon}, ${data.pricePerTrip},',
-    '${data.netWeight}, ${data.freightMode}, ${data.tripBillingType}, ${data.pricePerTon}, ${pricePerTrip},',
-    'api trip insert global price',
-  );
+
+  // Render and standalone Vercel reconstruction can differ slightly because the
+  // historical 2026-09-13 patch had rejected hunks. Replace only the final SQL
+  // value for price_per_trip, independent of whether trip_billing_type is present.
+  const priceNeedle = '${data.pricePerTrip},';
+  const priceIndex = s.lastIndexOf(priceNeedle);
+  if (priceIndex < 0) throw new Error('apply-freight-prices: trip SQL price value not found');
+  s = s.slice(0, priceIndex) + '${pricePerTrip},' + s.slice(priceIndex + priceNeedle.length);
+
   write('src/lib/api.ts', s);
 }
 
@@ -138,12 +141,12 @@ fs.copyFileSync(
 {
   let s = read('src/components/owner/trip-form.tsx');
   s = replaceOnce(s, 'import { useMemo, useState } from "react";', 'import { useEffect, useMemo, useState } from "react";', 'trip-form useEffect');
-  s = replaceOnce(
-    s,
-    'import type { Driver, Fleet, FreightMode, Trip } from "@/lib/types";',
-    'import type { Driver, Fleet, FreightMode, Trip, TripBillingType } from "@/lib/types";',
-    'trip-form TripBillingType import',
-  );
+  if (s.includes('import type { Driver, Fleet, FreightMode, Trip } from "@/lib/types";')) {
+    s = s.replace(
+      'import type { Driver, Fleet, FreightMode, Trip } from "@/lib/types";',
+      'import type { Driver, Fleet, FreightMode, Trip, TripBillingType } from "@/lib/types";',
+    );
+  }
   s = replaceOnce(
     s,
     'import { cn } from "@/lib/utils";',
