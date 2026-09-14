@@ -1,9 +1,11 @@
 package com.transsalomao.online;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.DownloadManager;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -33,6 +35,7 @@ import java.io.OutputStream;
 
 public class MainActivity extends Activity {
     private static final String START_URL = "https://transsalomao.vercel.app/";
+    private static final int STORAGE_REQUEST = 42;
     private WebView webView;
     private ProgressBar progress;
 
@@ -42,6 +45,11 @@ public class MainActivity extends Activity {
 
         getWindow().setStatusBarColor(Color.rgb(7, 17, 31));
         getWindow().setNavigationBarColor(Color.rgb(7, 17, 31));
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, STORAGE_REQUEST);
+        }
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(7, 17, 31));
@@ -80,10 +88,10 @@ public class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setTextZoom(100);
-        settings.setUserAgentString(settings.getUserAgentString() + " TransSalomaoApp/1.4");
+        settings.setUserAgentString(settings.getUserAgentString() + " TransSalomaoApp/1.5");
 
-        // Bridge usado somente para salvar relatórios gerados em memória (blob:),
-        // como o Excel colorido e PDFs. O DownloadManager do Android não aceita blob:.
+        // O site gera Excel/PDF colorido como blob:. O bridge entrega os bytes ao Android,
+        // e o próprio sistema usa a área padrão de Downloads, sem subpasta forçada pelo app.
         webView.addJavascriptInterface(new NativeDownloadBridge(), "TransSalomaoDownload");
 
         webView.setVerticalScrollBarEnabled(true);
@@ -132,8 +140,6 @@ public class MainActivity extends Activity {
                                         String mimetype, long contentLength) {
                 if (url == null || url.isEmpty()) return;
 
-                // Arquivos Excel/PDF criados pelo navegador chegam como blob:.
-                // Nunca envie blob: ao DownloadManager nem ao navegador externo.
                 if (url.startsWith("blob:")) {
                     String guessedName = URLUtil.guessFileName(url, contentDisposition, mimetype);
                     if (guessedName == null || guessedName.trim().isEmpty() || !guessedName.contains(".")) {
@@ -147,12 +153,10 @@ public class MainActivity extends Activity {
                     return;
                 }
 
-                if (url.startsWith("data:")) {
-                    return;
-                }
+                if (url.startsWith("data:")) return;
 
                 try {
-                    String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+                    String fileName = sanitizeFileName(URLUtil.guessFileName(url, contentDisposition, mimetype));
                     DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
                     request.addRequestHeader("User-Agent", userAgent);
                     String cookies = CookieManager.getInstance().getCookie(url);
@@ -161,10 +165,7 @@ public class MainActivity extends Activity {
                     request.setTitle(fileName);
                     request.setDescription("Relatório Trans Salomão");
                     request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                    request.setDestinationInExternalPublicDir(
-                            Environment.DIRECTORY_DOWNLOADS,
-                            "TransSalomao/" + sanitizeFileName(fileName)
-                    );
+                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
                     DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
                     manager.enqueue(request);
                 } catch (Exception error) {
@@ -185,7 +186,7 @@ public class MainActivity extends Activity {
     }
 
     private String mimeToDefaultName(String mime) {
-        if (mime != null && mime.contains("spreadsheetml")) return "relatorio-trans-salomao.xlsx";
+        if (mime != null && mime.contains("spreadsheetml")) return "relatorio-fretes-trans-salomao.xlsx";
         if (mime != null && mime.contains("pdf")) return "relatorio-trans-salomao.pdf";
         if (mime != null && mime.contains("csv")) return "relatorio-trans-salomao.csv";
         return "relatorio-trans-salomao.bin";
@@ -214,7 +215,7 @@ public class MainActivity extends Activity {
                         ContentValues values = new ContentValues();
                         values.put(MediaStore.Downloads.DISPLAY_NAME, safeName);
                         values.put(MediaStore.Downloads.MIME_TYPE, safeMime);
-                        values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/TransSalomao");
+                        // Sem RELATIVE_PATH customizado: o Android usa a coleção padrão de Downloads.
                         values.put(MediaStore.Downloads.IS_PENDING, 1);
 
                         pendingUri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
@@ -230,11 +231,11 @@ public class MainActivity extends Activity {
                         ready.put(MediaStore.Downloads.IS_PENDING, 0);
                         getContentResolver().update(pendingUri, ready, null, null);
                     } else {
-                        File base = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-                        if (base == null) throw new IllegalStateException("Pasta Downloads indisponível");
-                        File dir = new File(base, "TransSalomao");
-                        if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Não foi possível criar a pasta");
-                        File outputFile = new File(dir, safeName);
+                        File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                        if (!downloads.exists() && !downloads.mkdirs()) {
+                            throw new IllegalStateException("Pasta Downloads indisponível");
+                        }
+                        File outputFile = new File(downloads, safeName);
                         try (FileOutputStream output = new FileOutputStream(outputFile)) {
                             output.write(bytes);
                             output.flush();
@@ -243,7 +244,7 @@ public class MainActivity extends Activity {
 
                     runOnUiThread(() -> Toast.makeText(
                             MainActivity.this,
-                            "Relatório salvo em Downloads/TransSalomao",
+                            "Download concluído: " + safeName,
                             Toast.LENGTH_LONG
                     ).show());
                 } catch (Exception error) {
@@ -266,7 +267,7 @@ public class MainActivity extends Activity {
     private void installBlobDownloadBridge(WebView view) {
         final String js =
                 "(function(){" +
-                "if(window.__TS_NATIVE_DOWNLOAD_V14)return;window.__TS_NATIVE_DOWNLOAD_V14=true;" +
+                "if(window.__TS_NATIVE_DOWNLOAD_V15)return;window.__TS_NATIVE_DOWNLOAD_V15=true;" +
                 "var blobMap=new Map();" +
                 "var originalCreate=URL.createObjectURL.bind(URL);" +
                 "var originalRevoke=URL.revokeObjectURL.bind(URL);" +
