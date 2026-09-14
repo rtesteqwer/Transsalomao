@@ -39,3 +39,7 @@ execFileSync(process.execPath, [excelDieselLogoSync, target], { cwd: repo, stdio
 const financialUxAuditSafe = path.join(repo, 'render-overrides', 'apply-financial-ux-audit-safe.mjs');
 if (!fs.existsSync(financialUxAuditSafe)) throw new Error('compact-reports-safe: missing safe financial UX/audit patch');
 execFileSync(process.execPath, [financialUxAuditSafe, target], { cwd: repo, stdio: 'inherit' });
+
+const inspectDashboard = path.join(repo, 'render-overrides', 'inspect-dashboard-primary-kpis.mjs');
+if (!fs.existsSync(inspectDashboard)) throw new Error('compact-reports-safe: missing dashboard KPI inspection');
+execFileSync(process.execPath, [inspectDashboard, target], { cwd: repo, stdio: 'inherit' });
