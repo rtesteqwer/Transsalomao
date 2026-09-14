@@ -13,6 +13,18 @@ const repo = process.cwd();
   const activeExcel = path.join(repo, 'render-overrides', 'admin-excel.snippet.ts');
   if (!fs.existsSync(unifiedExcel)) throw new Error('general-download-pdf-fuelings: unified Excel snippet missing');
   fs.copyFileSync(unifiedExcel, activeExcel);
+
+  // Garante uma única folha no arquivo e impressão/exportação em uma única página.
+  let excel = fs.readFileSync(activeExcel, 'utf8');
+  const worksheetNeedle = '  const worksheet = workbook.addWorksheet("Planilha Geral", { views: [{ state: "frozen", ySplit: 6 }] });';
+  const worksheetReplacement = `${worksheetNeedle}\n  worksheet.pageSetup = {\n    orientation: "landscape",\n    paperSize: 9,\n    fitToPage: true,\n    fitToWidth: 1,\n    fitToHeight: 1,\n    horizontalCentered: true,\n    verticalCentered: false,\n    margins: { left: 0.2, right: 0.2, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 },\n  };`;
+  if (!excel.includes('fitToWidth: 1')) {
+    if (!excel.includes(worksheetNeedle)) throw new Error('general-download-pdf-fuelings: worksheet setup anchor missing');
+    excel = excel.replace(worksheetNeedle, worksheetReplacement);
+  }
+  const worksheetCount = (excel.match(/addWorksheet\(/g) ?? []).length;
+  if (worksheetCount !== 1) throw new Error(`general-download-pdf-fuelings: expected 1 worksheet, found ${worksheetCount}`);
+  fs.writeFileSync(activeExcel, excel);
 }
 
 {
@@ -39,4 +51,4 @@ const repo = process.cwd();
   fs.writeFileSync(p, s);
 }
 
-console.log('[general-download-pdf-fuelings] final PDF has Abastecimentos; Excel unified in one sheet; general + monthly downloads enabled');
+console.log('[general-download-pdf-fuelings] PDF abastecimentos + Excel em uma única folha/página + downloads geral/mensal');
