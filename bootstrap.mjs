@@ -83,6 +83,11 @@ const tripBulkPricesPatch = path.join(repo, 'render-overrides', 'apply-trip-bulk
 if (!fs.existsSync(tripBulkPricesPatch)) throw new Error('Missing trip bulk price patch');
 execFileSync(process.execPath, [tripBulkPricesPatch, work], { cwd: repo, stdio: 'inherit' });
 
+// UX do motorista e apresentação da aba Viagens.
+const driverModeTripDisplayPatch = path.join(repo, 'render-overrides', 'apply-driver-mode-and-trip-display.mjs');
+if (!fs.existsSync(driverModeTripDisplayPatch)) throw new Error('Missing driver mode / trip display patch');
+execFileSync(process.execPath, [driverModeTripDisplayPatch, work], { cwd: repo, stdio: 'inherit' });
+
 // Biometria removida de forma definitiva. Mantemos apenas um componente de
 // compatibilidade que libera a tela imediatamente e apaga cadastros antigos do
 // navegador. Nenhuma chamada a WebAuthn, digital, Face ID ou bridge nativa é feita.
