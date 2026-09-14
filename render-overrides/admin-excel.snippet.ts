@@ -23,7 +23,8 @@ async function exportExcelColorido() {
     return selectedDriverIds.has(String(expense.driverId));
   });
   const totalExpenses = selectedExpenses.reduce((sum: number, expense: any) => sum + Number(expense.amount ?? 0), 0);
-  const finalResult = totalBilling - totalCommission - totalDiesel - totalExpenses;
+  const totalAllExpenses = totalExpenses + totalDiesel;
+  const finalResult = totalBilling - totalCommission - totalAllExpenses;
 
   const logoId = workbook.addImage({ base64: REPORT_LOGO_JPEG, extension: "jpeg" });
   worksheet.addImage(logoId, { tl: { col: 0, row: 0 }, ext: { width: 205, height: 106 } });
@@ -45,7 +46,7 @@ async function exportExcelColorido() {
 
   const summaryItems = [
     ["FATURAMENTO TOTAL", brl(totalBilling)],
-    ["DESPESAS LANÇADAS", brl(totalExpenses)],
+    ["TOTAL DESPESAS", brl(totalAllExpenses)],
     ["CUSTO DE DIESEL", brl(totalDiesel)],
     ["COMISSÕES", brl(totalCommission)],
     ["RESULTADO LÍQUIDO", brl(finalResult)],
@@ -140,7 +141,6 @@ async function exportExcelColorido() {
   });
   worksheet.autoFilter = { from: "A8", to: `K${Math.max(8, worksheet.rowCount)}` };
 
-  // Resumo financeiro por motorista.
   const driverSummary = workbook.addWorksheet("Resumo Motoristas", { views: [{ state: "frozen", ySplit: 5 }] });
   const summaryLogoId = workbook.addImage({ base64: REPORT_LOGO_JPEG, extension: "jpeg" });
   driverSummary.addImage(summaryLogoId, { tl: { col: 0, row: 0 }, ext: { width: 205, height: 106 } });
