@@ -27,6 +27,20 @@ async function exportExcelColorido() {
   const totalAllExpenses = totalExpenses + totalDiesel;
   const finalResult = totalBilling - totalCommission - totalAllExpenses;
 
+  // Comissão acumulada de cada motorista no período selecionado.
+  // Este resumo também aparece na primeira aba para não depender da navegação entre abas no celular.
+  const commissionByDriver = new Map<string, { name: string; total: number }>();
+  computed.forEach((trip: any) => {
+    const name = String(trip.driverName ?? "Sem motorista").trim() || "Sem motorista";
+    const key = String(trip.driverId ?? name);
+    const current = commissionByDriver.get(key) ?? { name, total: 0 };
+    current.total += Number(trip.commissionValue ?? trip.commission ?? 0);
+    commissionByDriver.set(key, current);
+  });
+  const commissionByDriverText = Array.from(commissionByDriver.values())
+    .map((item) => `${item.name}: ${brl(item.total)}`)
+    .join("  •  ") || "Sem comissões no período";
+
   const logoId = workbook.addImage({ base64: REPORT_LOGO_JPEG, extension: "jpeg" });
   worksheet.addImage(logoId, { tl: { col: 0, row: 0 }, ext: { width: 205, height: 106 } });
   worksheet.mergeCells("D1:K1");
@@ -77,12 +91,32 @@ async function exportExcelColorido() {
     }
   });
 
+  worksheet.mergeCells("A6:K6");
+  worksheet.getCell("A6").value = "TOTAL DE COMISSÃO POR MOTORISTA";
+  worksheet.getCell("A6").font = { bold: true, size: 10, color: { argb: white } };
+  worksheet.getCell("A6").fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } };
+  worksheet.getCell("A6").alignment = { horizontal: "left", vertical: "middle" };
+  worksheet.mergeCells("A7:K7");
+  worksheet.getCell("A7").value = commissionByDriverText;
+  worksheet.getCell("A7").font = { bold: true, size: 10, color: { argb: black } };
+  worksheet.getCell("A7").fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
+  worksheet.getCell("A7").alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+  for (const cell of [worksheet.getCell("A6"), worksheet.getCell("A7")]) {
+    cell.border = {
+      top: { style: "thin", color: { argb: blue } },
+      bottom: { style: "thin", color: { argb: blue } },
+      left: { style: "thin", color: { argb: blue } },
+      right: { style: "thin", color: { argb: blue } },
+    };
+  }
+
   worksheet.getRow(1).height = 40;
   worksheet.getRow(2).height = 26;
   worksheet.getRow(3).height = 8;
   worksheet.getRow(4).height = 19;
   worksheet.getRow(5).height = 25;
-  worksheet.getRow(6).height = 8;
+  worksheet.getRow(6).height = 20;
+  worksheet.getRow(7).height = commissionByDriver.size > 3 ? 36 : 24;
 
   const headers = ["Ticket", "Data", "Motorista", "Conjunto", "Modalidade", "Peso líquido", "KM", "Faturamento", "Comissão", "Diesel", "Resultado"];
   const headerRow = worksheet.getRow(8);
@@ -146,14 +180,19 @@ async function exportExcelColorido() {
   const summaryLogoId = workbook.addImage({ base64: REPORT_LOGO_JPEG, extension: "jpeg" });
   driverSummary.addImage(summaryLogoId, { tl: { col: 0, row: 0 }, ext: { width: 205, height: 106 } });
   driverSummary.mergeCells("D1:I1");
-  driverSummary.getCell("D1").value = "RESUMO POR MOTORISTA";
+  driverSummary.getCell("D1").value = "RESUMO POR MOTORISTA — COMISSÕES";
   driverSummary.getCell("D1").font = { bold: true, size: 18, color: { argb: white } };
   driverSummary.getCell("D1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } };
+  driverSummary.mergeCells("D2:I2");
+  driverSummary.getCell("D2").value = "A coluna TOTAL COMISSÃO mostra a soma das comissões de cada motorista no período.";
+  driverSummary.getCell("D2").font = { bold: true, size: 10, color: { argb: black } };
+  driverSummary.getCell("D2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
+  driverSummary.getCell("D2").alignment = { wrapText: true, vertical: "middle" };
   driverSummary.getRow(1).height = 40;
-  driverSummary.getRow(2).height = 26;
+  driverSummary.getRow(2).height = 30;
   driverSummary.getRow(3).height = 8;
 
-  const driverHeaders = ["Motorista", "Viagens", "Faturamento", "Faturamento líquido", "Comissão", "Diesel", "Despesas", "Após custos", "% comissão"];
+  const driverHeaders = ["Motorista", "Viagens", "Faturamento", "Faturamento líquido", "TOTAL COMISSÃO", "Diesel", "Despesas", "Após custos", "% comissão"];
   const driverHeaderRow = driverSummary.getRow(5);
   driverHeaderRow.values = driverHeaders;
   driverHeaderRow.height = 22;
@@ -215,8 +254,12 @@ async function exportExcelColorido() {
         right: { style: "thin", color: { argb: blue } },
       };
     });
+    const commissionCell = row.getCell(5);
+    commissionCell.font = { bold: true, color: { argb: blue }, size: 11 };
+    commissionCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
+    commissionCell.alignment = { horizontal: "center", vertical: "middle" };
   });
-  [30, 11, 18, 19, 18, 18, 18, 18, 14].forEach((width, index) => {
+  [30, 11, 18, 19, 22, 18, 18, 18, 14].forEach((width, index) => {
     driverSummary.getColumn(index + 1).width = width;
   });
 
