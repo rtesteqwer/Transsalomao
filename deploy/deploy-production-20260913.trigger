@@ -1,3 +1,4 @@
-deploy requested 2026-09-13T14:00:00-03:00
-remove biometric prompts; compatibility build fix
-preserve despesas, reports, short tickets and home navigation
+deploy requested 2026-09-14T11:55:00Z
+mobile layout hardened for phones
+PWA standalone/fullscreen manifest enabled
+viewport safe-area support added
