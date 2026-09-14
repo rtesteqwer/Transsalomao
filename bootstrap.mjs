@@ -78,6 +78,11 @@ const freightPricesPatch = path.join(repo, 'render-overrides', 'run-freight-pric
 if (!fs.existsSync(freightPricesPatch)) throw new Error('Missing safe freight price patch');
 execFileSync(process.execPath, [freightPricesPatch, work], { cwd: repo, stdio: 'inherit' });
 
+// Completa a centralização para Por tonelada, Por viagem, Cegonha e Caixinha.
+const allFreightPricesPatch = path.join(repo, 'render-overrides', 'apply-all-freight-prices.mjs');
+if (!fs.existsSync(allFreightPricesPatch)) throw new Error('Missing all-mode freight price patch');
+execFileSync(process.execPath, [allFreightPricesPatch, work], { cwd: repo, stdio: 'inherit' });
+
 // Biometria removida de forma definitiva. Mantemos apenas um componente de
 // compatibilidade que libera a tela imediatamente e apaga cadastros antigos do
 // navegador. Nenhuma chamada a WebAuthn, digital, Face ID ou bridge nativa é feita.
