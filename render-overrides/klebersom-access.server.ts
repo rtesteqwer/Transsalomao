@@ -1,15 +1,19 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { Client } from "pg";
 import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
 
 const COOKIE_NAME = "transsalomao_motorista";
 const LEGACY_COOKIE_NAME = "transsalomao_klebersom";
 const SESSION_SECONDS = 60 * 60 * 12;
+const BUILTIN_KLEBERSOM_USERNAME = "KlebersomDutra";
+const BUILTIN_KLEBERSOM_PASSWORD_SHA256 = "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92";
+const BUILTIN_KLEBERSOM_DRIVER_ID = "drv_d0d50a32b1";
 
 type DriverAccount = {
   username: string;
-  password: string;
   driverId: string;
+  password?: string;
+  passwordSha256?: string;
 };
 
 function driverAccounts(): DriverAccount[] {
@@ -38,6 +42,17 @@ function driverAccounts(): DriverAccount[] {
     const already = accounts.some((account) => account.username.toLowerCase() === legacyUsername.toLowerCase());
     if (!already) accounts.push({ username: legacyUsername, password: legacyPassword, driverId: legacyDriverId });
   }
+
+  // Conta operacional fixa solicitada para o motorista Klebersom.
+  // A senha não fica em texto puro no repositório; somente o SHA-256 é armazenado.
+  if (!accounts.some((account) => account.username.toLowerCase() === BUILTIN_KLEBERSOM_USERNAME.toLowerCase())) {
+    accounts.push({
+      username: BUILTIN_KLEBERSOM_USERNAME,
+      passwordSha256: BUILTIN_KLEBERSOM_PASSWORD_SHA256,
+      driverId: BUILTIN_KLEBERSOM_DRIVER_ID,
+    });
+  }
+
   return accounts;
 }
 
@@ -46,8 +61,27 @@ function accountByUsername(username: string) {
   return driverAccounts().find((account) => account.username.toLowerCase() === normalized) ?? null;
 }
 
+function safeEqual(aValue: string, bValue: string) {
+  const a = Buffer.from(aValue);
+  const b = Buffer.from(bValue);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function passwordMatches(account: DriverAccount, password: string) {
+  if (account.password !== undefined) return safeEqual(account.password, password);
+  if (account.passwordSha256) {
+    const digest = createHash("sha256").update(password).digest("hex");
+    return safeEqual(account.passwordSha256, digest);
+  }
+  return false;
+}
+
 function sessionSecret() {
-  const value = process.env.DRIVER_SESSION_SECRET?.trim() || process.env.KLEBERSOM_SESSION_SECRET?.trim();
+  const value =
+    process.env.DRIVER_SESSION_SECRET?.trim() ||
+    process.env.KLEBERSOM_SESSION_SECRET?.trim() ||
+    process.env.MANAGEMENT_SESSION_SECRET?.trim() ||
+    process.env.DATABASE_URL?.trim();
   if (!value) throw new Error("Segredo de sessão dos motoristas não configurado.");
   return value;
 }
@@ -75,9 +109,7 @@ function parseToken(token: string | undefined) {
 
   const payload = `${username}|${driverId}|${expiresAt}`;
   const expected = signature(payload);
-  const a = Buffer.from(supplied);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  if (!safeEqual(supplied, expected)) return null;
   return { username: account.username, driverId, expiresAt };
 }
 
@@ -85,15 +117,15 @@ export function klebersomSession() {
   return parseToken(getCookie(COOKIE_NAME));
 }
 
-// Kept under the previous exported name so the existing route/client API stays compatible.
-// Critically, this NEVER falls back to a Gerência/admin cookie.
+// Mantém o nome exportado anterior para compatibilidade com a rota existente.
+// Nunca aceita cookie da Gerência/admin como sessão de motorista.
 export function klebersomAuthorizedSession() {
   return klebersomSession();
 }
 
 export function loginKlebersom(username: string, password: string) {
   const account = accountByUsername(username);
-  if (!account || password !== account.password) {
+  if (!account || !passwordMatches(account, password)) {
     return { ok: false as const, message: "Login ou senha inválidos." };
   }
 
