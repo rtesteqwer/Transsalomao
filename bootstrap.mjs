@@ -87,9 +87,10 @@ const driverBatchModesPatch = path.join(repo, 'render-overrides', 'apply-driver-
 if (!fs.existsSync(driverBatchModesPatch)) throw new Error('Missing driver batch modes patch');
 execFileSync(process.execPath, [driverBatchModesPatch, work], { cwd: repo, stdio: 'inherit' });
 
-// Inspeção temporária: somente imprime trechos relacionados a despesas/comissão no build.
-const inspectExpensesPatch = path.join(repo, 'render-overrides', 'inspect-expenses-commission.mjs');
-if (fs.existsSync(inspectExpensesPatch)) execFileSync(process.execPath, [inspectExpensesPatch, work], { cwd: repo, stdio: 'inherit' });
+// Adiantamentos vinculados ao motorista e descontados da comissão nos relatórios.
+const driverAdvancesPatch = path.join(repo, 'render-overrides', 'apply-driver-advances.mjs');
+if (!fs.existsSync(driverAdvancesPatch)) throw new Error('Missing driver advances patch');
+execFileSync(process.execPath, [driverAdvancesPatch, work], { cwd: repo, stdio: 'inherit' });
 
 const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');
 fs.mkdirSync(path.dirname(biometricGatePath), { recursive: true });
