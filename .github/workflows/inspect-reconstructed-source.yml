@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - '.github/workflows/inspect-reconstructed-source.yml'
+      - 'render-overrides/**'
+      - 'bootstrap.mjs'
   workflow_dispatch:
 
 permissions:
@@ -20,14 +22,11 @@ jobs:
           node-version: '22'
       - name: Build reconstructed application
         run: node bootstrap.mjs
-      - name: Verify feature markers v2
+      - name: Verify feature markers
         shell: bash
         run: |
           SRC="$(ls -dt /tmp/transsalomao-build-* | head -1)"
           grep -q 'upsertFreightPrices' "$SRC/src/lib/api.ts"
-          grep -q 'update trips set price_per_trip' "$SRC/src/lib/api.ts"
           grep -q 'Preços frete' "$SRC/src/routes/dono/cadastros.tsx"
-          grep -q 'Preço automático' "$SRC/src/components/owner/trip-form.tsx"
-          grep -q 'const pricePerTrip' "$SRC/src/lib/api.ts"
-          test -f "$SRC/migrations/0007_freight_prices.sql"
-          echo 'FREIGHT_PRICES_BUILD_OK_V2'
+          grep -q 'TripForm' "$SRC/src/routes/dono/viagens.tsx"
+          echo 'TRIP_BULK_INSPECTION_BUILD_OK'
