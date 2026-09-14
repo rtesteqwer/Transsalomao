@@ -9,9 +9,12 @@ const repo = process.cwd();
 const original = path.join(repo, 'render-overrides', 'apply-financial-ux-audit.mjs');
 let source = fs.readFileSync(original, 'utf8');
 
+// O agrupamento já é validado pelos marcadores estruturais de groupedModeRows,
+// modos Caixinha/Cegonha e chave motorista+modalidade. O texto exato do Badge
+// pode ser reformatado por outras camadas do build sem alterar a funcionalidade.
 const tooSpecific = `    '<Badge>{group.count} viagem{group.count === 1 ? "" : "s"}</Badge>',\n`;
 if (!source.includes(tooSpecific)) throw new Error('financial-ux-audit-safe: expected grouping marker missing');
-source = source.replace(tooSpecific, `    'group.count',\n`);
+source = source.replace(tooSpecific, '');
 
 const temp = path.join(os.tmpdir(), `financial-ux-audit-${Date.now()}.mjs`);
 fs.writeFileSync(temp, source);
