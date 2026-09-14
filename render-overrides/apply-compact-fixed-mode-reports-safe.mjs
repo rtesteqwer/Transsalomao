@@ -55,3 +55,7 @@ execFileSync(process.execPath, [dashboardDieselNetOrder, target], { cwd: repo, s
 const dashboardExcelSimplify = path.join(repo, 'render-overrides', 'apply-dashboard-excel-simplify.mjs');
 if (!fs.existsSync(dashboardExcelSimplify)) throw new Error('compact-reports-safe: missing dashboard/excel simplify patch');
 execFileSync(process.execPath, [dashboardExcelSimplify, target], { cwd: repo, stdio: 'inherit' });
+
+const generalDownloadPdfFuelings = path.join(repo, 'render-overrides', 'apply-general-download-pdf-fuelings.mjs');
+if (!fs.existsSync(generalDownloadPdfFuelings)) throw new Error('compact-reports-safe: missing general download/pdf fuelings patch');
+execFileSync(process.execPath, [generalDownloadPdfFuelings, target], { cwd: repo, stdio: 'inherit' });
