@@ -51,7 +51,6 @@ replaceFile('src/lib/calc.ts', (s) => s
   .replace(/return `LCT-[^;]+;/g, 'return String(max + 1);'));
 fs.writeFileSync(path.join(work, 'migrations', '0005_renumber_tickets.sql'), '-- Tickets 1..79 já foram corrigidos no banco de produção e preservados em auditoria.\n-- Não renumerar novamente no deploy.\nSELECT 1;\n');
 
-// Optional release overlay supplied by the deployment wrapper.
 const overlay = process.env.TRANS_OVERLAY_DIR;
 if (overlay && fs.existsSync(overlay)) {
   const copies = [
@@ -72,39 +71,33 @@ if (overlay && fs.existsSync(overlay)) {
   }
 }
 
-// Base de preços globais para os modos fixos.
 const freightPricesPatch = path.join(repo, 'render-overrides', 'run-freight-prices-safe.mjs');
 if (!fs.existsSync(freightPricesPatch)) throw new Error('Missing safe freight price patch');
 execFileSync(process.execPath, [freightPricesPatch, work], { cwd: repo, stdio: 'inherit' });
 
-// Seleção/edição/exclusão em lote e regra final de preços:
-// Por tonelada individual por viagem; Por viagem/Cegonha/Caixinha globais.
 const tripBulkPricesPatch = path.join(repo, 'render-overrides', 'apply-trip-bulk-and-prices.mjs');
 if (!fs.existsSync(tripBulkPricesPatch)) throw new Error('Missing trip bulk price patch');
 execFileSync(process.execPath, [tripBulkPricesPatch, work], { cwd: repo, stdio: 'inherit' });
 
-// UX do motorista e apresentação da aba Viagens.
 const driverModeTripDisplayPatch = path.join(repo, 'render-overrides', 'apply-driver-mode-and-trip-display.mjs');
 if (!fs.existsSync(driverModeTripDisplayPatch)) throw new Error('Missing driver mode / trip display patch');
 execFileSync(process.execPath, [driverModeTripDisplayPatch, work], { cwd: repo, stdio: 'inherit' });
 
-// Lançamento do motorista: sem KM; Cegonha/Caixinha aceitam quantidade de viagens em lote.
 const driverBatchModesPatch = path.join(repo, 'render-overrides', 'apply-driver-batch-modes.mjs');
 if (!fs.existsSync(driverBatchModesPatch)) throw new Error('Missing driver batch modes patch');
 execFileSync(process.execPath, [driverBatchModesPatch, work], { cwd: repo, stdio: 'inherit' });
 
-// Biometria removida de forma definitiva. Mantemos apenas um componente de
-// compatibilidade que libera a tela imediatamente e apaga cadastros antigos do
-// navegador. Nenhuma chamada a WebAuthn, digital, Face ID ou bridge nativa é feita.
+// Inspeção temporária: somente imprime trechos relacionados a despesas/comissão no build.
+const inspectExpensesPatch = path.join(repo, 'render-overrides', 'inspect-expenses-commission.mjs');
+if (fs.existsSync(inspectExpensesPatch)) execFileSync(process.execPath, [inspectExpensesPatch, work], { cwd: repo, stdio: 'inherit' });
+
 const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');
 fs.mkdirSync(path.dirname(biometricGatePath), { recursive: true });
 fs.writeFileSync(biometricGatePath, `import { useEffect, type ReactNode } from "react";\n\nexport function BiometricGate({ children }: { scope?: string; children: ReactNode }) {\n  useEffect(() => {\n    try {\n      for (let i = localStorage.length - 1; i >= 0; i -= 1) {\n        const key = localStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) localStorage.removeItem(key);\n      }\n      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {\n        const key = sessionStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) sessionStorage.removeItem(key);\n      }\n    } catch {}\n  }, []);\n  return <>{children}</>;\n}\n`);
 for (const rel of [
   'native/android/BiometricBridge.kt',
   'native/android/biometric-webview-bridge.js',
-]) {
-  fs.rmSync(path.join(work, rel), { force: true });
-}
+]) fs.rmSync(path.join(work, rel), { force: true });
 console.log('[bootstrap] biometric authentication removed');
 
 console.log('[bootstrap] installing and building final source');
