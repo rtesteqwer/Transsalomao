@@ -40,6 +40,6 @@ const financialUxAuditSafe = path.join(repo, 'render-overrides', 'apply-financia
 if (!fs.existsSync(financialUxAuditSafe)) throw new Error('compact-reports-safe: missing safe financial UX/audit patch');
 execFileSync(process.execPath, [financialUxAuditSafe, target], { cwd: repo, stdio: 'inherit' });
 
-const inspectDashboard = path.join(repo, 'render-overrides', 'inspect-dashboard-primary-kpis.mjs');
-if (!fs.existsSync(inspectDashboard)) throw new Error('compact-reports-safe: missing dashboard KPI inspection');
-execFileSync(process.execPath, [inspectDashboard, target], { cwd: repo, stdio: 'inherit' });
+const dashboardCommissionPrimary = path.join(repo, 'render-overrides', 'apply-dashboard-commission-primary.mjs');
+if (!fs.existsSync(dashboardCommissionPrimary)) throw new Error('compact-reports-safe: missing dashboard commission primary patch');
+execFileSync(process.execPath, [dashboardCommissionPrimary, target], { cwd: repo, stdio: 'inherit' });
