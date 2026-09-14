@@ -72,10 +72,10 @@ if (overlay && fs.existsSync(overlay)) {
   }
 }
 
-// Preços globais da Gerência para fretes por viagem de Cegonha e Caixinha.
-// Executa antes do build/migrate para banco, API e interface nascerem juntos.
-const freightPricesPatch = path.join(repo, 'render-overrides', 'apply-freight-prices.mjs');
-if (!fs.existsSync(freightPricesPatch)) throw new Error('Missing freight price patch');
+// Preços globais da Gerência para os modos de frete.
+// O wrapper adapta o patch à estrutura atual sem criar coluna inexistente.
+const freightPricesPatch = path.join(repo, 'render-overrides', 'run-freight-prices-safe.mjs');
+if (!fs.existsSync(freightPricesPatch)) throw new Error('Missing safe freight price patch');
 execFileSync(process.execPath, [freightPricesPatch, work], { cwd: repo, stdio: 'inherit' });
 
 // Biometria removida de forma definitiva. Mantemos apenas um componente de
