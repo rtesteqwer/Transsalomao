@@ -43,3 +43,7 @@ execFileSync(process.execPath, [financialUxAuditSafe, target], { cwd: repo, stdi
 const dashboardCommissionPrimary = path.join(repo, 'render-overrides', 'apply-dashboard-commission-primary.mjs');
 if (!fs.existsSync(dashboardCommissionPrimary)) throw new Error('compact-reports-safe: missing dashboard commission primary patch');
 execFileSync(process.execPath, [dashboardCommissionPrimary, target], { cwd: repo, stdio: 'inherit' });
+
+const reportPolishFuelings = path.join(repo, 'render-overrides', 'apply-report-polish-fuelings.mjs');
+if (!fs.existsSync(reportPolishFuelings)) throw new Error('compact-reports-safe: missing report polish/fuelings patch');
+execFileSync(process.execPath, [reportPolishFuelings, target], { cwd: repo, stdio: 'inherit' });
