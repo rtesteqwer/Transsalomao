@@ -1,11 +1,14 @@
 alter table freight_prices
   drop constraint if exists freight_prices_mode_check;
 
+-- Remover o preço global antigo de tonelada antes de restringir os modos
+-- permitidos. Isso não toca em trips.price_per_ton, que permanece individual
+-- em cada viagem.
+delete from freight_prices where mode = 'ton';
+
 alter table freight_prices
   add constraint freight_prices_mode_check
   check (mode in ('trip', 'cegonha', 'caixinha'));
-
-delete from freight_prices where mode = 'ton';
 
 insert into freight_prices (mode, price)
 values (
