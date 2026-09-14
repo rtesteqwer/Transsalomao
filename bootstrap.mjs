@@ -72,6 +72,12 @@ if (overlay && fs.existsSync(overlay)) {
   }
 }
 
+// Preços globais da Gerência para fretes por viagem de Cegonha e Caixinha.
+// Executa antes do build/migrate para banco, API e interface nascerem juntos.
+const freightPricesPatch = path.join(repo, 'render-overrides', 'apply-freight-prices.mjs');
+if (!fs.existsSync(freightPricesPatch)) throw new Error('Missing freight price patch');
+execFileSync(process.execPath, [freightPricesPatch, work], { cwd: repo, stdio: 'inherit' });
+
 // Biometria removida de forma definitiva. Mantemos apenas um componente de
 // compatibilidade que libera a tela imediatamente e apaga cadastros antigos do
 // navegador. Nenhuma chamada a WebAuthn, digital, Face ID ou bridge nativa é feita.
@@ -85,33 +91,6 @@ for (const rel of [
   fs.rmSync(path.join(work, rel), { force: true });
 }
 console.log('[bootstrap] biometric authentication removed');
-
-// Temporary targeted source inspection for freight-mode implementation.
-for (const rel of [
-  'src/components/owner/trip-form.tsx',
-  'src/routes/dono/viagens.tsx',
-  'src/routes/dono/totais.tsx',
-  'src/lib/api.ts',
-  'src/lib/calc.ts',
-  'src/lib/db.ts',
-]) {
-  const file = path.join(work, rel);
-  if (!fs.existsSync(file)) continue;
-  const lines = fs.readFileSync(file, 'utf8').split('\n');
-  const hits = new Set();
-  lines.forEach((line, index) => {
-    if (/(frete|freight|mode|modo|price|pre[cç]o|ton|fixed|fixo|trip|viagem|report|relat)/i.test(line)) {
-      for (let i = Math.max(0, index - 3); i <= Math.min(lines.length - 1, index + 5); i += 1) hits.add(i);
-    }
-  });
-  console.log(`[freight-inspect] FILE ${rel}`);
-  let last = -2;
-  for (const index of [...hits].sort((a, b) => a - b)) {
-    if (index > last + 1) console.log('[freight-inspect] ---');
-    console.log(`[freight-inspect] ${index + 1}: ${lines[index]}`);
-    last = index;
-  }
-}
 
 console.log('[bootstrap] installing and building final source');
 execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });
