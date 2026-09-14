@@ -19,3 +19,6 @@ const temp = path.join(os.tmpdir(), `compact-reports-${Date.now()}.mjs`);
 fs.writeFileSync(temp, source);
 execFileSync(process.execPath, [temp, target], { cwd: repo, stdio: 'inherit' });
 fs.rmSync(temp, { force: true });
+
+const inspect = path.join(repo, 'render-overrides', 'inspect-viagens-caixa.mjs');
+if (fs.existsSync(inspect)) execFileSync(process.execPath, [inspect, target], { cwd: repo, stdio: 'inherit' });
