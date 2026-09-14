@@ -4,7 +4,7 @@ import { execSync } from 'node:child_process';
 
 const root = process.cwd();
 const source = path.join(root, '.render-version-for-vercel');
-const pinnedRenderCommit = 'b40af8d94e18ee0635eba2e7c85df5f6dde9972f';
+const pinnedRenderCommit = '19c42fdf00fb15360c017e144d255e999052946c';
 const repoUrl = 'https://github.com/rtesteqwer/Transsalomao.git';
 
 fs.rmSync(source, { recursive: true, force: true });
@@ -16,8 +16,6 @@ execSync(`git remote add origin ${repoUrl}`, { cwd: source, stdio: 'inherit' });
 execSync(`git fetch --depth 1 origin ${pinnedRenderCommit}`, { cwd: source, stdio: 'inherit' });
 execSync('git checkout --detach FETCH_HEAD', { cwd: source, stdio: 'inherit' });
 
-// Build the same reconstructed/patched source used on Render. Clear Render-only
-// identity variables so the canonical-domain proxy path is never selected here.
 execSync('node render-build.mjs', {
   cwd: source,
   stdio: 'inherit',
@@ -33,8 +31,6 @@ if (!fs.existsSync(path.join(app, 'package.json'))) {
   throw new Error('Render source reconstruction did not produce the application');
 }
 
-// Render's final pass forces Nitro node-server. For Vercel, switch only the
-// deployment preset back to Vercel; application source stays exactly the same.
 const configCandidates = [
   'vite.config.ts','vite.config.js','vite.config.mts','vite.config.mjs',
   'nitro.config.ts','nitro.config.js','nitro.config.mts','nitro.config.mjs',
