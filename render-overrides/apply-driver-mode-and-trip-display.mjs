@@ -78,9 +78,17 @@ function replaceRequired(text, search, replacement, label) {
 }
 
 // App do motorista: trocar o select nativo por botões grandes, fáceis de tocar,
-// e exigir uma modalidade antes de enviar o lançamento.
+// exigir uma modalidade antes de enviar e impedir que o modo salvo anteriormente
+// sobrescreva a nova escolha durante o re-render do formulário.
 {
   let s = read('src/routes/motorista.tsx');
+
+  s = replaceRequired(
+    s,
+    '    if (savedMode === "trip" || savedMode === "ton" || savedMode === "cegonha" || savedMode === "caixinha") setFreightMode(savedMode);',
+    '    if (savedMode === "trip" || savedMode === "ton" || savedMode === "cegonha" || savedMode === "caixinha") {\n      setFreightMode((current) => current || savedMode);\n    }',
+    'do not overwrite active freight mode',
+  );
 
   s = replaceRequired(
     s,
@@ -113,11 +121,11 @@ function replaceRequired(text, search, replacement, label) {
   s = replaceRequired(
     s,
     `          <Field label="Modo de frete" hint="Opcional — pode ser ajustado pela gerência">\n            <Select\n              value={freightMode}\n              onChange={(e) => setFreightMode(e.target.value as FreightMode | "")}\n            >\n              <option value="">A definir pela gerência</option>\n              <option value="ton">Por tonelada</option>\n              <option value="trip">Por viagem</option>\n              <option value="cegonha">Cegonha</option>\n              <option value="caixinha">Caixinha</option>\n            </Select>\n          </Field>`,
-    `          <Field label="Modo de frete" hint="Obrigatório — toque em uma opção">\n            <div className="grid grid-cols-2 gap-2">\n              {(["ton", "trip", "cegonha", "caixinha"] as FreightMode[]).map((mode) => (\n                <button\n                  key={mode}\n                  type="button"\n                  aria-pressed={freightMode === mode}\n                  onClick={() => setFreightMode(mode)}\n                  className={\`min-h-14 rounded-xl border px-3 py-3 text-left transition \${\n                    freightMode === mode\n                      ? "border-fg bg-surface-2 text-fg ring-1 ring-fg"\n                      : "border-border bg-surface text-muted"\n                  }\`}\n                >\n                  <span className="block font-medium">{freightModeLabel(mode)}</span>\n                  <span className="mt-1 block text-[11px] opacity-70">\n                    {freightMode === mode ? "Selecionado" : "Selecionar"}\n                  </span>\n                </button>\n              ))}\n            </div>\n          </Field>`,
+    `          <Field label="Modo de frete" hint="Obrigatório — toque em uma opção">\n            <div className="grid grid-cols-2 gap-2">\n              {(["ton", "trip", "cegonha", "caixinha"] as FreightMode[]).map((mode) => (\n                <button\n                  key={mode}\n                  type="button"\n                  aria-pressed={freightMode === mode}\n                  onClick={() => {\n                    setFreightMode(mode);\n                    try { localStorage.setItem(MODE_KEY, mode); } catch {}\n                  }}\n                  className={\`min-h-14 rounded-xl border px-3 py-3 text-left transition \${\n                    freightMode === mode\n                      ? "border-fg bg-surface-2 text-fg ring-2 ring-fg"\n                      : "border-border bg-surface text-muted"\n                  }\`}\n                >\n                  <span className="block font-medium">{freightModeLabel(mode)}</span>\n                  <span className="mt-1 block text-[11px] opacity-70">\n                    {freightMode === mode ? "✓ Selecionado" : "Selecionar"}\n                  </span>\n                </button>\n              ))}\n            </div>\n          </Field>`,
     'touch freight mode buttons',
   );
 
   write('src/routes/motorista.tsx', s);
 }
 
-console.log('[driver-mode-trip-display] driver freight buttons + trips ton price + trips diesel removal applied');
+console.log('[driver-mode-trip-display] driver freight buttons fixed + trips ton price + trips diesel removal applied');
