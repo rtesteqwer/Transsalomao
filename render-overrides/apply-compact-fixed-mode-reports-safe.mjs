@@ -27,3 +27,7 @@ execFileSync(process.execPath, [simplifyUi, target], { cwd: repo, stdio: 'inheri
 const caixaDeleteSync = path.join(repo, 'render-overrides', 'apply-caixa-delete-sync.mjs');
 if (!fs.existsSync(caixaDeleteSync)) throw new Error('compact-reports-safe: missing Caixa delete sync patch');
 execFileSync(process.execPath, [caixaDeleteSync, target], { cwd: repo, stdio: 'inherit' });
+
+const inspectAdvances = path.join(repo, 'render-overrides', 'inspect-advances-pdf.mjs');
+if (!fs.existsSync(inspectAdvances)) throw new Error('compact-reports-safe: missing advances inspection patch');
+execFileSync(process.execPath, [inspectAdvances, target], { cwd: repo, stdio: 'inherit' });
