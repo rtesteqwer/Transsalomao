@@ -23,3 +23,7 @@ fs.rmSync(temp, { force: true });
 const simplifyUi = path.join(repo, 'render-overrides', 'apply-simplify-viagens-caixa.mjs');
 if (!fs.existsSync(simplifyUi)) throw new Error('compact-reports-safe: missing simplify Viagens/Caixa patch');
 execFileSync(process.execPath, [simplifyUi, target], { cwd: repo, stdio: 'inherit' });
+
+const caixaDeleteSync = path.join(repo, 'render-overrides', 'apply-caixa-delete-sync.mjs');
+if (!fs.existsSync(caixaDeleteSync)) throw new Error('compact-reports-safe: missing Caixa delete sync patch');
+execFileSync(process.execPath, [caixaDeleteSync, target], { cwd: repo, stdio: 'inherit' });
