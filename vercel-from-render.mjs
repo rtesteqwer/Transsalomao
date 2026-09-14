@@ -46,7 +46,7 @@ if (!fs.existsSync(tripsPath)) throw new Error('Painel Viagens source not found'
     trips = trips.replace(/(["'])Peso\1/, (_m, quote) => `${quote}Toneladas${quote}`);
   }
 
-  // Mobile: substitui o bloco Diesel pelo peso/tonelagem da própria viagem.
+  // Tentativa no source; uma garantia adicional é aplicada no bundle final abaixo.
   const dieselCard = /<div>\s*<dt([^>]*)>Diesel<\/dt>\s*<dd([^>]*)>\{[^{}]*?\b([A-Za-z_$][\w$]*)\.dieselCost[^{}]*\}<\/dd>\s*<\/div>/m;
   if (dieselCard.test(trips)) {
     trips = trips.replace(dieselCard, (_match, dtAttrs, ddAttrs, item) => [
@@ -57,11 +57,10 @@ if (!fs.existsSync(tripsPath)) throw new Error('Painel Viagens source not found'
     ].join('\n'));
   }
 
-  if (/>Diesel<\/dt>/.test(trips)) throw new Error('Diesel is still visible in Painel Viagens');
   if (!trips.includes('Toneladas')) throw new Error('Toneladas label missing from Painel Viagens');
 
   fs.writeFileSync(tripsPath, trips);
-  console.log('[vercel] Painel Viagens: diesel removido; toneladas exibidas quando houver');
+  console.log('[vercel] Painel Viagens source: diesel removido do CSV e toneladas adicionadas');
 }
 
 const configCandidates = [
@@ -95,6 +94,39 @@ const to = path.join(root, '.vercel', 'output');
 if (!fs.existsSync(from)) {
   throw new Error('Vercel build output was not generated from the Render version');
 }
+
+// Garantia no bundle final: o cartão mobile de Viagens não pode voltar a exibir diesel.
+function patchBuiltTrips(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      patchBuiltTrips(file);
+      continue;
+    }
+    if (!/^viagens-.*\.(?:js|mjs)$/.test(entry.name)) continue;
+
+    let text = fs.readFileSync(file, 'utf8');
+    const before = text;
+
+    text = text.replaceAll('children:`Diesel`', 'children:`Toneladas`');
+    text = text.replace(
+      /children:([A-Za-z_$][\w$]*)\(([A-Za-z_$][\w$]*)\.dieselCost\)/g,
+      (_match, _moneyFn, item) =>
+        'children:Number(' + item + '.netWeight)>0?`${new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(' + item + '.netWeight))} t`:`—`',
+    );
+
+    if (text.includes('children:`Diesel`') || text.includes('.dieselCost')) {
+      throw new Error(`Diesel still visible in built Painel Viagens: ${entry.name}`);
+    }
+    if (!text.includes('Toneladas')) {
+      throw new Error(`Toneladas missing in built Painel Viagens: ${entry.name}`);
+    }
+    if (text !== before) fs.writeFileSync(file, text);
+  }
+}
+patchBuiltTrips(from);
+console.log('[vercel] Painel Viagens bundle: diesel removido; toneladas garantidas no desktop e celular');
 
 // Mobile/PWA hardening. Installed PWA opens in standalone mode, while
 // vertical touch scrolling stays native in browsers and Android WebView.
