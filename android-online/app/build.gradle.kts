@@ -10,8 +10,8 @@ android {
         applicationId = "com.transsalomao.online"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.2"
     }
 
     buildTypes {
