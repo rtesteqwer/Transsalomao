@@ -20,7 +20,7 @@ jobs:
           node-version: '22'
       - name: Build reconstructed application
         run: node bootstrap.mjs
-      - name: Verify feature markers
+      - name: Verify feature markers v2
         shell: bash
         run: |
           SRC="$(ls -dt /tmp/transsalomao-build-* | head -1)"
@@ -28,5 +28,6 @@ jobs:
           grep -q 'update trips set price_per_trip' "$SRC/src/lib/api.ts"
           grep -q 'Preços frete' "$SRC/src/routes/dono/cadastros.tsx"
           grep -q 'Preço automático' "$SRC/src/components/owner/trip-form.tsx"
+          grep -q 'const pricePerTrip' "$SRC/src/lib/api.ts"
           test -f "$SRC/migrations/0007_freight_prices.sql"
-          echo 'FREIGHT_PRICES_BUILD_OK'
+          echo 'FREIGHT_PRICES_BUILD_OK_V2'
