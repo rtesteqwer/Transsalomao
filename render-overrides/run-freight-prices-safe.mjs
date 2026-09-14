@@ -31,13 +31,6 @@ try {
     cwd: path.resolve(here, '..'),
     stdio: 'inherit',
   });
-  const inspectPath = path.join(here, 'inspect-trip-bulk.mjs');
-  if (fs.existsSync(inspectPath)) {
-    execFileSync(process.execPath, [inspectPath, target], {
-      cwd: path.resolve(here, '..'),
-      stdio: 'inherit',
-    });
-  }
 } finally {
   fs.rmSync(runtimePath, { force: true });
 }
