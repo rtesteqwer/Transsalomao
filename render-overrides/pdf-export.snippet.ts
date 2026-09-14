@@ -22,18 +22,32 @@ export async function downloadDriverReportPdf({
   const blue = [0, 140, 255] as [number, number, number];
   const dark = [7, 17, 31] as [number, number, number];
   const black = [17, 17, 17] as [number, number, number];
+
   const totalCommission = trips.reduce((sum, trip) => sum + Number((trip as any).commissionValue ?? (trip as any).commission ?? 0), 0);
   const totalFreight = trips.reduce((sum, trip) => sum + Number((trip as any).freight ?? 0), 0);
   const totalTons = trips.reduce((sum, trip) => sum + Number((trip as any).netWeight ?? 0), 0);
-  const rows = trips.map((trip) => [
-    formatDate((trip as any).date),
-    String((trip as any).code ?? "—"),
-    String((trip as any).fleetName ?? "—"),
-    tons(Number((trip as any).netWeight ?? 0)),
-    brl(Number((trip as any).freight ?? 0)),
-    brl(Number((trip as any).commissionValue ?? (trip as any).commission ?? 0)),
-    brl(Number((trip as any).dieselCost ?? 0)),
-    brl(Number((trip as any).grossResult ?? 0)),
+
+  const driverTotals = new Map<string, { name: string; trips: number; billing: number; commission: number }>();
+  trips.forEach((trip: any) => {
+    const name = String(trip.driverName ?? driverName ?? "Motorista").trim() || "Motorista";
+    const key = String(trip.driverId ?? name);
+    const current = driverTotals.get(key) ?? { name, trips: 0, billing: 0, commission: 0 };
+    current.trips += 1;
+    current.billing += Number(trip.freight ?? 0);
+    current.commission += Number(trip.commissionValue ?? trip.commission ?? 0);
+    driverTotals.set(key, current);
+  });
+
+  const rows = trips.map((trip: any) => [
+    formatDate(trip.date),
+    String(trip.code ?? "—"),
+    String(trip.driverName ?? driverName ?? "—"),
+    String(trip.fleetName ?? "—"),
+    tons(Number(trip.netWeight ?? 0)),
+    brl(Number(trip.freight ?? 0)),
+    brl(Number(trip.commissionValue ?? trip.commission ?? 0)),
+    brl(Number(trip.dieselCost ?? 0)),
+    brl(Number(trip.grossResult ?? 0)),
   ]);
 
   const drawHeader = () => {
@@ -64,25 +78,99 @@ export async function downloadDriverReportPdf({
   };
 
   autoTable(doc, {
-    head: [["Data", "Ticket", "Conjunto", "Peso líquido", "Frete", "Comissão", "Diesel", "Resultado"]],
+    head: [["Data", "Ticket", "Motorista", "Conjunto", "Peso", "Frete", "Comissão", "Diesel", "Resultado"]],
     body: rows,
     startY: 25,
-    margin: { top: 25, right: 7, bottom: 8, left: 7 },
+    margin: { top: 25, right: 7, bottom: 9, left: 7 },
     theme: "grid",
     showHead: "everyPage",
     rowPageBreak: "avoid",
-    styles: { font: "helvetica", fontSize: 6.6, cellPadding: 1.15, textColor: black, fillColor: [255, 255, 255], lineColor: blue, lineWidth: 0.16, valign: "middle", overflow: "ellipsize", minCellHeight: 4.4 },
-    headStyles: { fillColor: dark, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 6.8, lineColor: blue, lineWidth: 0.2, halign: "center", minCellHeight: 5.2 },
+    styles: {
+      font: "helvetica",
+      fontSize: 6.15,
+      cellPadding: 0.95,
+      textColor: black,
+      fillColor: [255, 255, 255],
+      lineColor: blue,
+      lineWidth: 0.14,
+      valign: "middle",
+      overflow: "ellipsize",
+      minCellHeight: 4.1,
+    },
+    headStyles: {
+      fillColor: dark,
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 6.25,
+      lineColor: blue,
+      lineWidth: 0.18,
+      halign: "center",
+      minCellHeight: 4.8,
+    },
     alternateRowStyles: { fillColor: [255, 255, 255] },
     columnStyles: {
-      0: { cellWidth: 20, halign: "center" },
-      1: { cellWidth: 15, halign: "center" },
-      2: { cellWidth: 58 },
-      3: { cellWidth: 25, halign: "right" },
-      4: { cellWidth: 34, halign: "right" },
-      5: { cellWidth: 34, halign: "right" },
-      6: { cellWidth: 34, halign: "right" },
-      7: { cellWidth: 34, halign: "right" },
+      0: { cellWidth: 18, halign: "center" },
+      1: { cellWidth: 13, halign: "center" },
+      2: { cellWidth: 42 },
+      3: { cellWidth: 47 },
+      4: { cellWidth: 22, halign: "right" },
+      5: { cellWidth: 32, halign: "right" },
+      6: { cellWidth: 32, halign: "right" },
+      7: { cellWidth: 32, halign: "right" },
+      8: { cellWidth: 32, halign: "right" },
+    },
+    didDrawPage: drawHeader,
+  });
+
+  const commissionRows = Array.from(driverTotals.values())
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    .map((item) => [
+      item.name,
+      String(item.trips),
+      brl(item.billing),
+      brl(item.commission),
+      brl(item.billing - item.commission),
+    ]);
+
+  let summaryY = Number((doc as any).lastAutoTable?.finalY ?? 25) + 6;
+  if (summaryY > 165) {
+    doc.addPage("a4", "landscape");
+    summaryY = 29;
+  }
+
+  autoTable(doc, {
+    head: [["Motorista", "Fretes", "Faturamento", "Comissão", "Faturamento líquido"]],
+    body: commissionRows,
+    startY: summaryY,
+    margin: { top: 25, right: 7, bottom: 9, left: 7 },
+    theme: "grid",
+    showHead: "everyPage",
+    rowPageBreak: "avoid",
+    styles: {
+      font: "helvetica",
+      fontSize: 7,
+      cellPadding: 1.2,
+      textColor: black,
+      fillColor: [255, 255, 255],
+      lineColor: blue,
+      lineWidth: 0.16,
+      overflow: "ellipsize",
+    },
+    headStyles: {
+      fillColor: blue,
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 7,
+      halign: "center",
+      lineColor: dark,
+      lineWidth: 0.18,
+    },
+    columnStyles: {
+      0: { cellWidth: 82 },
+      1: { cellWidth: 24, halign: "center" },
+      2: { cellWidth: 55, halign: "right" },
+      3: { cellWidth: 55, halign: "right" },
+      4: { cellWidth: 60, halign: "right" },
     },
     didDrawPage: drawHeader,
   });
@@ -93,7 +181,11 @@ export async function downloadDriverReportPdf({
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.2);
     doc.setTextColor(95, 105, 118);
-    doc.text(`Fretes: ${trips.length}  •  Peso: ${tons(totalTons)}  •  Faturamento: ${brl(totalFreight)}`, 7, 205);
+    doc.text(
+      `Fretes: ${trips.length}  •  Peso: ${tons(totalTons)}  •  Faturamento: ${brl(totalFreight)}  •  Comissão: ${brl(totalCommission)}  •  Líquido: ${brl(totalFreight - totalCommission)}`,
+      7,
+      205,
+    );
     doc.text(`Página ${page}/${pages}`, 290, 205, { align: "right" });
   }
 
