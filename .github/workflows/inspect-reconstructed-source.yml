@@ -1,4 +1,4 @@
-name: Inspect reconstructed source
+name: Validate freight prices build
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -18,20 +18,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Reconstruct source
+      - name: Build reconstructed application
+        run: node bootstrap.mjs
+      - name: Verify feature markers
+        shell: bash
         run: |
-          node bootstrap.mjs
           SRC="$(ls -dt /tmp/transsalomao-build-* | head -1)"
-          mkdir -p inspect-src/src inspect-src/migrations
-          cp -r "$SRC/src/lib" inspect-src/src/lib
-          cp -r "$SRC/src/components/owner" inspect-src/src/owner-components
-          cp -r "$SRC/src/routes/dono" inspect-src/src/dono-routes
-          cp "$SRC/src/routes/motorista.tsx" inspect-src/src/motorista.tsx || true
-          cp -r "$SRC/migrations/." inspect-src/migrations/
-          cp "$SRC/package.json" inspect-src/package.json
-          cp "$SRC/scripts/migrate.mjs" inspect-src/migrate.mjs || true
-      - uses: actions/upload-artifact@v4
-        with:
-          name: reconstructed-source
-          path: inspect-src
-          retention-days: 1
+          grep -q 'upsertFreightPrices' "$SRC/src/lib/api.ts"
+          grep -q 'update trips set price_per_trip' "$SRC/src/lib/api.ts"
+          grep -q 'Preços frete' "$SRC/src/routes/dono/cadastros.tsx"
+          grep -q 'Preço automático' "$SRC/src/components/owner/trip-form.tsx"
+          test -f "$SRC/migrations/0007_freight_prices.sql"
+          echo 'FREIGHT_PRICES_BUILD_OK'
