@@ -1,1 +1,1 @@
-{"private":true,"scripts":{"build":"node bootstrap.mjs"},"engines":{"node":">=22"}}
+{"private":true,"scripts":{"build":"node vercel-from-render.mjs"},"engines":{"node":">=22"}}
