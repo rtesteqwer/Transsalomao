@@ -22,17 +22,14 @@ jobs:
         run: |
           node bootstrap.mjs
           SRC="$(ls -dt /tmp/transsalomao-build-* | head -1)"
-          mkdir -p inspect-src/src/lib inspect-src/src/routes/dono inspect-src/src/components
-          cp "$SRC/src/lib/api.ts" inspect-src/src/lib/api.ts
-          cp "$SRC/src/lib/use-fleet.ts" inspect-src/src/lib/use-fleet.ts
-          cp "$SRC/src/lib/types.ts" inspect-src/src/lib/types.ts || true
-          cp "$SRC/src/lib/calc.ts" inspect-src/src/lib/calc.ts
-          cp "$SRC/src/components/trip-form.tsx" inspect-src/src/components/trip-form.tsx
-          cp "$SRC/src/routes/dono/route.tsx" inspect-src/src/routes/dono/route.tsx
-          cp "$SRC/src/routes/dono/totais.tsx" inspect-src/src/routes/dono/totais.tsx
-          cp "$SRC/src/components/owner/shell.tsx" inspect-src/src/components/owner-shell.tsx || true
-          cp -r "$SRC/migrations" inspect-src/migrations
+          mkdir -p inspect-src/src inspect-src/migrations
+          cp -r "$SRC/src/lib" inspect-src/src/lib
+          cp -r "$SRC/src/components/owner" inspect-src/src/owner-components
+          cp -r "$SRC/src/routes/dono" inspect-src/src/dono-routes
+          cp "$SRC/src/routes/motorista.tsx" inspect-src/src/motorista.tsx || true
+          cp -r "$SRC/migrations/." inspect-src/migrations/
           cp "$SRC/package.json" inspect-src/package.json
+          cp "$SRC/scripts/migrate.mjs" inspect-src/migrate.mjs || true
       - uses: actions/upload-artifact@v4
         with:
           name: reconstructed-source
