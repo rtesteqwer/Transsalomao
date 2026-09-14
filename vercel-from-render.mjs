@@ -4,7 +4,7 @@ import { execSync } from 'node:child_process';
 
 const root = process.cwd();
 const source = path.join(root, '.render-version-for-vercel');
-const pinnedRenderCommit = '5e668f68b64b6ac925af0e36594cc65f4091f294';
+const pinnedRenderCommit = '7b514b4a1df4011601e9815feb3fe9de146c9efc';
 const repoUrl = 'https://github.com/rtesteqwer/Transsalomao.git';
 
 fs.rmSync(source, { recursive: true, force: true });
