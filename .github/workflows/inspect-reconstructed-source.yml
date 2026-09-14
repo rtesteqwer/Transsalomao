@@ -22,14 +22,12 @@ jobs:
           node-version: '22'
       - name: Build reconstructed application
         run: node bootstrap.mjs
-      - name: Inspect driver launch and trips table
+      - name: Verify feature markers
         shell: bash
         run: |
           SRC="$(ls -dt /tmp/transsalomao-build-* | head -1)"
-          echo '--- VIAGENS ---'
-          grep -n -E -C 8 'Diesel|diesel|Preço|preço|Tonel|tonel|pricePerTon|freightMode' "$SRC/src/routes/dono/viagens.tsx" || true
-          echo '--- MOTORISTA ---'
-          grep -n -E -C 10 'freight|Frete|frete|mode|Modo|modo|ton|Ton|trip|Viagem|viagem|report' "$SRC/src/routes/motorista.tsx" || true
-          echo '--- LANCAMENTOS ---'
-          grep -n -E -C 8 'freight|Frete|frete|mode|Modo|modo|ton|Ton|trip|Viagem|viagem|report' "$SRC/src/routes/dono/lancamentos.tsx" || true
-          echo 'INSPECTION_OK'
+          grep -q 'Obrigatório — toque em uma opção' "$SRC/src/routes/motorista.tsx"
+          grep -q '\["ton", "trip", "cegonha", "caixinha"\]' "$SRC/src/routes/motorista.tsx"
+          grep -q 'brl(t.pricePerTon)' "$SRC/src/routes/dono/viagens.tsx"
+          grep -q 'grid grid-cols-2 gap-2 text-sm' "$SRC/src/routes/dono/viagens.tsx"
+          echo 'feature validation OK'
