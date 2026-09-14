@@ -92,6 +92,11 @@ const driverAdvancesPatch = path.join(repo, 'render-overrides', 'apply-driver-ad
 if (!fs.existsSync(driverAdvancesPatch)) throw new Error('Missing safe driver advances patch');
 execFileSync(process.execPath, [driverAdvancesPatch, work], { cwd: repo, stdio: 'inherit' });
 
+// Compacta Por viagem, Cegonha e Caixinha nos PDFs e Excel coloridos.
+const compactReportsPatch = path.join(repo, 'render-overrides', 'apply-compact-fixed-mode-reports-safe.mjs');
+if (!fs.existsSync(compactReportsPatch)) throw new Error('Missing compact reports patch');
+execFileSync(process.execPath, [compactReportsPatch, work], { cwd: repo, stdio: 'inherit' });
+
 const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');
 fs.mkdirSync(path.dirname(biometricGatePath), { recursive: true });
 fs.writeFileSync(biometricGatePath, `import { useEffect, type ReactNode } from "react";\n\nexport function BiometricGate({ children }: { scope?: string; children: ReactNode }) {\n  useEffect(() => {\n    try {\n      for (let i = localStorage.length - 1; i >= 0; i -= 1) {\n        const key = localStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) localStorage.removeItem(key);\n      }\n      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {\n        const key = sessionStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) sessionStorage.removeItem(key);\n      }\n    } catch {}\n  }, []);\n  return <>{children}</>;\n}\n`);
