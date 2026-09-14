@@ -16,6 +16,7 @@ async function exportExcelColorido() {
 
   const totalBilling = computed.reduce((sum: number, trip: any) => sum + Number(trip.freight ?? 0), 0);
   const totalCommission = computed.reduce((sum: number, trip: any) => sum + Number(trip.commissionValue ?? trip.commission ?? 0), 0);
+  const totalNetBilling = totalBilling - totalCommission;
   const totalDiesel = computed.reduce((sum: number, trip: any) => sum + Number(trip.dieselCost ?? 0), 0);
   const selectedExpenses = (data?.expenses ?? []).filter((expense: any) => {
     if (selectedDriverIds.size === 0) return true;
@@ -144,7 +145,7 @@ async function exportExcelColorido() {
   const driverSummary = workbook.addWorksheet("Resumo Motoristas", { views: [{ state: "frozen", ySplit: 5 }] });
   const summaryLogoId = workbook.addImage({ base64: REPORT_LOGO_JPEG, extension: "jpeg" });
   driverSummary.addImage(summaryLogoId, { tl: { col: 0, row: 0 }, ext: { width: 205, height: 106 } });
-  driverSummary.mergeCells("D1:H1");
+  driverSummary.mergeCells("D1:I1");
   driverSummary.getCell("D1").value = "RESUMO POR MOTORISTA";
   driverSummary.getCell("D1").font = { bold: true, size: 18, color: { argb: white } };
   driverSummary.getCell("D1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } };
@@ -152,7 +153,7 @@ async function exportExcelColorido() {
   driverSummary.getRow(2).height = 26;
   driverSummary.getRow(3).height = 8;
 
-  const driverHeaders = ["Motorista", "Viagens", "Faturamento", "Comissão", "Diesel", "Despesas", "Após custos", "% comissão"];
+  const driverHeaders = ["Motorista", "Viagens", "Faturamento", "Faturamento líquido", "Comissão", "Diesel", "Despesas", "Após custos", "% comissão"];
   const driverHeaderRow = driverSummary.getRow(5);
   driverHeaderRow.values = driverHeaders;
   driverHeaderRow.height = 22;
@@ -191,14 +192,16 @@ async function exportExcelColorido() {
       .filter((expense: any) => item.id && String(expense.driverId ?? "") === String(item.id))
       .reduce((sum: number, expense: any) => sum + Number(expense.amount ?? 0), 0);
     const pct = item.billing > 0 ? (item.commission / item.billing) * 100 : 0;
+    const netBilling = item.billing - item.commission;
     const row = driverSummary.addRow([
       item.name,
       item.trips,
       brl(item.billing),
+      brl(netBilling),
       brl(item.commission),
       brl(item.diesel),
       brl(driverExpenses),
-      brl(item.billing - item.commission - item.diesel - driverExpenses),
+      brl(netBilling - item.diesel - driverExpenses),
       `${pct.toFixed(2).replace(".", ",")}%`,
     ]);
     row.height = 20;
@@ -213,7 +216,7 @@ async function exportExcelColorido() {
       };
     });
   });
-  [30, 11, 18, 18, 18, 18, 18, 14].forEach((width, index) => {
+  [30, 11, 18, 19, 18, 18, 18, 18, 14].forEach((width, index) => {
     driverSummary.getColumn(index + 1).width = width;
   });
 
@@ -221,6 +224,7 @@ async function exportExcelColorido() {
     "TOTAL GERAL",
     computed.length,
     brl(totalBilling),
+    brl(totalNetBilling),
     brl(totalCommission),
     brl(totalDiesel),
     brl(totalExpenses),
