@@ -36,6 +36,6 @@ const excelDieselLogoSync = path.join(repo, 'render-overrides', 'apply-excel-die
 if (!fs.existsSync(excelDieselLogoSync)) throw new Error('compact-reports-safe: missing Excel diesel/logo sync patch');
 execFileSync(process.execPath, [excelDieselLogoSync, target], { cwd: repo, stdio: 'inherit' });
 
-const financialUxAudit = path.join(repo, 'render-overrides', 'apply-financial-ux-audit.mjs');
-if (!fs.existsSync(financialUxAudit)) throw new Error('compact-reports-safe: missing financial UX/audit patch');
-execFileSync(process.execPath, [financialUxAudit, target], { cwd: repo, stdio: 'inherit' });
+const financialUxAuditSafe = path.join(repo, 'render-overrides', 'apply-financial-ux-audit-safe.mjs');
+if (!fs.existsSync(financialUxAuditSafe)) throw new Error('compact-reports-safe: missing safe financial UX/audit patch');
+execFileSync(process.execPath, [financialUxAuditSafe, target], { cwd: repo, stdio: 'inherit' });
