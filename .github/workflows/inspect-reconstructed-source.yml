@@ -22,20 +22,18 @@ jobs:
           node-version: '22'
       - name: Build reconstructed application
         run: node bootstrap.mjs
-      - name: Inspect expenses and commissions
+      - name: Verify driver advances
         shell: bash
         run: |
           SRC="$(ls -dt /tmp/transsalomao-build-* | head -1)"
-          echo '=== DESPESAS ==='
-          sed -n '1,320p' "$SRC/src/routes/dono/despesas.tsx" || true
-          echo '=== TYPES expense/report/driver ==='
-          grep -n -E -C 8 'Expense|expense|Despesa|despesa|commission|Commission|comissao|comissão|Driver|driver' "$SRC/src/lib/types.ts" || true
-          echo '=== API expense/report/commission ==='
-          grep -n -E -C 12 'expense|Expense|despesa|Despesa|commission|Commission|comissao|comissão|report|Report' "$SRC/src/lib/api.ts" || true
-          echo '=== CALC commission ==='
-          grep -n -E -C 12 'commission|Commission|comissao|comissão|expense|despesa|driver' "$SRC/src/lib/calc.ts" || true
-          echo '=== TOTAIS commission/driver ==='
-          grep -n -E -C 12 'commission|Commission|comissao|comissão|expense|despesa|driver|motorista' "$SRC/src/routes/dono/totais.tsx" || true
-          echo '=== DRIVER REPORT/PDF/XLSX references ==='
-          grep -R -n -E -C 8 'commission|Commission|comissao|comissão|expense|despesa|driverCommission|commissionValue' "$SRC/src" | head -1200 || true
-          echo 'INSPECTION_OK'
+          grep -q 'Adiantamento' "$SRC/src/routes/dono/despesas.tsx"
+          grep -q 'Motorista que recebeu o adiantamento' "$SRC/src/routes/dono/despesas.tsx"
+          grep -q 'driverId: r.driver_id' "$SRC/src/lib/api.ts"
+          grep -q 'Escolha o motorista que recebeu o adiantamento' "$SRC/src/lib/api.ts"
+          grep -q 'Comissão a pagar' "$SRC/src/routes/dono/totais.tsx"
+          grep -q 'advanceTotalForDriver' "$SRC/src/routes/dono/totais.tsx"
+          grep -q 'category !== "Adiantamento"' "$SRC/src/routes/dono/despesas.tsx"
+          grep -q 'COMISSÃO A PAGAR' render-overrides/admin-excel.snippet.ts
+          grep -q 'COMISSÃO A PAGAR' render-overrides/pdf-export.snippet.ts
+          test -f "$SRC/migrations/0010_driver_advances.sql"
+          echo 'ADVANCES_VALIDATION_OK'
