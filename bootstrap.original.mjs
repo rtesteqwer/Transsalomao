@@ -35,16 +35,11 @@ layer(['reform-20260911-viagens-kml/part-00.txt','reform-20260911-viagens-kml/pa
 layer(['reform-fix2-20260911/part-00.txt','reform-fix2-20260911/part-01.txt','reform-fix2-20260911/part-02.txt'], '19307bcf4c0e772c7acc73321b05331a2e3a1757140f2c92e736299a72274803', '7db6a17595058a84d39f68328c5e741d3149c8cc636e6d60ba90ea36586c3aeb', 9356, 'fix2');
 layer(['reform-final2-20260911/part-00.txt','reform-final2-20260911/part-01.txt','reform-final2-20260911/part-02.txt','reform-final2-20260911/part-03.txt'], 'af9d4bc77acbc9618017c6370a4875c30f5b30638be935c9960cc85c2930d0af', '2c6d85831cfd378c249f007ca20c5aba255fe004d0bf4d10a0e9b6bf2b09fb36', 21968, 'final2');
 
-const patchB64 = read('update-patch-20260913/update.patch.xz.b64');
-if (patchB64.length !== 19208 || sha(patchB64) !== '916a9e465494455256ab8fac76acc76c8b34140325f3815103c16bf4c37133f6') throw new Error('update patch integrity mismatch');
-const patchArchive = path.join(os.tmpdir(), `update-patch-${Date.now()}.xz`);
-fs.writeFileSync(patchArchive, Buffer.from(patchB64, 'base64'));
-const patch = execFileSync('xz', ['-dc', patchArchive]);
-const patchFile = path.join(os.tmpdir(), `update-patch-${Date.now()}.patch`);
-fs.writeFileSync(patchFile, patch);
-console.log('[bootstrap] applying 2026-09-13 update; rejected hunks are treated as already-newer/conflicting source');
-try { execFileSync('git', ['apply', '--reject', '--whitespace=nowarn', patchFile], { cwd: work, stdio: 'inherit' }); }
-catch { console.log('[bootstrap] continuing after rejected hunks'); }
+// A atualização incremental de 13/09 não é reaplicada aqui. O snapshot atual já
+// contém uma fonte mais nova e a reaplicação gerava conflitos de hunks durante
+// o build. As camadas de render-overrides abaixo continuam sendo a fonte das
+// correções de produção preservadas no backup.
+console.log('[bootstrap] legacy 2026-09-13 patch skipped: current snapshot is authoritative');
 
 replaceFile('src/lib/calc.ts', (s) => s
   .replace(/return `VG-\$\{String\(max \+ 1\)\.padStart\(4, "0"\)\}`;/g, 'return String(max + 1);')
@@ -87,12 +82,10 @@ const driverBatchModesPatch = path.join(repo, 'render-overrides', 'apply-driver-
 if (!fs.existsSync(driverBatchModesPatch)) throw new Error('Missing driver batch modes patch');
 execFileSync(process.execPath, [driverBatchModesPatch, work], { cwd: repo, stdio: 'inherit' });
 
-// Adiantamentos vinculados ao motorista e descontados da comissão nos relatórios.
 const driverAdvancesPatch = path.join(repo, 'render-overrides', 'apply-driver-advances-safe.mjs');
 if (!fs.existsSync(driverAdvancesPatch)) throw new Error('Missing safe driver advances patch');
 execFileSync(process.execPath, [driverAdvancesPatch, work], { cwd: repo, stdio: 'inherit' });
 
-// Compacta Por viagem, Cegonha e Caixinha nos PDFs e Excel coloridos.
 const compactReportsPatch = path.join(repo, 'render-overrides', 'apply-compact-fixed-mode-reports-safe.mjs');
 if (!fs.existsSync(compactReportsPatch)) throw new Error('Missing compact reports patch');
 execFileSync(process.execPath, [compactReportsPatch, work], { cwd: repo, stdio: 'inherit' });
