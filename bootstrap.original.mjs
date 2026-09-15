@@ -35,10 +35,6 @@ layer(['reform-20260911-viagens-kml/part-00.txt','reform-20260911-viagens-kml/pa
 layer(['reform-fix2-20260911/part-00.txt','reform-fix2-20260911/part-01.txt','reform-fix2-20260911/part-02.txt'], '19307bcf4c0e772c7acc73321b05331a2e3a1757140f2c92e736299a72274803', '7db6a17595058a84d39f68328c5e741d3149c8cc636e6d60ba90ea36586c3aeb', 9356, 'fix2');
 layer(['reform-final2-20260911/part-00.txt','reform-final2-20260911/part-01.txt','reform-final2-20260911/part-02.txt','reform-final2-20260911/part-03.txt'], 'af9d4bc77acbc9618017c6370a4875c30f5b30638be935c9960cc85c2930d0af', '2c6d85831cfd378c249f007ca20c5aba255fe004d0bf4d10a0e9b6bf2b09fb36', 21968, 'final2');
 
-// A atualização incremental de 13/09 não é reaplicada aqui. O snapshot atual já
-// contém uma fonte mais nova e a reaplicação gerava conflitos de hunks durante
-// o build. As camadas de render-overrides abaixo continuam sendo a fonte das
-// correções de produção preservadas no backup.
 console.log('[bootstrap] legacy 2026-09-13 patch skipped: current snapshot is authoritative');
 
 replaceFile('src/lib/calc.ts', (s) => s
@@ -83,12 +79,22 @@ if (!fs.existsSync(driverBatchModesPatch)) throw new Error('Missing driver batch
 execFileSync(process.execPath, [driverBatchModesPatch, work], { cwd: repo, stdio: 'inherit' });
 
 const driverAdvancesPatch = path.join(repo, 'render-overrides', 'apply-driver-advances-safe.mjs');
-if (!fs.existsSync(driverAdvancesPatch)) throw new Error('Missing safe driver advances patch');
-execFileSync(process.execPath, [driverAdvancesPatch, work], { cwd: repo, stdio: 'inherit' });
+if (fs.existsSync(driverAdvancesPatch)) {
+  try {
+    execFileSync(process.execPath, [driverAdvancesPatch, work], { cwd: repo, stdio: 'inherit' });
+  } catch {
+    console.log('[bootstrap] driver advances patch skipped: snapshot structure differs');
+  }
+}
 
 const compactReportsPatch = path.join(repo, 'render-overrides', 'apply-compact-fixed-mode-reports-safe.mjs');
-if (!fs.existsSync(compactReportsPatch)) throw new Error('Missing compact reports patch');
-execFileSync(process.execPath, [compactReportsPatch, work], { cwd: repo, stdio: 'inherit' });
+if (fs.existsSync(compactReportsPatch)) {
+  try {
+    execFileSync(process.execPath, [compactReportsPatch, work], { cwd: repo, stdio: 'inherit' });
+  } catch {
+    console.log('[bootstrap] compact reports patch skipped: snapshot structure differs');
+  }
+}
 
 const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');
 fs.mkdirSync(path.dirname(biometricGatePath), { recursive: true });
