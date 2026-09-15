@@ -31,6 +31,10 @@ export async function downloadDriverReportPdf({
   const totalAdvances = advances.reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
   const commissionPayable = totalCommission - totalAdvances;
   const totalFreight = trips.reduce((sum, trip) => sum + Number((trip as any).freight ?? 0), 0);
+  const totalDiesel = trips.reduce((sum, trip) => sum + Number((trip as any).dieselCost ?? 0), 0);
+  const totalGrossResult = totalFreight - totalDiesel;
+  const totalNetRevenue = totalGrossResult - totalCommission;
+  const totalFuelings = fuelings.reduce((sum, item: any) => sum + Number(item.liters ?? 0) * Number(item.pricePerLiter ?? 0), 0);
   const totalTons = trips.reduce((sum, trip) => sum + Number((trip as any).netWeight ?? 0), 0);
 
   const driverTotals = new Map<string, { name: string; trips: number; billing: number; commission: number; advances: number }>();
@@ -153,9 +157,21 @@ export async function downloadDriverReportPdf({
   };
 
   autoTable(doc, {
+    head: [["Faturamento total", "Custo diesel", "Resultado bruto", "Comissão total", "Faturamento líquido", "Abastecimentos"]],
+    body: [[brl(totalFreight), brl(totalDiesel), brl(totalGrossResult), brl(totalCommission), brl(totalNetRevenue), brl(totalFuelings)]],
+    startY: 25,
+    margin: { top: 25, right: 7, bottom: 9, left: 7 },
+    theme: "grid",
+    styles: { font: "helvetica", fontSize: 6.5, cellPadding: 1.2, textColor: black, fillColor: [255, 255, 255], lineColor: blue, lineWidth: 0.14, halign: "center", valign: "middle" },
+    headStyles: { fillColor: blue, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 6.2, halign: "center" },
+    columnStyles: { 0: { cellWidth: 47 }, 1: { cellWidth: 47 }, 2: { cellWidth: 47 }, 3: { cellWidth: 47 }, 4: { cellWidth: 47 }, 5: { cellWidth: 47 } },
+    didDrawPage: drawHeader,
+  });
+  const tripStartY = Number((doc as any).lastAutoTable?.finalY ?? 25) + 3;
+  autoTable(doc, {
     head: [["Data", "Ticket / modalidade", "Motorista", "Conjunto", "Peso", "Frete", "Comissão", "Resultado"]],
     body: rows,
-    startY: 25,
+    startY: tripStartY,
     margin: { top: 25, right: 7, bottom: 9, left: 7 },
     theme: "grid",
     showHead: "everyPage",
@@ -267,7 +283,7 @@ export async function downloadDriverReportPdf({
     doc.setFontSize(6.2);
     doc.setTextColor(95, 105, 118);
     doc.text(
-      `Fretes: ${trips.length}  •  Faturamento: ${brl(totalFreight)}  •  Comissão bruta: ${brl(totalCommission)}  •  Adiantamentos: ${brl(totalAdvances)}  •  Comissão a pagar: ${brl(commissionPayable)}`,
+      `Fretes: ${trips.length}  •  Faturamento: ${brl(totalFreight)}  •  Diesel: ${brl(totalDiesel)}  •  Resultado bruto: ${brl(totalGrossResult)}  •  Comissão: ${brl(totalCommission)}  •  Líquido: ${brl(totalNetRevenue)}  •  Adiantamentos: ${brl(totalAdvances)}  •  Comissão a pagar: ${brl(commissionPayable)}`,
       7,
       205,
     );
