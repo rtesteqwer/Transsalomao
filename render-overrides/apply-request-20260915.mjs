@@ -27,6 +27,60 @@ function replaceRequired(text, needle, replacement, label) {
 {
   const p = file('src/routes/dono/index.tsx');
   let s = fs.readFileSync(p, 'utf8');
+  if (!s.includes('FileText } from "lucide-react"')) {
+    s = `import { FileText } from "lucide-react";\n${s}`;
+  }
+  if (!s.includes('import { Button } from "@/components/ui/button";')) {
+    s = s.replace('import { Badge } from "@/components/ui/badge";', 'import { Badge } from "@/components/ui/badge";\nimport { Button } from "@/components/ui/button";');
+  }
+  if (!s.includes('import { downloadDriverReportPdf } from "@/lib/pdf";')) {
+    s = s.replace('import type { DashboardKpis, PeriodKey } from "@/lib/types";', 'import { downloadDriverReportPdf } from "@/lib/pdf";\nimport type { DashboardKpis, PeriodKey } from "@/lib/types";');
+  }
+  const dashboardReturn = '  return (\n    <div>';
+  if (!s.includes('function exportBillingPdf()')) {
+    s = replaceRequired(s, dashboardReturn, `  function exportBillingPdf() {
+    const advances = (data?.expenses ?? [])
+      .filter((expense) => expense.category === "Adiantamento" && !!expense.driverId)
+      .map((expense) => ({
+        driverId: expense.driverId,
+        driverName: data?.drivers.find((driver) => driver.id === expense.driverId)?.name ?? "Motorista",
+        date: expense.date,
+        amount: expense.amount,
+        description: expense.description,
+      }));
+    void downloadDriverReportPdf({
+      driverName: driverFilter === "all" ? "Todos os motoristas" : data?.drivers.find((driver) => driver.id === driverFilter)?.name ?? "Motorista",
+      trips: computed,
+      fuelings,
+      advances,
+      periodLabel: PERIODS.find((item) => item.key === period)?.label ?? "Período selecionado",
+      sourceLabel: "Painel",
+      reportTitle: "FATURAMENTO",
+      operatorName: "admin",
+    });
+  }
+
+${dashboardReturn}`, 'billing PDF function');
+  }
+  const periodControls = '        <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface p-1">';
+  if (!s.includes('> FATURAMENTO\n')) {
+    s = replaceRequired(s, periodControls, `        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={exportBillingPdf} disabled={computed.length === 0} title="Gerar PDF de faturamento">
+            <FileText className="size-4" /> FATURAMENTO
+          </Button>
+          <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface p-1">`, 'billing PDF button');
+    const periodClose = `          ))}
+        </div>
+      </div>
+
+      <div className="mt-5 max-w-sm">`;
+    s = replaceRequired(s, periodClose, `          ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 max-w-sm">`, 'billing PDF controls close');
+  }
   const start = s.indexOf('      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">');
   const end = start < 0 ? -1 : s.indexOf('\n      </div>', start);
   if (start < 0 || end < 0) throw new Error('request-20260915: dashboard KPI block missing');
