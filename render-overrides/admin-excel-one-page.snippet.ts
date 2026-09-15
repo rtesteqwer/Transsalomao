@@ -2,59 +2,36 @@ async function exportExcelColorido() {
   const ExcelJSModule: any = await import("exceljs");
   const ExcelJS: any = ExcelJSModule.default ?? ExcelJSModule;
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet("Planilha Geral", {
-    views: [{ state: "frozen", ySplit: 6 }],
-    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
-  });
+  const sheet = workbook.addWorksheet("Planilha Geral", { views: [{ state: "frozen", ySplit: 6 }], pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
   const blue = "159EFF", dark = "073763", white = "FFFFFF", black = "111827", pale = "EAF6FF";
   const logoId = workbook.addImage({ base64: REPORT_LOGO_JPEG, extension: "jpeg" });
-  sheet.addImage(logoId, { tl: { col: 0, row: 0 }, ext: { width: 190, height: 99 } });
-  sheet.mergeCells("D1:J2");
-  sheet.getCell("D1").value = "PLANILHA GERAL - TRANS SALOMÃO";
-  sheet.getCell("D1").font = { bold: true, size: 20, color: { argb: white } };
-  sheet.getCell("D1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } };
-  sheet.getCell("D1").alignment = { horizontal: "center", vertical: "middle" };
-  sheet.mergeCells("D3:J3");
-  sheet.getCell("D3").value = `Período: ${periodLabel}`;
-  sheet.getCell("D3").font = { bold: true, color: { argb: black } };
-  sheet.getCell("D3").fill = { type: "pattern", pattern: "solid", fgColor: { argb: pale } };
-  sheet.getRow(1).height = 38; sheet.getRow(2).height = 36; sheet.getRow(3).height = 23;
-
-  const headers = ["Motorista", "Modalidade", "Viagens", "Peso líquido", "Faturamento", "Comissão", "Após comissão", "Diesel", "Adiantamentos", "Total líquido"];
-  const header = sheet.getRow(6); header.values = headers; header.height = 25;
-  header.eachCell((cell: any) => {
-    cell.font = { bold: true, color: { argb: white }, size: 10 };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: blue } };
-    cell.alignment = { horizontal: "center", vertical: "middle" };
-  });
+  sheet.addImage(logoId, { tl: { col: 0.15, row: 0.05 }, ext: { width: 245, height: 128 } });
+  sheet.mergeCells("D1:H2"); sheet.getCell("D1").value = "PLANILHA GERAL - TRANS SALOMÃO"; sheet.getCell("D1").font = { bold: true, size: 20, color: { argb: white } }; sheet.getCell("D1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } }; sheet.getCell("D1").alignment = { horizontal: "center", vertical: "middle" };
+  sheet.mergeCells("D3:H3"); sheet.getCell("D3").value = `Período: ${periodLabel}`; sheet.getCell("D3").font = { bold: true, color: { argb: black } }; sheet.getCell("D3").fill = { type: "pattern", pattern: "solid", fgColor: { argb: pale } }; sheet.getCell("D3").alignment = { horizontal: "center", vertical: "middle" };
+  sheet.getRow(1).height = 48; sheet.getRow(2).height = 46; sheet.getRow(3).height = 25;
+  const border = { top: { style: "thin", color: { argb: blue } }, bottom: { style: "thin", color: { argb: blue } }, left: { style: "thin", color: { argb: blue } }, right: { style: "thin", color: { argb: blue } } };
+  const styleHeader = (row: any) => row.eachCell((cell: any) => { cell.font = { bold: true, color: { argb: white }, size: 10 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: blue } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.border = border; });
+  const styleRow = (row: any, index: number) => row.eachCell((cell: any) => { cell.font = { color: { argb: black }, size: 9 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: index % 2 ? pale : white } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.border = border; });
+  const addSection = (title: string, headers: string[]) => { sheet.addRow([]); const titleRow = sheet.addRow([title]); sheet.mergeCells(titleRow.number, 1, titleRow.number, 8); titleRow.height = 24; const cell = sheet.getCell(titleRow.number, 1); cell.font = { bold: true, size: 12, color: { argb: white } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } }; cell.alignment = { horizontal: "center", vertical: "middle" }; const header = sheet.addRow(headers); header.height = 26; styleHeader(header); };
+  const normalize = (value: any) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
   const modeName = (mode: string) => mode === "ton" ? "Por tonelada" : mode === "trip" ? "Por viagem" : mode === "cegonha" ? "Cegonha" : "Caixinha";
   const grouped = new Map<string, any>();
-  computed.forEach((trip: any) => {
-    const mode = String(trip.freightMode ?? "ton");
-    const driverName = String(trip.driverName ?? "Sem motorista");
-    const key = String(trip.driverId ?? driverName) + "|" + mode;
-    const row = grouped.get(key) ?? { driverId: trip.driverId, driverName, mode, count: 0, weight: 0, revenue: 0, commission: 0 };
-    row.count += 1; row.weight += Number(trip.netWeight ?? 0); row.revenue += Number(trip.freight ?? 0); row.commission += Number(trip.commissionValue ?? 0);
-    grouped.set(key, row);
-  });
-  Array.from(grouped.values()).sort((a: any, b: any) => a.driverName.localeCompare(b.driverName, "pt-BR") || modeName(a.mode).localeCompare(modeName(b.mode), "pt-BR")).forEach((item: any, index: number) => {
-    const driverFuel = fuelings.filter((f: any) => String(f.driverId ?? "") === String(item.driverId ?? "")).reduce((sum: number, f: any) => sum + Number(f.liters ?? 0) * Number(f.pricePerLiter ?? 0), 0);
-    const driverAdvances = (data?.expenses ?? []).filter((e: any) => e.category === "Adiantamento" && String(e.driverId ?? "") === String(item.driverId ?? "")).reduce((sum: number, e: any) => sum + Number(e.amount ?? 0), 0);
-    const afterCommission = item.revenue - item.commission;
-    const row = sheet.addRow([item.driverName, modeName(item.mode), item.count, item.weight, item.revenue, item.commission, afterCommission, driverFuel, driverAdvances, afterCommission - driverFuel]);
-    row.height = 21;
-    row.eachCell((cell: any) => {
-      cell.font = { color: { argb: black }, size: 9 };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: index % 2 ? pale : white } };
-      cell.border = { top: { style: "thin", color: { argb: blue } }, bottom: { style: "thin", color: { argb: blue } }, left: { style: "thin", color: { argb: blue } }, right: { style: "thin", color: { argb: blue } } };
-    });
-    row.getCell(4).numFmt = '0.00 "t"';
-    for (let c = 5; c <= 10; c += 1) row.getCell(c).numFmt = 'R$ #,##0.00';
-  });
-  [28, 18, 11, 16, 18, 18, 18, 18, 18, 18].forEach((width, i) => { sheet.getColumn(i + 1).width = width; });
-  sheet.autoFilter = { from: "A6", to: `J${Math.max(6, sheet.rowCount)}` };
-  sheet.printArea = `A1:J${Math.max(6, sheet.rowCount)}`;
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "Planilha_Geral_Trans_Salomao.xlsx"; link.click(); URL.revokeObjectURL(link.href);
+  computed.forEach((trip: any) => { const mode = String(trip.freightMode ?? "ton"); const driverName = String(trip.driverName ?? "Sem motorista"); const key = String(trip.driverId ?? driverName) + "|" + mode; const item = grouped.get(key) ?? { driverId: trip.driverId, driverName, mode, count: 0, weight: 0, revenue: 0, commission: 0 }; item.count += 1; item.weight += Number(trip.netWeight ?? 0); item.revenue += Number(trip.freight ?? 0); item.commission += Number(trip.commissionValue ?? trip.commission ?? 0); grouped.set(key, item); });
+  const advancesByDriver = new Map<string, number>();
+  (data?.expenses ?? []).filter((e: any) => e.category === "Adiantamento" && inPeriod(e.date, period)).forEach((e: any) => { const driver = (data?.drivers ?? []).find((d: any) => String(d.id) === String(e.driverId ?? "")); const key = String(e.driverId ?? normalize(driver?.name)); advancesByDriver.set(key, (advancesByDriver.get(key) ?? 0) + Number(e.amount ?? 0)); });
+  const tripHeader = sheet.getRow(6); tripHeader.values = ["Motorista", "Modalidade", "Viagens", "Peso líquido", "Faturamento", "Comissão", "Adiantamentos", "Total líquido"]; tripHeader.height = 27; styleHeader(tripHeader);
+  const seenDrivers = new Set<string>();
+  Array.from(grouped.values()).sort((a: any, b: any) => a.driverName.localeCompare(b.driverName, "pt-BR") || modeName(a.mode).localeCompare(modeName(b.mode), "pt-BR")).forEach((item: any, index: number) => { const driverKey = String(item.driverId ?? normalize(item.driverName)); const advance = seenDrivers.has(driverKey) ? 0 : (advancesByDriver.get(driverKey) ?? advancesByDriver.get(normalize(item.driverName)) ?? 0); seenDrivers.add(driverKey); const row = sheet.addRow([item.driverName, modeName(item.mode), item.count, item.weight, item.revenue, item.commission, advance, item.revenue - item.commission - advance]); styleRow(row, index); row.getCell(4).numFmt = '0.00 "t"'; for (let c = 5; c <= 8; c += 1) row.getCell(c).numFmt = 'R$ #,##0.00'; });
+  addSection("ABASTECIMENTOS", ["Data", "Motorista", "Conjunto", "Posto", "Litros", "Preço/L", "Custo total", "KM"]);
+  fuelings.forEach((f: any, index: number) => { const row = sheet.addRow([formatDate(f.date), f.driverName ?? (data?.drivers ?? []).find((d: any) => d.id === f.driverId)?.name ?? "Sem motorista", f.fleetName ?? "—", f.station ?? "—", Number(f.liters ?? 0), Number(f.pricePerLiter ?? 0), Number(f.liters ?? 0) * Number(f.pricePerLiter ?? 0), Number(f.km ?? 0)]); styleRow(row, index); row.getCell(5).numFmt = '0.00 "L"'; row.getCell(6).numFmt = row.getCell(7).numFmt = 'R$ #,##0.00'; });
+  const periodExpenses = (data?.expenses ?? []).filter((e: any) => inPeriod(e.date, period));
+  addSection("ADIANTAMENTOS", ["Data", "Motorista", "Descrição", "Valor", "Categoria", "Conjunto", "Observações", "ID"]);
+  periodExpenses.filter((e: any) => e.category === "Adiantamento").forEach((e: any, index: number) => { const driver = (data?.drivers ?? []).find((d: any) => String(d.id) === String(e.driverId ?? "")); const fleet = (data?.fleets ?? []).find((f: any) => String(f.id) === String(e.fleetId ?? "")); const row = sheet.addRow([formatDate(e.date), driver?.name ?? "Motorista removido", e.description ?? "—", Number(e.amount ?? 0), e.category, fleet?.name ?? "—", e.notes ?? "—", e.id]); styleRow(row, index); row.getCell(4).numFmt = 'R$ #,##0.00'; });
+  addSection("DESPESAS", ["Data", "Categoria", "Descrição", "Valor", "Motorista", "Conjunto", "Observações", "Ativo"]);
+  periodExpenses.filter((e: any) => e.category !== "Adiantamento").forEach((e: any, index: number) => { const driver = (data?.drivers ?? []).find((d: any) => String(d.id) === String(e.driverId ?? "")); const fleet = (data?.fleets ?? []).find((f: any) => String(f.id) === String(e.fleetId ?? "")); const row = sheet.addRow([formatDate(e.date), e.category, e.description ?? "—", Number(e.amount ?? 0), driver?.name ?? "—", fleet?.name ?? "—", e.notes ?? "—", e.assetType ?? "—"]); styleRow(row, index); row.getCell(4).numFmt = 'R$ #,##0.00'; });
+  addSection("CADASTROS - MOTORISTAS E CONJUNTOS", ["Tipo", "Nome", "CPF / Cavalo", "Telefone / Carreta", "CNH / Modelo", "Categoria", "Comissão", "Status"]);
+  (data?.drivers ?? []).forEach((d: any, index: number) => { const row = sheet.addRow(["Motorista", d.name, d.cpf ?? "—", d.phone ?? "—", d.cnh ?? "—", d.cnhCategory ?? d.category ?? "—", Number(d.commissionPct ?? 0), d.status]); styleRow(row, index); row.getCell(7).numFmt = '0.0%'; });
+  (data?.fleets ?? []).forEach((f: any, index: number) => { const row = sheet.addRow(["Conjunto", f.name, f.tractorPlate ?? "—", f.trailerPlate ?? "—", f.model ?? f.type ?? "—", "—", "—", f.status]); styleRow(row, index); });
+  [29, 19, 18, 18, 18, 18, 18, 20].forEach((width, i) => { sheet.getColumn(i + 1).width = width; }); sheet.autoFilter = { from: "A6", to: `H${Math.max(6, 6 + grouped.size)}` }; sheet.printArea = `A1:H${sheet.rowCount}`;
+  const buffer = await workbook.xlsx.writeBuffer(); const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "Planilha_Geral_Trans_Salomao.xlsx"; link.click(); URL.revokeObjectURL(link.href);
 }
