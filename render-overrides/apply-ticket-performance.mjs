@@ -36,7 +36,8 @@ async function normalizeTicketCodes(sql: Awaited<ReturnType<typeof getSql>>) {
 `;
     s = s.replace('async function requireManagement() {', helper + '\nasync function requireManagement() {');
   }
-  if (!s.includes('await normalizeTicketCodes(sql);')) s = s.replace('    const sql = await getSql();\n    const [drivers, fleets, trips, reports, fuelings, expenses, freightPriceRows]', '    const sql = await getSql();\n    await normalizeTicketCodes(sql);\n    const [drivers, fleets, trips, reports, fuelings, expenses, freightPriceRows]');
+  // A renumeração histórica não pode bloquear o carregamento do painel. Ela fica
+  // disponível como helper para uma migração controlada; o painel apenas lê os dados.
 
   // Novos lançamentos e novas viagens sempre usam o próximo número livre.
   if (!s.includes('async function nextTicketCode')) {
