@@ -19,7 +19,7 @@ function layer(parts, b64Hash, xzHash, xzSize, name) {
   const archive = path.join(os.tmpdir(), `${name}-${Date.now()}.tar.xz`);
   fs.writeFileSync(archive, xz);
   execFileSync('xz', ['-t', archive], { stdio: 'inherit' });
-  execFileSync('tar', ['-xJf', archive, '-C', work], { stdio: 'inherit' });
+  execFileSync('tar', ['--no-same-owner', '-xJf', archive, '-C', work], { stdio: 'inherit' });
 }
 function replaceFile(rel, fn) {
   const p = path.join(work, rel);
@@ -96,6 +96,13 @@ if (fs.existsSync(compactReportsPatch)) {
   }
 }
 
+const groupedTripsPatch = path.join(repo, 'render-overrides', 'apply-simplify-viagens-caixa.mjs');
+execFileSync(process.execPath, [groupedTripsPatch, work], { cwd: repo, stdio: 'inherit' });
+
+const request20260915 = path.join(repo, 'render-overrides', 'apply-request-20260915.mjs');
+if (!fs.existsSync(request20260915)) throw new Error('Missing 2026-09-15 request patch');
+execFileSync(process.execPath, [request20260915, work], { cwd: repo, stdio: 'inherit' });
+
 const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');
 fs.mkdirSync(path.dirname(biometricGatePath), { recursive: true });
 fs.writeFileSync(biometricGatePath, `import { useEffect, type ReactNode } from "react";\n\nexport function BiometricGate({ children }: { scope?: string; children: ReactNode }) {\n  useEffect(() => {\n    try {\n      for (let i = localStorage.length - 1; i >= 0; i -= 1) {\n        const key = localStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) localStorage.removeItem(key);\n      }\n      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {\n        const key = sessionStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) sessionStorage.removeItem(key);\n      }\n    } catch {}\n  }, []);\n  return <>{children}</>;\n}\n`);
@@ -104,6 +111,14 @@ for (const rel of [
   'native/android/biometric-webview-bridge.js',
 ]) fs.rmSync(path.join(work, rel), { force: true });
 console.log('[bootstrap] biometric authentication removed');
+
+const sourceDump = process.env.TRANS_SOURCE_DUMP;
+if (sourceDump) {
+  fs.rmSync(sourceDump, { recursive: true, force: true });
+  fs.cpSync(work, sourceDump, { recursive: true });
+  console.log(`[bootstrap] patched source copied to ${sourceDump}`);
+  process.exit(0);
+}
 
 console.log('[bootstrap] installing and building final source');
 execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });
