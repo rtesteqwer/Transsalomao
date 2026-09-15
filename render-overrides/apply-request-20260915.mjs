@@ -32,6 +32,19 @@ function replaceRequired(text, needle, replacement, label) {
   }
   s = s.replaceAll('onClick={exportCsv}', 'onClick={exportTripsExcel}');
   s = s.replaceAll('Exportar CSV', 'Excel colorido');
+  const bulkMarker = '<p className="text-[11px] uppercase tracking-[0.16em] text-muted">Seleção em lote</p>';
+  const bulkAt = s.indexOf(bulkMarker);
+  if (bulkAt >= 0) {
+    const sectionStart = s.lastIndexOf('      <section', bulkAt);
+    const sectionEnd = s.indexOf('\n      </section>', bulkAt);
+    const dialogsAt = s.indexOf('      <Dialog open={bulkEditing}', sectionEnd);
+    if (sectionStart >= 0 && sectionEnd >= 0 && dialogsAt >= 0) {
+      const bulkSection = s.slice(sectionStart, sectionEnd + '\n      </section>'.length);
+      s = s.slice(0, sectionStart) + s.slice(sectionEnd + '\n      </section>'.length);
+      const nextDialogsAt = s.indexOf('      <Dialog open={bulkEditing}');
+      s = s.slice(0, nextDialogsAt) + bulkSection + '\n\n' + s.slice(nextDialogsAt);
+    }
+  }
   fs.writeFileSync(p, s);
 }
 
@@ -107,6 +120,7 @@ ${dashboardReturn}`, 'billing PDF function');
   s = s.replace(/^\s*<Kpi label="KM total"[^\n]*\n/m, '');
   s = s.replace(/^\s*<Kpi label="Peso bruto"[^\n]*\n/m, '');
   s = s.replace(/^\s*<Kpi label="Média KM\/L \(abastecimentos\)"[^\n]*\n/m, '');
+  s = s.replaceAll('Após comissões', 'Total líquido').replaceAll('Após comissão', 'Total líquido');
   fs.writeFileSync(p, s);
 }
 
@@ -173,6 +187,23 @@ ${metrics}`;
     const excel = fs.readFileSync(path.join(repo, 'render-overrides/admin-excel-one-page.snippet.ts'), 'utf8').trimEnd();
     totals = totals.slice(0, exportStart) + '  ' + excel.replace(/\n/g, '\n  ') + totals.slice(returnStart);
   }
+  if (!totals.includes('const periodExpenses = useMemo')) {
+    totals = totals.replace('  const advancesForDriver = (driverId: string) => periodAdvances.filter((e) => e.driverId === driverId);', `  const periodExpenses = useMemo(() => {
+    if (!data) return [];
+    return data.expenses.filter((e) => e.category !== "Adiantamento" && inPeriod(e.date, period)).map((e) => ({
+      ...e,
+      driverName: data.drivers.find((d) => d.id === e.driverId)?.name ?? "—",
+      fleetName: data.fleets.find((f) => f.id === e.fleetId)?.name ?? "—",
+    }));
+  }, [data, period]);
+  const advancesForDriver = (driverId: string) => periodAdvances.filter((e) => e.driverId === driverId);`);
+  }
+  totals = totals.replaceAll('advances: advancesForDriver(selectedDriver.id),\n      periodLabel', 'advances: advancesForDriver(selectedDriver.id),\n      expenses: periodExpenses.filter((e) => e.driverId === selectedDriver.id),\n      periodLabel');
+  totals = totals.replace('      advances: advanceRows,\n      periodLabel: label,', `      advances: advanceRows,
+      expenses: data.expenses.filter((e) => e.category !== "Adiantamento" && (kind === "all" || kind === "day" && e.date === isoToday || kind === "week" && inPeriod(e.date, "7d", today) || kind === "month" && inPeriod(e.date, "month", today))).map((e) => ({ ...e, driverName: data.drivers.find((d) => d.id === e.driverId)?.name ?? "—", fleetName: data.fleets.find((f) => f.id === e.fleetId)?.name ?? "—" })),
+      periodLabel: label,`);
+  totals = totals.replace('              fuelings,\n              periodLabel,', '              fuelings,\n              advances: periodAdvances,\n              expenses: periodExpenses,\n              periodLabel,');
+  totals = totals.replaceAll('fuelings: fuelForDriver(d.driverId),\n                    periodLabel', 'fuelings: fuelForDriver(d.driverId),\n                    advances: advancesForDriver(d.driverId),\n                    expenses: periodExpenses.filter((e) => e.driverId === d.driverId),\n                    periodLabel');
   totals = totals.replace(/<button type="button" onClick=\{(?:exportCurrent|exportExcelColorido)\}[\s\S]*?<\/button>/m,
     '<button type="button" onClick={exportExcelColorido} className="h-11 rounded-md border border-accent bg-bg px-4 text-sm font-semibold text-fg hover:bg-surface-2" title="Baixar Excel colorido">Planilha Geral</button>');
   fs.writeFileSync(totalsPath, totals);
@@ -182,11 +213,50 @@ ${metrics}`;
   if (!pdf.includes('REPORT_LOGO_JPEG')) pdf = `import { REPORT_LOGO_JPEG } from "@/lib/report-logo";\n${pdf}`;
   const pdfStart = pdf.indexOf('export function downloadDriverReportPdf({');
   if (pdfStart < 0) throw new Error('request-20260915: PDF function missing');
-  const compactPdf = fs.readFileSync(path.join(repo, 'render-overrides/pdf-export.snippet.ts'), 'utf8')
+  const compactPdf = fs.readFileSync(path.join(repo, 'render-overrides/pdf-export-complete.snippet.ts'), 'utf8')
     .replace('new Set(["trip", "cegonha", "caixinha"])', 'new Set(["ton", "trip", "cegonha", "caixinha"])')
     .trimEnd();
   pdf = pdf.slice(0, pdfStart) + compactPdf + '\n';
   fs.writeFileSync(pdfPath, pdf);
+}
+
+// Acesso de motorista: login solicitado aponta exclusivamente para Klebersom Dutra Da Silva.
+{
+  for (const [source, destination] of [
+    ['management-auth.ts', 'src/lib/management-auth.ts'],
+    ['management-auth.server.ts', 'src/lib/management-auth.server.ts'],
+    ['klebersom-access.ts', 'src/lib/klebersom-access.ts'],
+    ['klebersom-access.server.ts', 'src/lib/klebersom-access.server.ts'],
+    ['klebersom.tsx', 'src/routes/klebersom.tsx'],
+  ]) {
+    const destinationPath = file(destination);
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.copyFileSync(path.join(repo, 'render-overrides', source), destinationPath);
+  }
+  const p = file('src/lib/klebersom-access.server.ts');
+  let s = fs.readFileSync(p, 'utf8');
+  if (!s.includes('BUILTIN_KLEBERSOM_REQUESTED_USERNAME')) {
+    s = s.replace('const BUILTIN_KLEBERSOM_USERNAME = "KlebersomDutra";', 'const BUILTIN_KLEBERSOM_USERNAME = "KlebersomDutra";\nconst BUILTIN_KLEBERSOM_REQUESTED_USERNAME = "KlebersomDruta";');
+    const marker = '  return accounts;';
+    s = s.replace(marker, `  if (!accounts.some((account) => account.username.toLowerCase() === BUILTIN_KLEBERSOM_REQUESTED_USERNAME.toLowerCase())) {
+    accounts.push({ username: BUILTIN_KLEBERSOM_REQUESTED_USERNAME, passwordSha256: BUILTIN_KLEBERSOM_PASSWORD_SHA256, driverId: BUILTIN_KLEBERSOM_DRIVER_ID });
+  }
+
+${marker}`);
+  }
+  fs.writeFileSync(p, s);
+
+  const routePath = file('src/routes/dono/route.tsx');
+  let route = fs.readFileSync(routePath, 'utf8');
+  if (!route.includes('result.role === "driver"')) {
+    route = route.replace('                  await qc.invalidateQueries({ queryKey: sessionKey });', `                  if (result.role === "driver") {
+                    window.location.assign("/klebersom");
+                    return;
+                  }
+                  await qc.invalidateQueries({ queryKey: sessionKey });`);
+    route = route.replace('Entre com o login administrativo para acessar cadastros, viagens,', 'Entre com seu login. Administradores acessam toda a Gerência; motoristas visualizam somente os próprios dados.');
+  }
+  fs.writeFileSync(routePath, route);
 }
 
 // Azul claro e radiante; qualquer texto preto fica sobre branco.
