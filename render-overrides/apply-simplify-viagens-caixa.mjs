@@ -79,4 +79,4 @@ function replaceRequired(text, needle, replacement, label) {
   write(rel, s);
 }
 
-console.log('[simplify-viagens-caixa] Caixinha/Cegonha grouped by driver+mode in Viagens + Caixa driver filter applied');
+console.log('[simplify-viagens-caixa] Caixinha/Cegonha/Por viagem grouped by driver+mode in Viagens + Caixa driver filter applied');
