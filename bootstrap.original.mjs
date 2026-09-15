@@ -103,6 +103,11 @@ const request20260915 = path.join(repo, 'render-overrides', 'apply-request-20260
 if (!fs.existsSync(request20260915)) throw new Error('Missing 2026-09-15 request patch');
 execFileSync(process.execPath, [request20260915, work], { cwd: repo, stdio: 'inherit' });
 
+const ticketPerformancePatch = path.join(repo, 'render-overrides', 'apply-ticket-performance.mjs');
+if (fs.existsSync(ticketPerformancePatch)) {
+  execFileSync(process.execPath, [ticketPerformancePatch, work], { cwd: repo, stdio: 'inherit' });
+}
+
 const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');
 fs.mkdirSync(path.dirname(biometricGatePath), { recursive: true });
 fs.writeFileSync(biometricGatePath, `import { useEffect, type ReactNode } from "react";\n\nexport function BiometricGate({ children }: { scope?: string; children: ReactNode }) {\n  useEffect(() => {\n    try {\n      for (let i = localStorage.length - 1; i >= 0; i -= 1) {\n        const key = localStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) localStorage.removeItem(key);\n      }\n      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {\n        const key = sessionStorage.key(i);\n        if (key?.startsWith("transsalomao.biometric.")) sessionStorage.removeItem(key);\n      }\n    } catch {}\n  }, []);\n  return <>{children}</>;\n}\n`);
