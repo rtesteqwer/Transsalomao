@@ -22,7 +22,8 @@ async function exportExcelColorido() {
   const totalRevenue = Array.from(grouped.values()).reduce((sum: number, item: any) => sum + Number(item.revenue ?? 0), 0);
   const totalCommission = Array.from(grouped.values()).reduce((sum: number, item: any) => sum + Number(item.commission ?? 0), 0);
   const totalFueling = fuelings.reduce((sum: number, f: any) => sum + Number(f.liters ?? 0) * Number(f.pricePerLiter ?? 0), 0);
-  const totalNetRevenue = totalRevenue - totalCommission;
+  const totalAdvances = Array.from(advancesByDriver.values()).reduce((sum: number, value: number) => sum + value, 0);
+  const totalNetRevenue = totalRevenue - totalFueling - totalCommission - totalAdvances;
   const summary = sheet.getRow(5);
   summary.values = ["Faturamento total", totalRevenue, "Faturamento líquido", totalNetRevenue, "Total de comissão", totalCommission, "Total de abastecimentos", totalFueling];
   summary.height = 28;
