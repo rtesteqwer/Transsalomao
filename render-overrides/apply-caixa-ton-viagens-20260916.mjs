@@ -46,19 +46,24 @@ function required(text, needle, replacement, label) {
     const add = '\n  const closeTon = useMutation({\n    mutationFn: (data: Parameters<typeof closeTonReport>[0]["data"]) => closeTonReport({ data }),\n    onSuccess: invalidate,\n  });';
     s = s.replace(marker, marker + add);
   }
-  if (!s.includes('    closeTon,\n    removeTrip,')) {
-    s = required(s, '    trip,\n    removeTrip,', '    trip,\n    closeTon,\n    removeTrip,', 'closeTon return');
+  if (!s.includes('    closeTon,')) {
+    const returnAt = s.indexOf('  return {');
+    const tripAt = s.indexOf('    trip,', returnAt);
+    if (returnAt < 0 || tripAt < 0) throw new Error('caixa-ton-viagens: trip return entry missing');
+    const insertAt = tripAt + '    trip,'.length;
+    s = s.slice(0, insertAt) + '\n    closeTon,' + s.slice(insertAt);
   }
   write('src/lib/use-fleet.ts', s);
 }
 
 {
   let s = read('src/routes/dono/lancamentos.tsx');
-  if (!s.includes('const { trip, closeTon,')) {
-    s = required(s,
-      '  const { trip, acceptMany, reject, removeReport } = useFleetMutations();',
-      '  const { trip, closeTon, acceptMany, reject, removeReport } = useFleetMutations();',
-      'closeTon destructure');
+  if (!s.includes('useFleetMutations();')) {
+    throw new Error('caixa-ton-viagens: useFleetMutations call missing');
+  }
+  if (!/const \{[^}]*\bcloseTon\b[^}]*\} = useFleetMutations\(\);/.test(s)) {
+    s = s.replace(/const \{([^}]*?)\btrip,([^}]*)\} = useFleetMutations\(\);/, 'const {$1trip, closeTon,$2} = useFleetMutations();');
+    if (!/const \{[^}]*\bcloseTon\b[^}]*\} = useFleetMutations\(\);/.test(s)) throw new Error('caixa-ton-viagens: could not add closeTon to mutations destructure');
   }
   const oldSubmit = [
     '              onSubmit={async (payload) => {',
