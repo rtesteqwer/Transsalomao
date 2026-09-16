@@ -23,280 +23,190 @@ export async function downloadDriverReportPdf({
   const autoTableModule: any = await import("jspdf-autotable");
   const autoTable: any = autoTableModule.default ?? autoTableModule.autoTable;
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
-  const blue = [0, 140, 255] as [number, number, number];
-  const dark = [7, 17, 31] as [number, number, number];
   const black = [17, 17, 17] as [number, number, number];
+  const dark = [30, 30, 30] as [number, number, number];
+  const gray = [235, 235, 235] as [number, number, number];
+  const white = [255, 255, 255] as [number, number, number];
 
-  const totalCommission = trips.reduce((sum, trip) => sum + Number((trip as any).commissionValue ?? (trip as any).commission ?? 0), 0);
-  const totalAdvances = advances.reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
-  const commissionPayable = totalCommission - totalAdvances;
-  const totalFreight = trips.reduce((sum, trip) => sum + Number((trip as any).freight ?? 0), 0);
-  const totalDiesel = trips.reduce((sum, trip) => sum + Number((trip as any).dieselCost ?? 0), 0);
-  const totalGrossResult = totalFreight - totalDiesel;
-  const totalNetRevenue = totalGrossResult - totalCommission;
-  const totalFuelings = fuelings.reduce((sum, item: any) => sum + Number(item.liters ?? 0) * Number(item.pricePerLiter ?? 0), 0);
-  const totalTons = trips.reduce((sum, trip) => sum + Number((trip as any).netWeight ?? 0), 0);
-
-  const driverTotals = new Map<string, { name: string; trips: number; billing: number; commission: number; advances: number }>();
-  trips.forEach((trip: any) => {
-    const name = String(trip.driverName ?? driverName ?? "Motorista").trim() || "Motorista";
-    const key = String(trip.driverId ?? name);
-    const current = driverTotals.get(key) ?? { name, trips: 0, billing: 0, commission: 0, advances: 0 };
-    current.trips += 1;
-    current.billing += Number(trip.freight ?? 0);
-    current.commission += Number(trip.commissionValue ?? trip.commission ?? 0);
-    driverTotals.set(key, current);
-  });
-  advances.forEach((advance) => {
-    const name = String(advance.driverName ?? "Motorista").trim() || "Motorista";
-    const key = String(advance.driverId ?? name);
-    const current = driverTotals.get(key) ?? { name, trips: 0, billing: 0, commission: 0, advances: 0 };
-    current.advances += Number(advance.amount ?? 0);
-    driverTotals.set(key, current);
-  });
-
-  const reportDateKey = (value: any) => {
-    const raw = String(value ?? "").trim();
-    if (!raw) return "";
-    const iso = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (iso) return iso[1];
-    const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) return raw;
-    const y = parsed.getFullYear();
-    const m = String(parsed.getMonth() + 1).padStart(2, "0");
-    const d = String(parsed.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
+  const normalize = (value: any) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  const fuelTypeOf = (f: any) => {
+    const value = normalize(f?.fuelType ?? "diesel");
+    return value === "arla" ? "arla" : value === "gasolina" ? "gasolina" : "diesel";
   };
-
-  const compactTrips = (() => {
-    const fixedModes = new Set(["ton", "trip", "cegonha", "caixinha"]);
-    const modeLabelCompact = (mode) => mode === "trip" ? "Por viagem" : mode === "cegonha" ? "Cegonha" : mode === "caixinha" ? "Caixinha" : "Por tonelada";
-    const individual = [];
-    const grouped = new Map();
-    trips.forEach((trip) => {
-      const mode = String(trip.freightMode ?? "ton");
-      if (!fixedModes.has(mode)) {
-        individual.push({ kind: "single", trip, mode, count: 1, label: "Por tonelada" });
-        return;
-      }
-      const rowDriverName = String(trip.driverName ?? "Motorista").trim() || "Motorista";
-      const driverKey = String(trip.driverId ?? rowDriverName);
-      const key = driverKey + "|" + mode;
-      const current = grouped.get(key) ?? {
-        kind: "group", mode, label: modeLabelCompact(mode), count: 0, driverName: rowDriverName,
-        firstDate: reportDateKey(trip.date), lastDate: reportDateKey(trip.date), fleets: new Set(),
-        freight: 0, commission: 0, result: 0,
-      };
-      current.count += 1;
-      const date = reportDateKey(trip.date);
-      if (date && (!current.firstDate || date < current.firstDate)) current.firstDate = date;
-      if (date && (!current.lastDate || date > current.lastDate)) current.lastDate = date;
-      const fleet = String(trip.fleetName ?? "").trim();
-      if (fleet) current.fleets.add(fleet);
-      current.freight += Number(trip.freight ?? 0);
-      current.commission += Number(trip.commissionValue ?? trip.commission ?? 0);
-      current.result += Number(trip.grossResult ?? 0);
-      grouped.set(key, current);
-    });
-    return [...individual, ...grouped.values()];
+  const fuelLabel = (f: any) => fuelTypeOf(f) === "arla" ? "ARLA" : fuelTypeOf(f) === "gasolina" ? "Gasolina" : "Diesel";
+  const fuelCost = (f: any) => Number(f?.liters ?? 0) * Number(f?.pricePerLiter ?? 0);
+  const modeLabel = (mode: any) => String(mode) === "ton" ? "Por tonelada" : String(mode) === "trip" ? "Por viagem" : String(mode) === "cegonha" ? "Cegonha" : "Caixinha";
+  const dateKey = (value: any) => {
+    const raw = String(value ?? "").trim();
+    const iso = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    return iso?.[1] ?? "";
+  };
+  const dateRange = (() => {
+    const now = new Date();
+    const toIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const lower = normalize(periodLabel);
+    if (lower.includes("este mes")) return [`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`, toIso(now)];
+    if (lower.includes("7 dias")) { const d = new Date(now); d.setDate(d.getDate() - 6); return [toIso(d), toIso(now)]; }
+    if (lower.includes("30 dias")) { const d = new Date(now); d.setDate(d.getDate() - 29); return [toIso(d), toIso(now)]; }
+    const dates = [
+      ...trips.map((t: any) => dateKey(t.date)),
+      ...fuelings.map((f: any) => dateKey(f.date)),
+      ...advances.map((a: any) => dateKey(a.date)),
+      ...expenses.map((e: any) => dateKey(e.date)),
+    ].filter(Boolean).sort();
+    return [dates[0] ?? toIso(now), dates[dates.length - 1] ?? toIso(now)];
   })();
+  const exactPeriodLabel = `${formatDate(dateRange[0])} a ${formatDate(dateRange[1])}`;
 
-  const rows = compactTrips.map((item: any) => {
-    if (item.kind === "single") {
-      const trip = item.trip;
-      return [
-        formatDate(trip.date),
-        String(trip.code ?? "—"),
-        String(trip.driverName ?? driverName ?? "—"),
-        String(trip.fleetName ?? "—"),
-        tons(Number(trip.netWeight ?? 0)),
-        brl(Number(trip.freight ?? 0)),
-        brl(Number(trip.commissionValue ?? trip.commission ?? 0)),
-        brl(Number(trip.grossResult ?? 0)),
-      ];
-    }
-    const dateText = item.firstDate === item.lastDate ? formatDate(item.firstDate) : `${formatDate(item.firstDate)} a ${formatDate(item.lastDate)}`;
-    const fleetText = item.fleets.size === 1 ? Array.from(item.fleets)[0] : item.fleets.size > 1 ? "Vários" : "—";
-    return [
-      dateText,
-      `${item.label} · ${item.count} viagens`,
-      item.driverName,
-      fleetText,
-      "—",
-      brl(item.freight),
-      brl(item.commission),
-      brl(item.result),
-    ];
-  });
+  const totalFreight = trips.reduce((sum, trip: any) => sum + Number(trip.freight ?? 0), 0);
+  const totalCommission = trips.reduce((sum, trip: any) => sum + Number(trip.commissionValue ?? trip.commission ?? 0), 0);
+  const totalAdvances = advances.reduce((sum, item: any) => sum + Number(item.amount ?? 0), 0);
+  const commissionPayable = totalCommission - totalAdvances;
+  const fuelTotal = (type: string) => fuelings.filter((f: any) => fuelTypeOf(f) === type).reduce((sum, f: any) => sum + fuelCost(f), 0);
+  const totalDiesel = fuelTotal("diesel");
+  const totalArla = fuelTotal("arla");
+  const totalGas = fuelTotal("gasolina");
+  const totalFuelings = totalDiesel + totalArla + totalGas;
 
   const drawHeader = () => {
-    doc.setFillColor(255, 255, 255);
-    doc.rect(0, 0, 297, 24, "F");
-    doc.addImage(REPORT_LOGO_JPEG, "JPEG", 7, 1.7, 42, 21.9, undefined, "FAST");
+    doc.setFillColor(...white);
+    doc.rect(0, 0, 297, 29, "F");
+    doc.addImage(REPORT_LOGO_JPEG, "JPEG", 6, 1.5, 58, 27, undefined, "FAST");
     doc.setTextColor(...black);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text(driverName || "Motorista", 145, 8.7, { align: "center" });
+    doc.text(reportTitle || "RELATÓRIO GERAL", 153, 8.5, { align: "center" });
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.8);
-    doc.setTextColor(70, 78, 90);
-    doc.text(reportTitle || "Relatório operacional por motorista", 145, 13.2, { align: "center" });
-    doc.text(`${periodLabel || "Período selecionado"}  •  ${sourceLabel || "Gerência"}  •  Operador: ${operatorName || "admin"}`, 145, 17.1, { align: "center" });
-    doc.setFillColor(...dark);
-    doc.roundedRect(218, 3.2, 72, 16.5, 1.4, 1.4, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text("COMISSÃO A PAGAR", 254, 8, { align: "center" });
-    doc.setFontSize(12);
-    doc.setTextColor(...blue);
-    doc.text(brl(commissionPayable), 254, 14.7, { align: "center" });
-    doc.setDrawColor(...blue);
-    doc.setLineWidth(0.5);
-    doc.line(7, 22.3, 290, 22.3);
+    doc.setFontSize(7.2);
+    doc.text(`Período: ${exactPeriodLabel}`, 153, 13.3, { align: "center" });
+    doc.text(`${sourceLabel || "Gerência"} · Operador: ${operatorName || "admin"}`, 153, 17.4, { align: "center" });
+    doc.setFontSize(6.7);
+    doc.setTextColor(75, 75, 75);
+    doc.text("Comissão a pagar = comissão bruta − adiantamentos | Custo diesel = somente abastecimentos classificados como Diesel", 153, 22.0, { align: "center" });
+    doc.setDrawColor(...black);
+    doc.setLineWidth(0.35);
+    doc.line(6, 27.6, 291, 27.6);
   };
 
   autoTable(doc, {
-    head: [["Faturamento total", "Custo diesel", "Resultado bruto", "Comissão total", "Faturamento líquido", "Abastecimentos"]],
-    body: [[brl(totalFreight), brl(totalDiesel), brl(totalGrossResult), brl(totalCommission), brl(totalNetRevenue), brl(totalFuelings)]],
-    startY: 25,
-    margin: { top: 25, right: 7, bottom: 9, left: 7 },
+    head: [["Faturamento total", "Comissão bruta", "Adiantamentos", "Comissão a pagar", "Custo diesel", "ARLA", "Gasolina", "Combustíveis"]],
+    body: [[brl(totalFreight), brl(totalCommission), brl(totalAdvances), brl(commissionPayable), brl(totalDiesel), brl(totalArla), brl(totalGas), brl(totalFuelings)]],
+    startY: 31,
+    margin: { top: 31, right: 6, bottom: 10, left: 6 },
     theme: "grid",
-    styles: { font: "helvetica", fontSize: 6.5, cellPadding: 1.2, textColor: black, fillColor: [255, 255, 255], lineColor: blue, lineWidth: 0.14, halign: "center", valign: "middle" },
-    headStyles: { fillColor: blue, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 6.2, halign: "center" },
-    columnStyles: { 0: { cellWidth: 47 }, 1: { cellWidth: 47 }, 2: { cellWidth: 47 }, 3: { cellWidth: 47 }, 4: { cellWidth: 47 }, 5: { cellWidth: 47 } },
-    didDrawPage: drawHeader,
-  });
-  const tripStartY = Number((doc as any).lastAutoTable?.finalY ?? 25) + 3;
-  autoTable(doc, {
-    head: [["Data", "Ticket / modalidade", "Motorista", "Conjunto", "Peso", "Frete", "Comissão", "Resultado"]],
-    body: rows,
-    startY: tripStartY,
-    margin: { top: 25, right: 7, bottom: 9, left: 7 },
-    theme: "grid",
-    showHead: "everyPage",
-    rowPageBreak: "avoid",
-    styles: {
-      font: "helvetica",
-      fontSize: 6.15,
-      cellPadding: 0.95,
-      textColor: black,
-      fillColor: [255, 255, 255],
-      lineColor: blue,
-      lineWidth: 0.14,
-      valign: "middle",
-      overflow: "ellipsize",
-      minCellHeight: 4.1,
-      halign: "center",
-    },
-    headStyles: {
-      fillColor: dark,
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 6.25,
-      lineColor: blue,
-      lineWidth: 0.18,
-      halign: "center",
-      minCellHeight: 4.8,
-    },
-    alternateRowStyles: { fillColor: [255, 255, 255] },
-    columnStyles: {
-      0: { cellWidth: 22 }, 1: { cellWidth: 43 }, 2: { cellWidth: 40 }, 3: { cellWidth: 42 },
-      4: { cellWidth: 28 }, 5: { cellWidth: 36 }, 6: { cellWidth: 36 }, 7: { cellWidth: 36 },
-    },
+    styles: { font: "helvetica", fontSize: 6.2, cellPadding: 1.05, textColor: black, fillColor: white, lineColor: [150,150,150], lineWidth: 0.12, halign: "center", valign: "middle" },
+    headStyles: { fillColor: dark, textColor: white, fontStyle: "bold", fontSize: 6.0, halign: "center" },
     didDrawPage: drawHeader,
   });
 
-  const commissionRows = Array.from(driverTotals.values())
-    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
-    .map((item) => [
-      item.name,
-      String(item.trips),
-      brl(item.billing),
-      brl(item.commission),
-      brl(item.advances),
-      brl(item.commission - item.advances),
-      brl(item.billing - item.commission),
-    ]);
-
-  let summaryY = Number((doc as any).lastAutoTable?.finalY ?? 25) + 6;
-  if (summaryY > 165) {
-    doc.addPage("a4", "landscape");
-    summaryY = 29;
-  }
-
-  autoTable(doc, {
-    head: [["Motorista", "Fretes", "Faturamento", "Comissão bruta", "Adiantamentos", "Comissão a pagar", "Faturamento líquido"]],
-    body: commissionRows,
-    startY: summaryY,
-    margin: { top: 25, right: 7, bottom: 9, left: 7 },
-    theme: "grid",
-    showHead: "everyPage",
-    rowPageBreak: "avoid",
-    styles: {
-      font: "helvetica",
-      fontSize: 7,
-      cellPadding: 1.2,
-      textColor: black,
-      fillColor: [255, 255, 255],
-      lineColor: blue,
-      lineWidth: 0.16,
-      overflow: "ellipsize",
-      halign: "center",
-    },
-    headStyles: {
-      fillColor: blue,
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 7,
-      halign: "center",
-      lineColor: dark,
-      lineWidth: 0.18,
-    },
-    columnStyles: {
-      0: { cellWidth: 60 },
-      1: { cellWidth: 18, halign: "center" },
-      2: { cellWidth: 42, halign: "right" },
-      3: { cellWidth: 42, halign: "right" },
-      4: { cellWidth: 38, halign: "right" },
-      5: { cellWidth: 42, halign: "right" },
-      6: { cellWidth: 42, halign: "right" },
-    },
-    didDrawPage: drawHeader,
-  });
-
-  const addDetailTable = (title: string, head: string[], body: any[][]) => {
-    if (body.length === 0) return;
-    let y = Number((doc as any).lastAutoTable?.finalY ?? 25) + 7;
-    if (y > 174) { doc.addPage("a4", "landscape"); y = 29; }
-    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...dark); doc.text(title, 148.5, y - 2, { align: "center" });
-    autoTable(doc, { head: [head], body, startY: y, margin: { top: 25, right: 7, bottom: 9, left: 7 }, theme: "grid", showHead: "everyPage", rowPageBreak: "avoid", styles: { font: "helvetica", fontSize: 6.6, cellPadding: 1.05, textColor: black, fillColor: [255,255,255], lineColor: blue, lineWidth: 0.14, halign: "center", valign: "middle", overflow: "ellipsize" }, headStyles: { fillColor: dark, textColor: [255,255,255], fontStyle: "bold", halign: "center" }, didDrawPage: drawHeader });
+  const driverMap = new Map<string, any>();
+  const ensureDriver = (id: any, nameValue: any) => {
+    const name = String(nameValue ?? driverName ?? "Sem motorista").trim() || "Sem motorista";
+    const key = String(id ?? name);
+    let item = driverMap.get(key);
+    if (!item) { item = { key, id: id ?? null, name, trips: [], fuelings: [], advances: 0 }; driverMap.set(key, item); }
+    return item;
   };
-  addDetailTable("ABASTECIMENTOS", ["Data", "Motorista", "Conjunto", "Posto", "Litros", "Preço/L", "Custo", "KM"], fuelings.map((f: any) => [formatDate(f.date), f.driverName ?? "Sem motorista", f.fleetName ?? "—", f.station ?? "—", liters(Number(f.liters ?? 0)), brl(Number(f.pricePerLiter ?? 0)), brl(Number(f.liters ?? 0) * Number(f.pricePerLiter ?? 0)), integer(Number(f.km ?? 0))]));
-  addDetailTable("ADIANTAMENTOS", ["Data", "Motorista", "Descrição", "Valor"], advances.map((a: any) => [formatDate(a.date), a.driverName ?? "Motorista", a.description ?? "—", brl(Number(a.amount ?? 0))]));
-  addDetailTable("DESPESAS", ["Data", "Categoria", "Descrição", "Motorista", "Conjunto", "Valor"], expenses.map((e: any) => [formatDate(e.date), e.category ?? "Despesa", e.description ?? "—", e.driverName ?? "—", e.fleetName ?? "—", brl(Number(e.amount ?? 0))]));
+  trips.forEach((trip: any) => ensureDriver(trip.driverId, trip.driverName).trips.push(trip));
+  fuelings.forEach((f: any) => ensureDriver(f.driverId, f.driverName ?? "Sem motorista").fuelings.push(f));
+  advances.forEach((a: any) => { ensureDriver(a.driverId, a.driverName ?? "Sem motorista").advances += Number(a.amount ?? 0); });
+  const driverRows = Array.from(driverMap.values()).sort((a: any, b: any) => a.name.localeCompare(b.name, "pt-BR"));
 
-  const pages = doc.getNumberOfPages();
-  for (let page = 1; page <= pages; page += 1) {
-    doc.setPage(page);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.2);
-    doc.setTextColor(95, 105, 118);
-    doc.text(
-      `Fretes: ${trips.length}  •  Faturamento: ${brl(totalFreight)}  •  Diesel: ${brl(totalDiesel)}  •  Resultado bruto: ${brl(totalGrossResult)}  •  Comissão: ${brl(totalCommission)}  •  Líquido: ${brl(totalNetRevenue)}  •  Adiantamentos: ${brl(totalAdvances)}  •  Comissão a pagar: ${brl(commissionPayable)}`,
-      7,
-      205,
-    );
-    doc.text(`Página ${page}/${pages}`, 290, 205, { align: "right" });
+  const ensureSpace = (needed = 22) => {
+    let y = Number((doc as any).lastAutoTable?.finalY ?? 31) + 5;
+    if (y + needed > 196) { doc.addPage("a4", "landscape"); drawHeader(); y = 32; }
+    return y;
+  };
+
+  for (const driver of driverRows) {
+    const sortedTrips = [...driver.trips].sort((a: any, b: any) => dateKey(a.date).localeCompare(dateKey(b.date)) || String(a.code ?? "").localeCompare(String(b.code ?? ""), "pt-BR", { numeric: true }));
+    const driverFreight = sortedTrips.reduce((sum: number, t: any) => sum + Number(t.freight ?? 0), 0);
+    const driverCommission = sortedTrips.reduce((sum: number, t: any) => sum + Number(t.commissionValue ?? t.commission ?? 0), 0);
+    const driverCommissionPayable = driverCommission - Number(driver.advances ?? 0);
+    let y = ensureSpace(28);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(...black);
+    doc.text(driver.name, 7, y);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(80,80,80);
+    doc.text(`Faturamento ${brl(driverFreight)} · Comissão bruta ${brl(driverCommission)} · Adiantamentos ${brl(driver.advances)} · Comissão a pagar ${brl(driverCommissionPayable)}`, 7, y + 4.2);
+
+    const tripRows = sortedTrips.map((trip: any) => {
+      const isTon = String(trip.freightMode ?? "ton") === "ton";
+      return [
+        formatDate(trip.date),
+        String(trip.code ?? "—"),
+        modeLabel(trip.freightMode),
+        String(trip.destination ?? "").trim() || "—",
+        isTon ? tons(Number(trip.netWeight ?? 0)) : "—",
+        isTon ? brl(Number(trip.pricePerTon ?? 0)) : "—",
+        brl(Number(trip.freight ?? 0)),
+        brl(Number(trip.commissionValue ?? trip.commission ?? 0)),
+      ];
+    });
+    tripRows.push(["TOTAL MOTORISTA", "", "", "", "", "", brl(driverFreight), brl(driverCommission)]);
+    autoTable(doc, {
+      head: [["Data", "Ticket", "Modalidade", "Descarga", "Toneladas", "Valor/t", "Frete total", "Comissão total"]],
+      body: tripRows,
+      startY: y + 6,
+      margin: { top: 31, right: 6, bottom: 10, left: 6 },
+      theme: "grid",
+      showHead: "everyPage",
+      rowPageBreak: "avoid",
+      styles: { font: "helvetica", fontSize: 6.15, cellPadding: 0.9, textColor: black, fillColor: white, lineColor: [170,170,170], lineWidth: 0.11, valign: "middle", overflow: "ellipsize", halign: "center" },
+      headStyles: { fillColor: dark, textColor: white, fontStyle: "bold", fontSize: 6.15, halign: "center" },
+      columnStyles: { 0:{cellWidth:22},1:{cellWidth:20},2:{cellWidth:29},3:{cellWidth:64,halign:"left"},4:{cellWidth:28},5:{cellWidth:28},6:{cellWidth:40},7:{cellWidth:40} },
+      didParseCell: (hook: any) => { if (hook.section === "body" && hook.row.index === tripRows.length - 1) hook.cell.styles.fontStyle = "bold"; },
+      didDrawPage: drawHeader,
+    });
+
+    if (driver.fuelings.length > 0) {
+      y = ensureSpace(24);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8.2); doc.setTextColor(...black); doc.text(`Abastecimentos — ${driver.name}`, 7, y);
+      const fuelRows = [...driver.fuelings].sort((a: any,b: any) => dateKey(a.date).localeCompare(dateKey(b.date))).map((f: any) => [
+        formatDate(f.date), fuelLabel(f), String(f.station ?? "—") || "—", `${Number(f.liters ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} L`, brl(Number(f.pricePerLiter ?? 0)), brl(fuelCost(f)),
+      ]);
+      autoTable(doc, {
+        head: [["Data", "Combustível", "Posto", "Litros", "Preço/L", "Custo total"]], body: fuelRows, startY: y + 2,
+        margin: { top:31,right:6,bottom:10,left:6 }, theme:"grid", showHead:"everyPage", rowPageBreak:"avoid",
+        styles:{font:"helvetica",fontSize:6.2,cellPadding:0.85,textColor:black,fillColor:white,lineColor:[180,180,180],lineWidth:0.1,halign:"center",overflow:"ellipsize"},
+        headStyles:{fillColor:gray,textColor:black,fontStyle:"bold",fontSize:6.1},
+        columnStyles:{0:{cellWidth:30},1:{cellWidth:38},2:{cellWidth:90,halign:"left"},3:{cellWidth:38},4:{cellWidth:38},5:{cellWidth:48}}, didDrawPage:drawHeader,
+      });
+    }
   }
 
-  const blob = doc.output("blob");
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `relatorio-trans-salomao-${normalizeFilename(driverName) || "motorista"}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  const generalFuelRows = [...fuelings].sort((a: any, b: any) => {
+    const an = String(a.driverName ?? "Sem motorista"); const bn = String(b.driverName ?? "Sem motorista");
+    return an.localeCompare(bn, "pt-BR") || dateKey(a.date).localeCompare(dateKey(b.date));
+  }).map((f: any) => [formatDate(f.date), String(f.driverName ?? "Sem motorista"), fuelLabel(f), String(f.station ?? "—") || "—", `${Number(f.liters ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} L`, brl(Number(f.pricePerLiter ?? 0)), brl(fuelCost(f))]);
+  if (generalFuelRows.length > 0) {
+    const y = ensureSpace(25);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...black); doc.text("ABASTECIMENTOS GERAIS — DIESEL / ARLA / GASOLINA", 148.5, y, { align:"center" });
+    autoTable(doc, {
+      head:[["Data","Motorista","Combustível","Posto","Litros","Preço/L","Custo total"]], body:generalFuelRows, startY:y+2,
+      margin:{top:31,right:6,bottom:10,left:6},theme:"grid",showHead:"everyPage",rowPageBreak:"avoid",
+      styles:{font:"helvetica",fontSize:6.1,cellPadding:0.85,textColor:black,fillColor:white,lineColor:[175,175,175],lineWidth:0.1,halign:"center",overflow:"ellipsize"},
+      headStyles:{fillColor:dark,textColor:white,fontStyle:"bold",fontSize:6.0},
+      columnStyles:{0:{cellWidth:25},1:{cellWidth:58,halign:"left"},2:{cellWidth:32},3:{cellWidth:62,halign:"left"},4:{cellWidth:30},5:{cellWidth:34},6:{cellWidth:40}},didDrawPage:drawHeader,
+    });
+  }
+
+  const ordinaryExpenses = expenses.filter((e: any) => normalize(e.category) !== "adiantamento");
+  if (ordinaryExpenses.length > 0) {
+    const y = ensureSpace(24);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...black); doc.text("DESPESAS", 148.5, y, {align:"center"});
+    autoTable(doc, {
+      head:[["Data","Motorista","Categoria","Descrição","Valor"]], body:ordinaryExpenses.map((e:any)=>[formatDate(e.date),e.driverName??"—",e.category??"—",e.description??"—",brl(Number(e.amount??0))]), startY:y+2,
+      margin:{top:31,right:6,bottom:10,left:6},theme:"grid",showHead:"everyPage",rowPageBreak:"avoid",
+      styles:{font:"helvetica",fontSize:6.1,cellPadding:0.9,textColor:black,fillColor:white,lineColor:[175,175,175],lineWidth:0.1,halign:"center",overflow:"ellipsize"},
+      headStyles:{fillColor:dark,textColor:white,fontStyle:"bold"},columnStyles:{0:{cellWidth:28},1:{cellWidth:62},2:{cellWidth:48},3:{cellWidth:105,halign:"left"},4:{cellWidth:40}},didDrawPage:drawHeader,
+    });
+  }
+
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i += 1) {
+    doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(6); doc.setTextColor(90,90,90);
+    doc.text(`Trans Salomão · ${exactPeriodLabel} · página ${i}/${pageCount}`, 148.5, 205, {align:"center"});
+  }
+  const safeName = String(driverName || "geral").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  doc.save(`relatorio-${safeName || "geral"}-${dateRange[0]}-a-${dateRange[1]}.pdf`);
 }
