@@ -67,6 +67,9 @@ if (!originalBootstrap.includes('fix-daily-api-import-20260916.mjs')) {
 if (!originalBootstrap.includes('fix-daily-caixa-20260916.mjs')) {
   finalBlocks.push(`const fixDailyCaixa = path.join(repo, 'render-overrides', 'fix-daily-caixa-20260916.mjs');\nif (!fs.existsSync(fixDailyCaixa)) throw new Error('Missing Daily Caixa fix');\nexecFileSync(process.execPath, [fixDailyCaixa, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
+if (!originalBootstrap.includes('fix-daily-reports-commission-20260916.mjs')) {
+  finalBlocks.push(`const fixDailyReportsCommission = path.join(repo, 'render-overrides', 'fix-daily-reports-commission-20260916.mjs');\nif (!fs.existsSync(fixDailyReportsCommission)) throw new Error('Missing Daily reports/commission fix');\nexecFileSync(process.execPath, [fixDailyReportsCommission, work], { cwd: repo, stdio: 'inherit' });\n`);
+}
 if (finalBlocks.length) {
   originalBootstrap = originalBootstrap.replace(marker, `${finalBlocks.join('\n')}\n${marker}`);
   fs.writeFileSync(originalBootstrapPath, originalBootstrap);
