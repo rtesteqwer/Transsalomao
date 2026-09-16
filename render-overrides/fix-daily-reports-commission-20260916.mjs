@@ -128,3 +128,6 @@ console.log('[daily-reports] Diárias standardized in site/PDF; Daily value colu
 const excelPatch = path.join(process.cwd(), 'render-overrides', 'fix-excel-consolidated-grouped-20260916.mjs');
 if (!fs.existsSync(excelPatch)) throw new Error('fix-daily-reports-commission: consolidated Excel patch missing');
 execFileSync(process.execPath, [excelPatch, target], { cwd: process.cwd(), stdio: 'inherit' });
+const excelDriverTabsPatch = path.join(process.cwd(), 'render-overrides', 'fix-excel-driver-tabs-grouped-20260916.mjs');
+if (!fs.existsSync(excelDriverTabsPatch)) throw new Error('fix-daily-reports-commission: driver-tab Excel patch missing');
+execFileSync(process.execPath, [excelDriverTabsPatch, target], { cwd: process.cwd(), stdio: 'inherit' });
