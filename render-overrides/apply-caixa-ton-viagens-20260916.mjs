@@ -65,19 +65,12 @@ function required(text, needle, replacement, label) {
     s = s.replace(/const \{([^}]*?)\btrip,([^}]*)\} = useFleetMutations\(\);/, 'const {$1trip, closeTon,$2} = useFleetMutations();');
     if (!/const \{[^}]*\bcloseTon\b[^}]*\} = useFleetMutations\(\);/.test(s)) throw new Error('caixa-ton-viagens: could not add closeTon to mutations destructure');
   }
-  const oldSubmit = [
-    '              onSubmit={async (payload) => {',
-    '                try {',
-    '                  await trip.mutateAsync(payload);',
-    '                  toast.success(`Viagem ${payload.code} lançada.`);',
-    '                  setOpen(null);',
-    '                } catch (err) {',
-    '                  toast.error(err instanceof Error ? err.message : "Não foi possível lançar a viagem no painel.");',
-    '                }',
-    '              }}',
-  ].join('\n');
   if (!s.includes('await closeTon.mutateAsync({')) {
-    if (!s.includes(oldSubmit)) throw new Error('caixa-ton-viagens: submit block missing');
+    const labelAt = s.indexOf('submitLabel="Lançar no painel"');
+    const submitAt = s.indexOf('              onSubmit={async (payload) => {', labelAt);
+    const submitEndMarker = '\n              }}';
+    const submitEnd = s.indexOf(submitEndMarker, submitAt);
+    if (labelAt < 0 || submitAt < 0 || submitEnd < 0) throw new Error('caixa-ton-viagens: submit block bounds missing');
     const newSubmit = [
       '              onSubmit={async (payload) => {',
       '                try {',
@@ -110,7 +103,7 @@ function required(text, needle, replacement, label) {
       '                }',
       '              }}',
     ].join('\n');
-    s = s.replace(oldSubmit, newSubmit);
+    s = s.slice(0, submitAt) + newSubmit + s.slice(submitEnd + submitEndMarker.length);
   }
   s = s.replace('pending={trip.isPending}', 'pending={trip.isPending || closeTon.isPending}');
   write('src/routes/dono/lancamentos.tsx', s);
