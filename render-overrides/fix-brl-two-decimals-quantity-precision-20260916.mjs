@@ -8,12 +8,18 @@ function normalizeIntlBlock(block) {
   const isCurrency = /currency\s*:\s*["']BRL["']/.test(block) || /style\s*:\s*["']currency["']/.test(block);
   let next = block;
   if (isCurrency) {
-    if (/minimumFractionDigits\s*:\s*\d+/.test(next)) next = next.replace(/minimumFractionDigits\s*:\s*\d+/, 'minimumFractionDigits: 2');
-    else next = next.replace(/\}\)$/, ', minimumFractionDigits: 2 })');
-    if (/maximumFractionDigits\s*:\s*\d+/.test(next)) next = next.replace(/maximumFractionDigits\s*:\s*\d+/, 'maximumFractionDigits: 2');
-    else next = next.replace(/\}\)$/, ', maximumFractionDigits: 2 })');
-  } else {
-    if (/maximumFractionDigits\s*:\s*\d+/.test(next)) next = next.replace(/maximumFractionDigits\s*:\s*\d+/, 'maximumFractionDigits: 20');
+    if (/minimumFractionDigits\s*:\s*\d+/.test(next)) {
+      next = next.replace(/minimumFractionDigits\s*:\s*\d+/, 'minimumFractionDigits: 2');
+    } else {
+      next = next.replace(/\{/, '{\n  minimumFractionDigits: 2,');
+    }
+    if (/maximumFractionDigits\s*:\s*\d+/.test(next)) {
+      next = next.replace(/maximumFractionDigits\s*:\s*\d+/, 'maximumFractionDigits: 2');
+    } else {
+      next = next.replace(/\{/, '{\n  maximumFractionDigits: 2,');
+    }
+  } else if (/maximumFractionDigits\s*:\s*\d+/.test(next)) {
+    next = next.replace(/maximumFractionDigits\s*:\s*\d+/, 'maximumFractionDigits: 20');
   }
   return next;
 }
