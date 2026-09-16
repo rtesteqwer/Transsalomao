@@ -40,6 +40,9 @@ if (!originalBootstrap.includes('apply-panel-money-two-decimals.mjs')) {
 if (!originalBootstrap.includes('apply-request-20260916.mjs')) {
   finalBlocks.push(`const request20260916Patch = path.join(repo, 'render-overrides', 'apply-request-20260916.mjs');\nif (!fs.existsSync(request20260916Patch)) throw new Error('Missing 2026-09-16 request patch');\ntry {\n  execFileSync(process.execPath, [request20260916Patch, work], { cwd: repo, stdio: 'inherit' });\n} catch {\n  console.log('[bootstrap] main 2026-09-16 patch partially applied; using resilient finish step');\n}\nconst request20260916Finish = path.join(repo, 'render-overrides', 'apply-request-20260916-finish.mjs');\nif (!fs.existsSync(request20260916Finish)) throw new Error('Missing 2026-09-16 finish patch');\nexecFileSync(process.execPath, [request20260916Finish, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
+if (!originalBootstrap.includes('apply-caixa-ton-viagens-20260916.mjs')) {
+  finalBlocks.push(`const caixaTonViagensPatch = path.join(repo, 'render-overrides', 'apply-caixa-ton-viagens-20260916.mjs');\nif (!fs.existsSync(caixaTonViagensPatch)) throw new Error('Missing caixa ton viagens patch');\nexecFileSync(process.execPath, [caixaTonViagensPatch, work], { cwd: repo, stdio: 'inherit' });\n`);
+}
 if (finalBlocks.length) {
   originalBootstrap = originalBootstrap.replace(marker, `${finalBlocks.join('\n')}\n${marker}`);
   fs.writeFileSync(originalBootstrapPath, originalBootstrap);
