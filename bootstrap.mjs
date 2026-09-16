@@ -58,6 +58,9 @@ if (!originalBootstrap.includes('fix-no-rounding-sitewide-20260916.mjs')) {
 if (!originalBootstrap.includes('fix-brl-two-decimals-quantity-precision-20260916.mjs')) {
   finalBlocks.push(`const fixBrlTwoDecimalsQuantityPrecision = path.join(repo, 'render-overrides', 'fix-brl-two-decimals-quantity-precision-20260916.mjs');\nif (!fs.existsSync(fixBrlTwoDecimalsQuantityPrecision)) throw new Error('Missing BRL two-decimals/quantity precision fix');\nexecFileSync(process.execPath, [fixBrlTwoDecimalsQuantityPrecision, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
+if (!originalBootstrap.includes('apply-daily-mode-20260916.mjs')) {
+  finalBlocks.push(`const dailyModePatch = path.join(repo, 'render-overrides', 'apply-daily-mode-20260916.mjs');\nif (!fs.existsSync(dailyModePatch)) throw new Error('Missing Daily mode patch');\nexecFileSync(process.execPath, [dailyModePatch, work], { cwd: repo, stdio: 'inherit' });\n`);
+}
 if (finalBlocks.length) {
   originalBootstrap = originalBootstrap.replace(marker, `${finalBlocks.join('\n')}\n${marker}`);
   fs.writeFileSync(originalBootstrapPath, originalBootstrap);
