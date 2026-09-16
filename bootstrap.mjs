@@ -61,6 +61,9 @@ if (!originalBootstrap.includes('fix-brl-two-decimals-quantity-precision-2026091
 if (!originalBootstrap.includes('apply-daily-mode-20260916.mjs')) {
   finalBlocks.push(`const dailyModePatch = path.join(repo, 'render-overrides', 'apply-daily-mode-20260916.mjs');\nif (!fs.existsSync(dailyModePatch)) throw new Error('Missing Daily mode patch');\nexecFileSync(process.execPath, [dailyModePatch, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
+if (!originalBootstrap.includes('fix-daily-api-import-20260916.mjs')) {
+  finalBlocks.push(`const fixDailyApiImport = path.join(repo, 'render-overrides', 'fix-daily-api-import-20260916.mjs');\nif (!fs.existsSync(fixDailyApiImport)) throw new Error('Missing Daily API import fix');\nexecFileSync(process.execPath, [fixDailyApiImport, work], { cwd: repo, stdio: 'inherit' });\n`);
+}
 if (finalBlocks.length) {
   originalBootstrap = originalBootstrap.replace(marker, `${finalBlocks.join('\n')}\n${marker}`);
   fs.writeFileSync(originalBootstrapPath, originalBootstrap);
