@@ -24,14 +24,21 @@ function normalizeIntlBlock(block) {
   return next;
 }
 
+function repairLegacyFormatterSyntax(text) {
+  return text
+    .replace(/,\s*,\s*(minimumFractionDigits|maximumFractionDigits)/g, ', $1')
+    .replace(/\{\s*,\s*(minimumFractionDigits|maximumFractionDigits)/g, '{ $1');
+}
+
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full);
     else if (/\.(ts|tsx)$/.test(entry.name)) {
-      const before = fs.readFileSync(full, 'utf8');
-      let after = before.replace(/new Intl\.NumberFormat\("pt-BR",\s*\{[\s\S]*?\}\)/g, normalizeIntlBlock);
+      const raw = fs.readFileSync(full, 'utf8');
+      let after = repairLegacyFormatterSyntax(raw);
+      after = after.replace(/new Intl\.NumberFormat\("pt-BR",\s*\{[\s\S]*?\}\)/g, normalizeIntlBlock);
       if (full.endsWith(path.join('src','routes','dono','index.tsx'))) {
         const start = after.indexOf('function painelBrl(');
         if (start >= 0) {
@@ -44,7 +51,7 @@ function walk(dir) {
           }
         }
       }
-      if (after !== before) fs.writeFileSync(full, after);
+      if (after !== raw) fs.writeFileSync(full, after);
     }
   }
 }
