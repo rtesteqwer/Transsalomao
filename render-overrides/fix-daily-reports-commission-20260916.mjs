@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const target = process.argv[2];
 if (!target || !fs.existsSync(target)) throw new Error('fix-daily-reports-commission: target missing');
@@ -122,3 +123,8 @@ for (const rel of auditFiles) {
 if (leftovers.length) throw new Error(`fix-daily-reports-commission: legacy labels remain: ${leftovers.join(', ')}`);
 
 console.log('[daily-reports] Diárias standardized in site/PDF; Daily value column added; universal commission audited');
+
+// Excel must be finalized after Daily terminology/commission patches so the latest report structure wins.
+const excelPatch = path.join(process.cwd(), 'render-overrides', 'fix-excel-consolidated-grouped-20260916.mjs');
+if (!fs.existsSync(excelPatch)) throw new Error('fix-daily-reports-commission: consolidated Excel patch missing');
+execFileSync(process.execPath, [excelPatch, target], { cwd: process.cwd(), stdio: 'inherit' });
