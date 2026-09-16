@@ -55,6 +55,9 @@ if (!originalBootstrap.includes('fix-ticket-sequence-delete-20260916.mjs')) {
 if (!originalBootstrap.includes('fix-no-rounding-sitewide-20260916.mjs')) {
   finalBlocks.push(`const fixNoRoundingSitewide = path.join(repo, 'render-overrides', 'fix-no-rounding-sitewide-20260916.mjs');\nif (!fs.existsSync(fixNoRoundingSitewide)) throw new Error('Missing no-rounding sitewide fix');\nexecFileSync(process.execPath, [fixNoRoundingSitewide, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
+if (!originalBootstrap.includes('fix-brl-two-decimals-quantity-precision-20260916.mjs')) {
+  finalBlocks.push(`const fixBrlTwoDecimalsQuantityPrecision = path.join(repo, 'render-overrides', 'fix-brl-two-decimals-quantity-precision-20260916.mjs');\nif (!fs.existsSync(fixBrlTwoDecimalsQuantityPrecision)) throw new Error('Missing BRL two-decimals/quantity precision fix');\nexecFileSync(process.execPath, [fixBrlTwoDecimalsQuantityPrecision, work], { cwd: repo, stdio: 'inherit' });\n`);
+}
 if (finalBlocks.length) {
   originalBootstrap = originalBootstrap.replace(marker, `${finalBlocks.join('\n')}\n${marker}`);
   fs.writeFileSync(originalBootstrapPath, originalBootstrap);
