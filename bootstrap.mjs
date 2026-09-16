@@ -49,6 +49,9 @@ if (!originalBootstrap.includes('fix-abastecimentos-runtime-20260916.mjs')) {
 if (!originalBootstrap.includes('fix-dashboard-faturamento-liquido-20260916.mjs')) {
   finalBlocks.push(`const fixDashboardFaturamentoLiquido = path.join(repo, 'render-overrides', 'fix-dashboard-faturamento-liquido-20260916.mjs');\nif (!fs.existsSync(fixDashboardFaturamentoLiquido)) throw new Error('Missing dashboard faturamento liquido fix');\nexecFileSync(process.execPath, [fixDashboardFaturamentoLiquido, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
+if (!originalBootstrap.includes('fix-ticket-sequence-delete-20260916.mjs')) {
+  finalBlocks.push(`const fixTicketSequenceDelete = path.join(repo, 'render-overrides', 'fix-ticket-sequence-delete-20260916.mjs');\nif (!fs.existsSync(fixTicketSequenceDelete)) throw new Error('Missing ticket sequence/delete fix');\nexecFileSync(process.execPath, [fixTicketSequenceDelete, work], { cwd: repo, stdio: 'inherit' });\n`);
+}
 if (finalBlocks.length) {
   originalBootstrap = originalBootstrap.replace(marker, `${finalBlocks.join('\n')}\n${marker}`);
   fs.writeFileSync(originalBootstrapPath, originalBootstrap);
