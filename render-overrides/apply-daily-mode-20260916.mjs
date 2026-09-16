@@ -47,7 +47,13 @@ fs.copyFileSync(path.join(repo, 'render-overrides', '0012_report_daily_value.sql
 
 {
   let s = read('src/lib/use-fleet.ts');
-  if (!s.includes('upsertDailyReport,')) s = required(s, '  upsertReport,', '  upsertDailyReport,\n  upsertReport,', 'use-fleet import');
+  if (!s.includes('upsertDailyReport')) {
+    const importRe = /import\s*\{[\s\S]*?\}\s*from\s*["'](?:@\/lib\/api|\.\/api)["'];/;
+    const match = s.match(importRe);
+    if (!match) throw new Error('daily-mode: API import block missing');
+    const nextImport = match[0].replace('{', '{\n  upsertDailyReport,');
+    s = s.replace(match[0], nextImport);
+  }
   if (!s.includes('const dailyReport = useMutation')) {
     s = required(s, '  const report = useMutation({', `  const dailyReport = useMutation({\n    mutationFn: (data: Parameters<typeof upsertDailyReport>[0][\"data\"]) =>\n      upsertDailyReport({ data }),\n    onSuccess: invalidate,\n  });\n  const report = useMutation({`, 'dailyReport mutation');
   }
