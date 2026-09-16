@@ -43,6 +43,9 @@ if (!originalBootstrap.includes('apply-request-20260916.mjs')) {
 if (!originalBootstrap.includes('apply-caixa-ton-viagens-20260916.mjs')) {
   finalBlocks.push(`const caixaTonViagensPatch = path.join(repo, 'render-overrides', 'apply-caixa-ton-viagens-20260916.mjs');\nif (!fs.existsSync(caixaTonViagensPatch)) throw new Error('Missing caixa ton viagens patch');\nexecFileSync(process.execPath, [caixaTonViagensPatch, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
+if (!originalBootstrap.includes('fix-abastecimentos-runtime-20260916.mjs')) {
+  finalBlocks.push(`const fixAbastecimentosRuntime = path.join(repo, 'render-overrides', 'fix-abastecimentos-runtime-20260916.mjs');\nif (!fs.existsSync(fixAbastecimentosRuntime)) throw new Error('Missing abastecimentos runtime fix');\nexecFileSync(process.execPath, [fixAbastecimentosRuntime, work], { cwd: repo, stdio: 'inherit' });\n`);
+}
 if (finalBlocks.length) {
   originalBootstrap = originalBootstrap.replace(marker, `${finalBlocks.join('\n')}\n${marker}`);
   fs.writeFileSync(originalBootstrapPath, originalBootstrap);
