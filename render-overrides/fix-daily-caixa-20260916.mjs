@@ -24,3 +24,14 @@ if (!s.includes('pricePerTrip: Number(open?.dailyValue ?? 0)')) {
 
 fs.writeFileSync(p, s);
 console.log('[fix-daily-caixa] Daily value display and individual close flow fixed');
+
+// Temporary inspection to verify the bulk accept path before hardening Daily mode.
+const apiPath = path.join(target, 'src/lib/api.ts');
+const api = fs.readFileSync(apiPath, 'utf8');
+const acceptStart = api.indexOf('export const acceptReports');
+if (acceptStart >= 0) {
+  const acceptEnd = api.indexOf('\nexport const ', acceptStart + 20);
+  console.log('\n--- ACCEPT_REPORTS_SOURCE_START ---\n');
+  console.log(api.slice(acceptStart, acceptEnd > acceptStart ? acceptEnd : acceptStart + 12000));
+  console.log('\n--- ACCEPT_REPORTS_SOURCE_END ---\n');
+}
