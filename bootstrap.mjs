@@ -64,6 +64,9 @@ if (!originalBootstrap.includes('apply-daily-mode-20260916.mjs')) {
 if (!originalBootstrap.includes('fix-daily-api-import-20260916.mjs')) {
   finalBlocks.push(`const fixDailyApiImport = path.join(repo, 'render-overrides', 'fix-daily-api-import-20260916.mjs');\nif (!fs.existsSync(fixDailyApiImport)) throw new Error('Missing Daily API import fix');\nexecFileSync(process.execPath, [fixDailyApiImport, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
+if (!originalBootstrap.includes('fix-daily-caixa-20260916.mjs')) {
+  finalBlocks.push(`const fixDailyCaixa = path.join(repo, 'render-overrides', 'fix-daily-caixa-20260916.mjs');\nif (!fs.existsSync(fixDailyCaixa)) throw new Error('Missing Daily Caixa fix');\nexecFileSync(process.execPath, [fixDailyCaixa, work], { cwd: repo, stdio: 'inherit' });\n`);
+}
 if (finalBlocks.length) {
   originalBootstrap = originalBootstrap.replace(marker, `${finalBlocks.join('\n')}\n${marker}`);
   fs.writeFileSync(originalBootstrapPath, originalBootstrap);
