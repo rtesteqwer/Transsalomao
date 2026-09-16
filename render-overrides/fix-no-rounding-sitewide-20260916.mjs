@@ -24,7 +24,6 @@ if (!s.includes('const preciseNumber = new Intl.NumberFormat')) {
 }
 
 replaceFunction('brl', `  if (!Number.isFinite(n)) return "—";\n  return "R$ " + new Intl.NumberFormat("pt-BR", {\n    useGrouping: true,\n    minimumFractionDigits: 2,\n    maximumFractionDigits: 20,\n  }).format(n);`);
-
 replaceFunction('decimal', `  return exactNumber(n);`);
 replaceFunction('integer', `  return exactNumber(n);`);
 replaceFunction('percent', `  if (!Number.isFinite(n)) return "—";\n  return exactNumber(n * 100) + "%";`);
@@ -35,8 +34,6 @@ replaceFunction('km', `  return \`${'${exactNumber(n)}'} km\`;`);
 
 fs.writeFileSync(formatPath, s);
 
-// The management dashboard had a dedicated 2-decimal formatter. Keep a minimum
-// of 2 decimals for currency readability, but never cut stored precision above that.
 const panelPath = path.join(target, 'src/routes/dono/index.tsx');
 if (fs.existsSync(panelPath)) {
   let panel = fs.readFileSync(panelPath, 'utf8');
@@ -52,19 +49,17 @@ if (fs.existsSync(panelPath)) {
   }
 }
 
-// Audit remaining explicit rounding in application source so production logs show
-// any page that still has its own formatter instead of the shared helpers.
 const findings = [];
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full);
-    else if (/\\.(ts|tsx)$/.test(entry.name)) {
+    else if (/\.(ts|tsx)$/.test(entry.name)) {
       const text = fs.readFileSync(full, 'utf8');
-      const lines = text.split(/\\r?\\n/);
+      const lines = text.split(/\r?\n/);
       lines.forEach((line, idx) => {
-        if (/Math\\.round\\(|\\.toFixed\\(|maximumFractionDigits\\s*:\\s*[0-6](?:\\D|$)/.test(line)) {
+        if (/Math\.round\(|\.toFixed\(|maximumFractionDigits\s*:\s*[0-6](?:\D|$)/.test(line)) {
           findings.push(`${path.relative(target, full)}:${idx + 1}: ${line.trim().slice(0, 180)}`);
         }
       });
