@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const target = process.argv[2];
+const p = path.join(target, 'src/lib/api.ts');
+const s = fs.readFileSync(p, 'utf8');
+const start = s.indexOf('export const acceptReports');
+if (start < 0) throw new Error('inspect-accept-reports: marker missing');
+const end = s.indexOf('\nexport const ', start + 20);
+console.log('\n--- ACCEPT_REPORTS_SOURCE_START ---\n');
+console.log(s.slice(start, end > start ? end : start + 12000));
+console.log('\n--- ACCEPT_REPORTS_SOURCE_END ---\n');
