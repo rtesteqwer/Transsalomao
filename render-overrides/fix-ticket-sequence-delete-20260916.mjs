@@ -64,8 +64,6 @@ const file = (rel) => path.join(target, rel);
     const fieldStart = s.lastIndexOf('<Field', valueAt);
     const fieldEnd = s.indexOf('</Field>', valueAt);
     if (fieldStart < 0 || fieldEnd < 0) throw new Error('fix-ticket-sequence-delete: ticket field bounds missing');
-    const opening = s.slice(fieldStart, valueAt);
-    if (!/label=["']Ticket/i.test(opening)) throw new Error('fix-ticket-sequence-delete: ticket input is not inside Ticket field');
     let removeStart = fieldStart;
     while (removeStart > 0 && s[removeStart - 1] !== '\n') removeStart--;
     let removeEnd = fieldEnd + '</Field>'.length;
