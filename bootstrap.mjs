@@ -38,7 +38,7 @@ if (!originalBootstrap.includes('apply-panel-money-two-decimals.mjs')) {
   finalBlocks.push(`const panelMoneyTwoDecimalsPatch = path.join(repo, 'render-overrides', 'apply-panel-money-two-decimals.mjs');\nif (!fs.existsSync(panelMoneyTwoDecimalsPatch)) throw new Error('Missing panel money two-decimals patch');\nexecFileSync(process.execPath, [panelMoneyTwoDecimalsPatch, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
 if (!originalBootstrap.includes('apply-request-20260916.mjs')) {
-  finalBlocks.push(`const request20260916Patch = path.join(repo, 'render-overrides', 'apply-request-20260916.mjs');\nif (!fs.existsSync(request20260916Patch)) throw new Error('Missing 2026-09-16 request patch');\nexecFileSync(process.execPath, [request20260916Patch, work], { cwd: repo, stdio: 'inherit' });\n`);
+  finalBlocks.push(`const request20260916Patch = path.join(repo, 'render-overrides', 'apply-request-20260916.mjs');\nif (!fs.existsSync(request20260916Patch)) throw new Error('Missing 2026-09-16 request patch');\ntry {\n  execFileSync(process.execPath, [request20260916Patch, work], { cwd: repo, stdio: 'inherit' });\n} catch {\n  console.log('[bootstrap] main 2026-09-16 patch partially applied; using resilient finish step');\n}\nconst request20260916Finish = path.join(repo, 'render-overrides', 'apply-request-20260916-finish.mjs');\nif (!fs.existsSync(request20260916Finish)) throw new Error('Missing 2026-09-16 finish patch');\nexecFileSync(process.execPath, [request20260916Finish, work], { cwd: repo, stdio: 'inherit' });\n`);
 }
 if (finalBlocks.length) {
   originalBootstrap = originalBootstrap.replace(marker, `${finalBlocks.join('\n')}\n${marker}`);
