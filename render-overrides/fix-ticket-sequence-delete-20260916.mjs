@@ -28,8 +28,9 @@ const file = (rel) => path.join(target, rel);
 
   const deleteStart = s.indexOf('export const deleteTrip = createServerFn');
   if (deleteStart < 0) throw new Error('fix-ticket-sequence-delete: deleteTrip missing');
-  const nextExport = s.indexOf('\nexport const ', deleteStart + 1);
-  const deleteEnd = nextExport >= 0 ? nextExport : s.length;
+  const deleteClose = s.indexOf('\n  });', deleteStart);
+  if (deleteClose < 0) throw new Error('fix-ticket-sequence-delete: deleteTrip closing marker missing');
+  const deleteEnd = deleteClose + '\n  });'.length;
   const deleteBlock = `export const deleteTrip = createServerFn({ method: "POST" })
   .validator(z.object({ id: z.string().min(1) }))
   .handler(async ({ data }) => {
