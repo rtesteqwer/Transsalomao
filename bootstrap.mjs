@@ -28,4 +28,16 @@ for (const [rel, expected] of Object.entries(checks)) {
   if (actual !== expected) throw new Error(`Arquivo restaurado divergente: ${rel}`);
 }
 console.log('[backup] 5 arquivos exclusivos do backup restaurados e verificados');
-execFileSync(process.execPath, [path.join(repo, 'bootstrap.original.mjs')], { cwd: repo, stdio: 'inherit', env: process.env });
+
+const originalBootstrapPath = path.join(repo, 'bootstrap.original.mjs');
+let originalBootstrap = fs.readFileSync(originalBootstrapPath, 'utf8');
+if (!originalBootstrap.includes('apply-panel-money-two-decimals.mjs')) {
+  const marker = "const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');";
+  if (!originalBootstrap.includes(marker)) throw new Error('Bootstrap marker for painel formatting not found');
+  const insertion = `const panelMoneyTwoDecimalsPatch = path.join(repo, 'render-overrides', 'apply-panel-money-two-decimals.mjs');\nif (!fs.existsSync(panelMoneyTwoDecimalsPatch)) throw new Error('Missing panel money two-decimals patch');\nexecFileSync(process.execPath, [panelMoneyTwoDecimalsPatch, work], { cwd: repo, stdio: 'inherit' });\n\n`;
+  originalBootstrap = originalBootstrap.replace(marker, insertion + marker);
+  fs.writeFileSync(originalBootstrapPath, originalBootstrap);
+  console.log('[backup] painel money formatter injected before production build');
+}
+
+execFileSync(process.execPath, [originalBootstrapPath], { cwd: repo, stdio: 'inherit', env: process.env });
