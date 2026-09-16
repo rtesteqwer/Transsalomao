@@ -17,6 +17,8 @@ function regexRequired(text, re, replacement, label) {
   return next;
 }
 
+// 1) Persist fuel type. Existing records remain Diesel, except an unambiguous historical
+// paired low-price fill (typical ARLA) where the same driver/fleet/station/date also has fuel.
 write('migrations/0011_fueling_type.sql', `alter table fuelings add column if not exists fuel_type text not null default 'diesel';
 update fuelings set fuel_type = 'diesel' where fuel_type is null or fuel_type not in ('diesel','arla','gasolina');
 update fuelings f
@@ -35,6 +37,7 @@ where f.fuel_type = 'diesel'
   );
 `);
 
+// 2) Types.
 {
   let s = read('src/lib/types.ts');
   if (!s.includes('export type FuelType =')) {
@@ -46,6 +49,7 @@ where f.fuel_type = 'diesel'
   write('src/lib/types.ts', s);
 }
 
+// 3) API: map, validate and save fuel type; make ton-mode validation explicit.
 {
   let s = read('src/lib/api.ts');
   if (!s.includes('fuelType: str(r.fuel_type)')) {
@@ -73,6 +77,7 @@ where f.fuel_type = 'diesel'
   write('src/lib/api.ts', s);
 }
 
+// 4) Consumption intervals must never mix Diesel/ARLA/Gasolina.
 {
   let s = read('src/lib/calc.ts');
   if (!s.includes('const consumptionKey =')) {
@@ -84,6 +89,7 @@ where f.fuel_type = 'diesel'
   write('src/lib/calc.ts', s);
 }
 
+// 5) Abastecimentos: internal tabs for Diesel, ARLA and Gasolina, and type field in editor.
 {
   let s = read('src/routes/dono/abastecimentos.tsx');
   s = s.replace('import { fuelingConsumptionRows, fuelingConsumptionStats } from "@/lib/calc";', 'import { fuelingConsumptionRows } from "@/lib/calc";');
@@ -156,6 +162,7 @@ where f.fuel_type = 'diesel'
   write('src/routes/dono/abastecimentos.tsx', s);
 }
 
+// 6) Painel: real Diesel comes only from Diesel fuelings; remove duplicate Total líquido and show math hints.
 {
   let s = read('src/routes/dono/index.tsx');
   if (!s.includes('const dieselFuelings = fuelings.filter')) {
@@ -182,39 +189,35 @@ where f.fuel_type = 'diesel'
       '    const prevDieselFuelings = prevFuelings.filter((f) => (f.fuelType ?? "diesel") === "diesel");\n    const litersTotal = prevDieselFuelings.reduce((acc, f) => acc + f.liters, 0);\n    const cost = prevDieselFuelings.reduce((acc, f) => acc + f.liters * f.pricePerLiter, 0);\n    const consumption = fuelingConsumptionStats(prevDieselFuelings);',
       'panel diesel previous');
   }
-  const kpiBlockRe = /      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">[\s\S]*?      <\/div>\n\n      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3">/;
-  const kpiBlock = `      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi
-          label="Faturamento"
-          value={painelBrl(effectiveKpis.revenue)}
-          delta={deltaOf(effectiveKpis, prevEffectiveKpis, "revenue")}
-          hint="Soma: frete de todas as viagens do período"
-          large
-        />
-        <Kpi
-          label="Comissão total"
-          value={painelBrl(kpis.commissions)}
-          delta={deltaOf(kpis, prevKpis, "commissions")}
-          hint="Soma: comissão calculada de cada viagem"
-          large
-        />
-        <Kpi
-          label="Custo diesel"
-          value={painelBrl(effectiveKpis.dieselCost)}
-          delta={deltaOf(effectiveKpis, prevEffectiveKpis, "dieselCost")}
-          hint="Soma: litros × preço/L apenas dos abastecimentos Diesel"
-          large
-        />
-        <Kpi
+  if (!s.includes('hint="Soma: frete de todas as viagens do período"')) {
+    s = required(s,
+      '          delta={deltaOf(effectiveKpis, prevEffectiveKpis, "revenue")}\n          large',
+      '          delta={deltaOf(effectiveKpis, prevEffectiveKpis, "revenue")}\n          hint="Soma: frete de todas as viagens do período"\n          large',
+      'faturamento hint');
+  }
+  if (!s.includes('hint="Soma: comissão calculada de cada viagem"')) {
+    s = required(s,
+      '          delta={deltaOf(kpis, prevKpis, "commissions")}\n          large',
+      '          delta={deltaOf(kpis, prevKpis, "commissions")}\n          hint="Soma: comissão calculada de cada viagem"\n          large',
+      'commission hint');
+  }
+  if (!s.includes('hint="Soma: litros × preço/L apenas dos abastecimentos Diesel"')) {
+    s = required(s,
+      '          delta={deltaOf(effectiveKpis, prevEffectiveKpis, "dieselCost")}\n          large',
+      '          delta={deltaOf(effectiveKpis, prevEffectiveKpis, "dieselCost")}\n          hint="Soma: litros × preço/L apenas dos abastecimentos Diesel"\n          large',
+      'diesel hint');
+  }
+  if (s.includes('          label="Total líquido"')) {
+    s = regexRequired(s,
+      /        <Kpi\n          label="Total líquido"[\s\S]*?        \/>/,
+      `        <Kpi
           label="Após comissões"
           value={painelBrl(effectiveKpis.revenue - kpis.commissions)}
           hint="Cálculo: faturamento − comissão total"
           large
-        />
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3">`;
-  if (!s.includes('hint="Cálculo: faturamento − comissão total"')) s = regexRequired(s, kpiBlockRe, kpiBlock, 'panel financial KPIs');
+        />`,
+      'remove total liquido KPI');
+  }
   s = s.replaceAll('>Total líquido<', '>Após comissão<');
   if (!s.includes('hint?: string;')) {
     s = required(s, '  delta,\n  large,\n}: {\n  label: string;\n  value: string;\n  delta?: number | null;\n  large?: boolean;', '  delta,\n  large,\n  hint,\n}: {\n  label: string;\n  value: string;\n  delta?: number | null;\n  large?: boolean;\n  hint?: string;', 'Kpi hint props');
@@ -227,6 +230,7 @@ where f.fuel_type = 'diesel'
   write('src/routes/dono/index.tsx', s);
 }
 
+// 7) Ton-mode submit: never silently fail; tell the operator exactly what is missing.
 {
   let s = read('src/components/owner/trip-form.tsx');
   if (!s.includes('import { toast } from "sonner";')) s = s.replace('import { useEffect, useMemo, useState } from "react";', 'import { useEffect, useMemo, useState } from "react";\nimport { toast } from "sonner";');
