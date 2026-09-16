@@ -23,7 +23,10 @@ if (!s.includes('const preciseNumberFmt = new Intl.NumberFormat')) {
   s = s.slice(0, anchor) + helper + s.slice(anchor);
 }
 
-replaceFunction('brl', `  if (!Number.isFinite(n)) return "—";\n  return "R$ " + new Intl.NumberFormat("pt-BR", {\n    useGrouping: true,\n    minimumFractionDigits: 2,\n    maximumFractionDigits: 20,\n  }).format(n);`);
+// Valores monetários em Reais: sempre exatamente duas casas decimais.
+replaceFunction('brl', `  if (!Number.isFinite(n)) return "—";\n  return "R$ " + new Intl.NumberFormat("pt-BR", {\n    useGrouping: true,\n    minimumFractionDigits: 2,\n    maximumFractionDigits: 2,\n  }).format(n);`);
+
+// Quantidades: preservar a precisão cadastrada, sem arredondar.
 replaceFunction('num', `  return exactNumber(n);`);
 replaceFunction('numLoose', `  return exactNumber(n);`);
 replaceFunction('num1', `  return exactNumber(n);`);
@@ -36,7 +39,7 @@ replaceFunction('liters', `  return \`${'${exactNumber(n)}'} L\`;`);
 replaceFunction('km', `  return \`${'${exactNumber(n)}'} km\`;`);
 fs.writeFileSync(formatPath, s);
 
-// Dashboard: keep at least 2 currency decimals, but never cut extra stored precision.
+// Painel possui formatador monetário próprio: exatamente 2 casas.
 const panelPath = path.join(target, 'src/routes/dono/index.tsx');
 if (fs.existsSync(panelPath)) {
   let panel = fs.readFileSync(panelPath, 'utf8');
@@ -44,15 +47,16 @@ if (fs.existsSync(panelPath)) {
   if (start >= 0) {
     const end = panel.indexOf('\n}', start);
     if (end >= 0) {
-      const block = panel.slice(start, end + 2);
-      const next = block.replace('maximumFractionDigits: 2', 'maximumFractionDigits: 20');
-      panel = panel.slice(0, start) + next + panel.slice(end + 2);
+      let block = panel.slice(start, end + 2);
+      block = block.replace(/minimumFractionDigits:\s*\d+/, 'minimumFractionDigits: 2');
+      block = block.replace(/maximumFractionDigits:\s*\d+/, 'maximumFractionDigits: 2');
+      panel = panel.slice(0, start) + block + panel.slice(end + 2);
       fs.writeFileSync(panelPath, panel);
     }
   }
 }
 
-// PDFs: fueling liters were capped at 3 decimal places. Preserve all stored precision.
+// PDFs: litragem deve preservar toda a precisão cadastrada.
 const pdfPath = path.join(target, 'src/lib/pdf.ts');
 if (fs.existsSync(pdfPath)) {
   let pdf = fs.readFileSync(pdfPath, 'utf8');
@@ -60,7 +64,7 @@ if (fs.existsSync(pdfPath)) {
   fs.writeFileSync(pdfPath, pdf);
 }
 
-// Driver registration: commission was being rounded to whole percentage points when editing.
+// Cadastro de motorista: comissão não pode ser arredondada para percentual inteiro.
 const cadPath = path.join(target, 'src/routes/dono/cadastros.tsx');
 if (fs.existsSync(cadPath)) {
   let cad = fs.readFileSync(cadPath, 'utf8');
@@ -69,17 +73,50 @@ if (fs.existsSync(cadPath)) {
   fs.writeFileSync(cadPath, cad);
 }
 
-// Klebersom portal had two local number formatters capped at 2 decimals.
+// Normaliza qualquer Intl.NumberFormat monetário em BRL no site inteiro para 2 casas.
+// Formatadores não monetários continuam podendo usar até 20 casas para preservar os dados.
+function normalizeIntlBlocks(text) {
+  return text.replace(/new Intl\.NumberFormat\("pt-BR",\s*\{[\s\S]*?\}\)/g, (block) => {
+    const isBrl = /currency\s*:\s*["']BRL["']/.test(block) || /style\s*:\s*["']currency["']/.test(block);
+    if (isBrl) {
+      let next = block;
+      if (/minimumFractionDigits\s*:\s*\d+/.test(next)) next = next.replace(/minimumFractionDigits\s*:\s*\d+/, 'minimumFractionDigits: 2');
+      else next = next.replace(/\}\)$/, '  , minimumFractionDigits: 2\n})');
+      if (/maximumFractionDigits\s*:\s*\d+/.test(next)) next = next.replace(/maximumFractionDigits\s*:\s*\d+/, 'maximumFractionDigits: 2');
+      else next = next.replace(/\}\)$/, '  , maximumFractionDigits: 2\n})');
+      return next;
+    }
+    return block;
+  });
+}
+
+function walkAndNormalizeCurrency(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walkAndNormalizeCurrency(full);
+    else if (/\.(ts|tsx)$/.test(entry.name)) {
+      const before = fs.readFileSync(full, 'utf8');
+      const after = normalizeIntlBlocks(before);
+      if (after !== before) fs.writeFileSync(full, after);
+    }
+  }
+}
+walkAndNormalizeCurrency(path.join(target, 'src'));
+
+// Portal Klebersom: dinheiro com 2 casas; toneladas/KM preservam precisão.
 const kleberPath = path.join(target, 'src/routes/klebersom.tsx');
 if (fs.existsSync(kleberPath)) {
   let kleber = fs.readFileSync(kleberPath, 'utf8');
-  kleber = kleber.replaceAll('maximumFractionDigits: 2', 'maximumFractionDigits: 20');
+  kleber = kleber.replace(/const tonsFmt = new Intl\.NumberFormat\("pt-BR", \{[\s\S]*?\}\);/, `const tonsFmt = new Intl.NumberFormat("pt-BR", {\n  minimumFractionDigits: 0,\n  maximumFractionDigits: 20,\n});`);
+  kleber = kleber.replace(/const numFmt = new Intl\.NumberFormat\("pt-BR", \{[\s\S]*?\}\);/, `const numFmt = new Intl.NumberFormat("pt-BR", {\n  minimumFractionDigits: 0,\n  maximumFractionDigits: 20,\n});`);
+  kleber = normalizeIntlBlocks(kleber);
   fs.writeFileSync(kleberPath, kleber);
 }
 
-// Audit explicit rounding outside the centralized format helper. Remaining hits should
-// only be rendering geometry/colors or non-business telemetry.
+// Auditoria: identifica candidatos de arredondamento em dados de negócio e formatos monetários.
 const findings = [];
+const moneyFindings = [];
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
@@ -93,9 +130,16 @@ function walk(dir) {
           findings.push(`${path.relative(target, full)}:${idx + 1}: ${line.trim().slice(0, 180)}`);
         }
       });
+      for (const match of text.matchAll(/new Intl\.NumberFormat\("pt-BR",\s*\{[\s\S]*?\}\)/g)) {
+        const block = match[0];
+        if ((/currency\s*:\s*["']BRL["']/.test(block) || /style\s*:\s*["']currency["']/.test(block)) && !/maximumFractionDigits\s*:\s*2/.test(block)) {
+          moneyFindings.push(path.relative(target, full));
+        }
+      }
     }
   }
 }
 walk(path.join(target, 'src'));
-console.log(`[no-rounding-sitewide] exact formatters applied; residual rounding candidates=${findings.length}`);
+console.log(`[no-rounding-sitewide] quantity precision preserved; residual rounding candidates=${findings.length}; BRL formatter issues=${moneyFindings.length}`);
 for (const finding of findings.slice(0, 60)) console.log(`[no-rounding-audit] ${finding}`);
+for (const finding of moneyFindings.slice(0, 20)) console.log(`[brl-audit] ${finding}`);
