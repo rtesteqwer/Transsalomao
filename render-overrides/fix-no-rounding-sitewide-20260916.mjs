@@ -34,11 +34,9 @@ replaceFunction('kmL', `  return n === null || !Number.isFinite(n) ? "—" : \`$
 replaceFunction('tons', `  return \`${'${exactNumber(n)}'} t\`;`);
 replaceFunction('liters', `  return \`${'${exactNumber(n)}'} L\`;`);
 replaceFunction('km', `  return \`${'${exactNumber(n)}'} km\`;`);
-
 fs.writeFileSync(formatPath, s);
 
-// The dashboard had its own money formatter forcing exactly two decimal places.
-// Keep at least two for currency readability, but display any additional stored precision.
+// Dashboard: keep at least 2 currency decimals, but never cut extra stored precision.
 const panelPath = path.join(target, 'src/routes/dono/index.tsx');
 if (fs.existsSync(panelPath)) {
   let panel = fs.readFileSync(panelPath, 'utf8');
@@ -54,7 +52,33 @@ if (fs.existsSync(panelPath)) {
   }
 }
 
-// Audit explicit rounding outside the centralized format helper.
+// PDFs: fueling liters were capped at 3 decimal places. Preserve all stored precision.
+const pdfPath = path.join(target, 'src/lib/pdf.ts');
+if (fs.existsSync(pdfPath)) {
+  let pdf = fs.readFileSync(pdfPath, 'utf8');
+  pdf = pdf.replaceAll('minimumFractionDigits: 2, maximumFractionDigits: 3', 'minimumFractionDigits: 0, maximumFractionDigits: 20');
+  fs.writeFileSync(pdfPath, pdf);
+}
+
+// Driver registration: commission was being rounded to whole percentage points when editing.
+const cadPath = path.join(target, 'src/routes/dono/cadastros.tsx');
+if (fs.existsSync(cadPath)) {
+  let cad = fs.readFileSync(cadPath, 'utf8');
+  cad = cad.replaceAll('String(Math.round((value.commissionPct ?? 0.1) * 100))', 'String((value.commissionPct ?? 0.1) * 100)');
+  cad = cad.replaceAll('String(((value.commissionPct ?? 0.1) * 100).toFixed(0))', 'String((value.commissionPct ?? 0.1) * 100)');
+  fs.writeFileSync(cadPath, cad);
+}
+
+// Klebersom portal had two local number formatters capped at 2 decimals.
+const kleberPath = path.join(target, 'src/routes/klebersom.tsx');
+if (fs.existsSync(kleberPath)) {
+  let kleber = fs.readFileSync(kleberPath, 'utf8');
+  kleber = kleber.replaceAll('maximumFractionDigits: 2', 'maximumFractionDigits: 20');
+  fs.writeFileSync(kleberPath, kleber);
+}
+
+// Audit explicit rounding outside the centralized format helper. Remaining hits should
+// only be rendering geometry/colors or non-business telemetry.
 const findings = [];
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
