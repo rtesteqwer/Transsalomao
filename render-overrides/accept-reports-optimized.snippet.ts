@@ -11,7 +11,7 @@ export const acceptReports = createServerFn({ method: "POST" })
     reports.sort((a, b) => str(a.fleet_id).localeCompare(str(b.fleet_id)) || num(a.km) - num(b.km));
 
     const prices = new Map<string, number>();
-    const modes = [...new Set(reports.map((report) => nullableFreightMode(report.freight_mode)).filter((mode): mode is "trip" | "cegonha" | "caixinha" => mode === "trip" || mode === "cegonha" || mode === "caixinha"))];
+    const modes = [...new Set(reports.map((report) => nullableFreightMode(report.freight_mode)).filter((mode): mode is "cegonha" | "caixinha" => mode === "cegonha" || mode === "caixinha"))];
     await Promise.all(modes.map(async (mode) => { prices.set(mode, await getConfiguredTripPrice(sql, mode)); }));
     const existingTrips = await Promise.all(reports.map(async (report) => {
       const ticket = str(report.ticket).toUpperCase();
@@ -28,8 +28,21 @@ export const acceptReports = createServerFn({ method: "POST" })
     const candidates: Array<{ report: Record<string, unknown>; tripId: string; ticket: string; date: string; tons: number; mode: FreightMode; price: number; kmStart: number }> = [];
     let needsReview = 0;
     for (const report of reports) {
-      const reportId = str(report.id); const mode = nullableFreightMode(report.freight_mode); const price = mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;
-      if (!mode || (mode !== "ton" && price <= 0)) { needsReview += 1; continue; }
+      const reportId = str(report.id);
+      const mode = nullableFreightMode(report.freight_mode);
+      const price = mode === "trip"
+        ? num(report.daily_value)
+        : mode === "cegonha" || mode === "caixinha"
+          ? (prices.get(mode) ?? 0)
+          : 0;
+      if (
+        !mode ||
+        (mode === "trip" && price <= 0) ||
+        ((mode === "cegonha" || mode === "caixinha") && price <= 0)
+      ) {
+        needsReview += 1;
+        continue;
+      }
       if (existingMap.get(reportId)) continue;
       const created = report.created_at; const createdAt = created instanceof Date ? created.toISOString() : str(created);
       candidates.push({ report, tripId: newId("trip"), ticket: str(report.ticket).toUpperCase(), date: /^\d{4}-\d{2}-\d{2}/.test(createdAt) ? createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10), tons: num(report.tons), mode, price, kmStart: previousMap.get(reportId) ?? 0 });
