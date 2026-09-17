@@ -28,4 +28,15 @@ for (const [rel, expected] of Object.entries(checks)) {
   if (actual !== expected) throw new Error(`Arquivo restaurado divergente: ${rel}`);
 }
 console.log('[backup] 5 arquivos exclusivos do backup restaurados e verificados');
-execFileSync(process.execPath, [path.join(repo, 'bootstrap.original.mjs')], { cwd: repo, stdio: 'inherit', env: process.env });
+
+// Injeta a correção de 17/09 no final da reconstrução da aplicação, antes do build final.
+const originalPath = path.join(repo, 'bootstrap.original.mjs');
+let original = fs.readFileSync(originalPath, 'utf8');
+const marker = "const ticketPerformancePatch = path.join(repo, 'render-overrides', 'apply-ticket-performance.mjs');";
+if (!original.includes("apply-request-20260917.mjs")) {
+  if (!original.includes(marker)) throw new Error('Ponto de injeção 20260917 não encontrado');
+  original = original.replace(marker, `const request20260917 = path.join(repo, 'render-overrides', 'apply-request-20260917.mjs');\nif (!fs.existsSync(request20260917)) throw new Error('Missing 2026-09-17 request patch');\nexecFileSync(process.execPath, [request20260917, work], { cwd: repo, stdio: 'inherit' });\n\n${marker}`);
+  fs.writeFileSync(originalPath, original);
+}
+
+execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
