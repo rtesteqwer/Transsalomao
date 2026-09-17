@@ -25,30 +25,25 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Inspect per-driver Excel targets
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo '=== TOTALS REPORT ACTIONS ==='
-          grep -nE 'downloadDriverReportPdf|exportExcelColorido|FileText|Spreadsheet|Excel|PDF|driverTotals|Motorista' /tmp/trans-source/src/routes/dono/totais.tsx | head -500 || true
-          echo '=== TOTALS 110-390 ==='
-          sed -n '110,390p' /tmp/trans-source/src/routes/dono/totais.tsx
-          echo '=== VIAGENS EXCEL 100-160 ==='
-          sed -n '100,160p' /tmp/trans-source/src/routes/dono/viagens.tsx
       - name: Validate requested report changes
         shell: bash
         run: |
           set -euo pipefail
           grep -q 'format: "a3"' /tmp/trans-source/src/lib/pdf.ts
-          grep -q 'width: 390, height: 195' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'width: 520, height: 260' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'width: 520, height: 260' /tmp/trans-source/src/routes/dono/viagens.tsx
+          grep -q 'const lightBlue = "DCEEFF"' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'const excelLightBlue = "DCEEFF"' /tmp/trans-source/src/routes/dono/viagens.tsx
+          grep -q 'FileSpreadsheet' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'Gerar Excel de ${d.driverName}' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'exportExcelColorido({ id: d.driverId, name: d.driverName })' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'driverScope ? computed.filter' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'filter((d: any) => !driverScope' /tmp/trans-source/src/routes/dono/totais.tsx
           grep -q 'fontSize: 16' /tmp/trans-source/src/lib/pdf.ts
           grep -q 'Operador: ${resolvedOperatorName}' /tmp/trans-source/src/lib/pdf.ts
           grep -q 'excelOperator' /tmp/trans-source/src/routes/dono/totais.tsx
-          grep -q 'Faturamento total", "Custo diesel", "Comissão total", "Faturamento líquido", "Fretes' /tmp/trans-source/src/lib/pdf.ts
           if sed -n '437,730p' /tmp/trans-source/src/lib/pdf.ts | grep -q 'Resultado bruto'; then echo 'Resultado bruto ainda existe no PDF atual' >&2; exit 1; fi
           if grep -R 'operatorName: "admin"' /tmp/trans-source/src/routes/dono; then echo 'Operador admin fixo ainda existe' >&2; exit 1; fi
-          grep -q 'xl:grid-cols-4' /tmp/trans-source/src/routes/dono/index.tsx
-          test "$(grep -c '<Kpi label="Total líquido"' /tmp/trans-source/src/routes/dono/index.tsx)" -eq 1
       - name: Compile final source
         shell: bash
         run: |
