@@ -1,4 +1,4 @@
-name: Validate freight prices build
+name: Inspect reconstructed auth
 
 on:
   push:
@@ -12,28 +12,34 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Build reconstructed application
-        run: node bootstrap.mjs
-      - name: Verify driver advances
+      - name: Reconstruct source only
         shell: bash
         run: |
-          SRC="$(ls -dt /tmp/transsalomao-build-* | head -1)"
-          grep -q 'Adiantamento' "$SRC/src/routes/dono/despesas.tsx"
-          grep -q 'Motorista que recebeu o adiantamento' "$SRC/src/routes/dono/despesas.tsx"
-          grep -q 'driverId: r.driver_id' "$SRC/src/lib/api.ts"
-          grep -q 'Escolha o motorista que recebeu o adiantamento' "$SRC/src/lib/api.ts"
-          grep -q 'Comissão a pagar' "$SRC/src/routes/dono/totais.tsx"
-          grep -q 'advanceTotalForDriver' "$SRC/src/routes/dono/totais.tsx"
-          grep -q 'category !== "Adiantamento"' "$SRC/src/routes/dono/despesas.tsx"
-          grep -q 'COMISSÃO A PAGAR' render-overrides/admin-excel.snippet.ts
-          grep -q 'COMISSÃO A PAGAR' render-overrides/pdf-export.snippet.ts
-          test -f "$SRC/migrations/0010_driver_advances.sql"
-          echo 'ADVANCES_VALIDATION_OK'
+          set -euo pipefail
+          TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
+      - name: Inspect auth logout render references
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== AUTH FILES ==='
+          find /tmp/trans-source/src -type f \( -iname '*auth*' -o -iname '*login*' \) -print
+          echo '=== MANAGEMENT AUTH ==='
+          for f in /tmp/trans-source/src/lib/management-auth* /tmp/trans-source/src/**/management-auth*; do
+            [ -f "$f" ] || continue
+            echo "--- $f"
+            sed -n '1,260p' "$f"
+          done
+          echo '=== RENDER REFERENCES ==='
+          grep -RniE 'onrender|render\.com|transteste|RENDER' /tmp/trans-source/src /tmp/trans-source/public || true
+          echo '=== LOGOUT REFERENCES ==='
+          grep -RniE 'logout|signOut|sair|location\.(href|assign|replace)|window\.location' /tmp/trans-source/src | head -300 || true
+          echo '=== ADMIN CREDENTIAL REFERENCES ==='
+          grep -RniE 'admin|Felipe|Emanuel|Murillo|159753|8554|10203040' /tmp/trans-source/src | head -400 || true
