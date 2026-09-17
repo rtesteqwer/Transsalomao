@@ -17,64 +17,188 @@ function walk(dir) {
 walk(target);
 
 let renderRefs = 0;
-let dieselPrecision = 0;
-let authChanges = 0;
-
 for (const p of files) {
   let s = fs.readFileSync(p, 'utf8');
   const before = s;
-
-  // Remove qualquer URL antiga do Render usada pelo app em runtime/logout.
-  const renderMatches = s.match(/https?:\/\/transteste\.onrender\.com\/?/g);
-  if (renderMatches) renderRefs += renderMatches.length;
-  s = s.replace(/https?:\/\/transteste\.onrender\.com\/?/g, 'https://transsalomao.vercel.app/');
-  s = s.replace(/transteste\.onrender\.com/g, 'transsalomao.vercel.app');
-
-  // Diesel/preço por litro: somente 3 casas decimais na exibição.
-  if (/diesel|abastec|fuel|litro/i.test(s)) {
-    const reps = [
-      [/((?:pricePerLiter|fuelPrice|dieselPrice|priceLiter|literPrice|price_per_liter)\b[^\n;]{0,120}\.toFixed\()2(\))/gi, '$13$2'],
-      [/(\.toLocaleString\([^\n]{0,160}(?:minimumFractionDigits\s*:\s*))2([^\n]{0,160}(?:maximumFractionDigits\s*:\s*))2/gi, '$13$23'],
-      [/((?:brl|money|formatCurrency|formatNumber|num|decimal)\([^\n]{0,100}(?:pricePerLiter|fuelPrice|dieselPrice|priceLiter|literPrice)[^,)]*,\s*)2(\s*\))/gi, '$13$2'],
-    ];
-    for (const [re, repl] of reps) {
-      const old = s;
-      s = s.replace(re, repl);
-      if (s !== old) dieselPrecision++;
-    }
-  }
-
-  // Troca credencial legada admin/admin por Felipe e adiciona Emanuel/Murillo em validadores hardcoded comuns.
-  const authPatterns = [
-    [/username\s*===\s*["']admin["']\s*&&\s*password\s*===\s*["']admin["']/g,
-      '(username === "Felipe" && password === "159753") || (username === "Emanuel" && password === "8554") || (username === "Murillo" && password === "10203040")'],
-    [/user\s*===\s*["']admin["']\s*&&\s*pass\s*===\s*["']admin["']/g,
-      '(user === "Felipe" && pass === "159753") || (user === "Emanuel" && pass === "8554") || (user === "Murillo" && pass === "10203040")'],
-    [/\{\s*(?:username|user)\s*:\s*["']admin["']\s*,\s*(?:password|pass|senha)\s*:\s*["']admin["']\s*\}/g,
-      '{ username: "Felipe", password: "159753" }, { username: "Emanuel", password: "8554" }, { username: "Murillo", password: "10203040" }'],
-  ];
-  for (const [re, repl] of authPatterns) {
-    const old = s;
-    s = s.replace(re, repl);
-    if (s !== old) authChanges++;
-  }
-
-  // Literais simples muito específicos do login legado.
-  if (/login|auth|senha|password|ger[eê]ncia/i.test(s) && s.includes('admin')) {
-    const old = s;
-    s = s.replace(/(["'])admin\1\s*:\s*(["'])admin\2/g, '"Felipe": "159753", "Emanuel": "8554", "Murillo": "10203040"');
-    if (s !== old) authChanges++;
-  }
-
+  const matches = s.match(/https?:\/\/[^\s"'`]*onrender\.com\/?/gi);
+  if (matches) renderRefs += matches.length;
+  s = s.replace(/https?:\/\/[^\s"'`]*onrender\.com\/?/gi, 'https://transsalomao.vercel.app/');
+  s = s.replace(/transteste\.onrender\.com/gi, 'transsalomao.vercel.app');
   if (s !== before) fs.writeFileSync(p, s);
 }
 
-console.log(`[request-20260917] render refs replaced=${renderRefs}, diesel precision patches=${dieselPrecision}, auth patches=${authChanges}`);
+// Administração: remove definitivamente admin/admin e aceita apenas os três administradores solicitados.
+const serverAuthPath = path.join(target, 'src/lib/management-auth.server.ts');
+fs.writeFileSync(serverAuthPath, `import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
 
-// Segurança: o código final não pode manter o domínio antigo do Render.
+const COOKIE_NAME = "transsalomao_gerencia";
+const SESSION_SECONDS = 60 * 60 * 12;
+const ADMINS = [
+  { username: "Felipe", passwordHash: "3d14c2d4e4ced81e459e4ace7c01466a700000fb94a3bbe944a55fb92693e879" },
+  { username: "Emanuel", passwordHash: "0013fa1710b8b0e4816d6eaad9668dab6dfa7ea9f1d07291fa5072e857e94522" },
+  { username: "Murillo", passwordHash: "58f966a9a6f34334c5d70a548d1c04674296c826c5c5162d49425ce2fe9b78cf" },
+] as const;
+
+function passwordHash(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function findAdmin(username: string) {
+  const clean = username.trim().toLocaleLowerCase("pt-BR");
+  return ADMINS.find((admin) => admin.username.toLocaleLowerCase("pt-BR") === clean) ?? null;
+}
+
+function sessionSecret() {
+  return process.env.MANAGEMENT_SESSION_SECRET?.trim() || "transsalomao-test-session";
+}
+
+function signature(payload: string) {
+  return createHmac("sha256", sessionSecret()).update(payload).digest("hex");
+}
+
+function makeToken(username: string) {
+  const expiresAt = Math.floor(Date.now() / 1000) + SESSION_SECONDS;
+  const payload = \`${'${username}'}|${'${expiresAt}'}\`;
+  return \`${'${payload}'}|${'${signature(payload)}'}\`;
+}
+
+function parseToken(token: string | undefined) {
+  if (!token) return null;
+  const parts = token.split("|");
+  if (parts.length !== 3) return null;
+  const [username, expiresRaw, supplied] = parts;
+  const expiresAt = Number(expiresRaw);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) return null;
+  if (!ADMINS.some((admin) => admin.username === username)) return null;
+  const payload = \`${'${username}'}|${'${expiresAt}'}\`;
+  const expected = signature(payload);
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return { username, expiresAt };
+}
+
+export function managementSession() {
+  return parseToken(getCookie(COOKIE_NAME));
+}
+
+export function assertManagementSession() {
+  const session = managementSession();
+  if (!session) throw new Error("Sessão administrativa inválida.");
+  return session;
+}
+
+export async function loginManagement(username: string, password: string) {
+  const cleanUsername = username.trim();
+  const admin = findAdmin(cleanUsername);
+  if (admin && passwordHash(password) === admin.passwordHash) {
+    const { logoutKlebersom } = await import("@/lib/klebersom-access.server");
+    logoutKlebersom();
+    setCookie(COOKIE_NAME, makeToken(admin.username), {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: SESSION_SECONDS,
+    });
+    return { ok: true as const, role: "admin" as const, username: admin.username };
+  }
+
+  const { loginKlebersom } = await import("@/lib/klebersom-access.server");
+  const driverResult = loginKlebersom(cleanUsername, password);
+  if (driverResult.ok) {
+    deleteCookie(COOKIE_NAME, { path: "/" });
+    return driverResult;
+  }
+  return { ok: false as const, message: "Login ou senha inválidos." };
+}
+
+export function logoutManagement() {
+  deleteCookie(COOKIE_NAME, { path: "/" });
+  return { ok: true as const };
+}
+`);
+
+const clientAuthPath = path.join(target, 'src/lib/management-auth.ts');
+fs.writeFileSync(clientAuthPath, `import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+
+const loginSchema = z.object({
+  username: z.string().trim().min(1, "Informe o login"),
+  password: z.string().min(1, "Informe a senha"),
+});
+
+export const getManagementSession = createServerFn({ method: "GET" }).handler(async () => {
+  const { managementSession } = await import("@/lib/management-auth.server");
+  const session = managementSession();
+  return session
+    ? { authenticated: true as const, username: session.username, role: "admin" as const }
+    : { authenticated: false as const, username: null, role: null };
+});
+
+export const managementLogin = createServerFn({ method: "POST" })
+  .validator(loginSchema)
+  .handler(async ({ data }) => {
+    const { loginManagement } = await import("@/lib/management-auth.server");
+    return loginManagement(data.username, data.password);
+  });
+
+const managementLogoutServer = createServerFn({ method: "POST" }).handler(async () => {
+  const { logoutManagement } = await import("@/lib/management-auth.server");
+  return logoutManagement();
+});
+
+export async function managementLogout() {
+  const result = await managementLogoutServer();
+  if (typeof window !== "undefined") {
+    try {
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+      }
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((key) => caches.delete(key)));
+      }
+    } catch {}
+    window.location.replace("/");
+  }
+  return result;
+}
+`);
+
+// Login da Gerência: não exibe mais admin/admin nem preenche o usuário antigo.
+const managementRoutePath = path.join(target, 'src/routes/dono/route.tsx');
+if (fs.existsSync(managementRoutePath)) {
+  let route = fs.readFileSync(managementRoutePath, 'utf8');
+  route = route
+    .replace('const [username, setUsername] = useState("admin");', 'const [username, setUsername] = useState("Felipe");')
+    .replace(/placeholder="admin"/g, 'placeholder="Felipe"')
+    .replace(/\n\s*<p className="mt-5 rounded-md border border-border bg-bg px-3 py-2 text-xs text-muted">[\s\S]*?Acesso inicial configurado:[\s\S]*?<\/p>/m, '')
+    .replace(/Acesso inicial configurado:[\s\S]*?admin[\s\S]*?admin\./g, '');
+  fs.writeFileSync(managementRoutePath, route);
+}
+
+// Diesel/preço por litro: força 3 casas quando o formatter estiver associado ao preço do diesel/litro.
+for (const p of files) {
+  let s = fs.readFileSync(p, 'utf8');
+  const before = s;
+  if (/diesel|abastec|fuel|litro/i.test(s)) {
+    s = s.replace(/((?:pricePerLiter|fuelPrice|dieselPrice|priceLiter|literPrice|price_per_liter)\b[^\n;]{0,120}\.toFixed\()2(\))/gi, '$13$2');
+  }
+  if (s !== before) fs.writeFileSync(p, s);
+}
+
+// Validação final: nenhuma URL do Render e nenhuma credencial admin/admin podem sobreviver no app final.
 const leftovers = [];
 for (const p of files) {
   const s = fs.readFileSync(p, 'utf8');
-  if (s.includes('transteste.onrender.com')) leftovers.push(path.relative(target, p));
+  if (/onrender\.com|transteste/i.test(s)) leftovers.push(`render:${path.relative(target, p)}`);
 }
-if (leftovers.length) throw new Error(`request-20260917: Render URL still present: ${leftovers.join(', ')}`);
+const serverAuth = fs.readFileSync(serverAuthPath, 'utf8');
+if (/return\s+["']admin["']|password[^\n]{0,80}["']admin["']|username\s*!==\s*["']admin["']/i.test(serverAuth)) {
+  leftovers.push('legacy-admin:src/lib/management-auth.server.ts');
+}
+if (leftovers.length) throw new Error(`request-20260917 validation failed: ${leftovers.join(', ')}`);
+console.log(`[request-20260917] Render URLs removed=${renderRefs}; admin auth replaced; logout locked to /; legacy admin removed`);
