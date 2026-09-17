@@ -1,4 +1,4 @@
-name: Inspect report API shapes
+name: Validate operational UI changes
 
 on:
   push:
@@ -25,18 +25,41 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Dump report API shapes
+      - name: Validate requested changes
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== USE FLEET ==='
-          sed -n '1,135p' /tmp/trans-source/src/lib/use-fleet.ts
-          echo '=== API REPORTS 300-430 ==='
-          sed -n '300,430p' /tmp/trans-source/src/lib/api.ts
-          echo '=== API TRIPS 450-530 ==='
-          sed -n '450,535p' /tmp/trans-source/src/lib/api.ts
-          echo '=== TYPES REPORT ==='
-          grep -n -A40 -B10 'DriverReport' /tmp/trans-source/src/lib/types.ts
+          MOTORISTA=/tmp/trans-source/src/routes/motorista.tsx
+          CAIXA=/tmp/trans-source/src/routes/dono/lancamentos.tsx
+          VIAGENS=/tmp/trans-source/src/routes/dono/viagens.tsx
+          FUEL=/tmp/trans-source/src/routes/dono/abastecimentos.tsx
+          API=/tmp/trans-source/src/lib/api.ts
+          HOOK=/tmp/trans-source/src/lib/use-fleet.ts
+
+          if grep -q 'Número do ticket' "$MOTORISTA"; then echo 'Campo manual de ticket ainda existe' >&2; exit 1; fi
+          if grep -q 'const \[ticket, setTicket\]' "$MOTORISTA"; then echo 'Estado manual de ticket ainda existe' >&2; exit 1; fi
+          grep -q 'ticket: ""' "$MOTORISTA"
+
+          grep -q 'updatePendingReport' "$API"
+          grep -q "status = 'pendente'" "$API"
+          grep -q 'editReport' "$HOOK"
+          grep -q 'Editar lançamento' "$CAIXA"
+          grep -q 'Salvar edição' "$CAIXA"
+          grep -q 'Selecionar todos' "$CAIXA"
+          grep -q 'type="checkbox"' "$CAIXA"
+
+          grep -q 'Peso líquido' "$VIAGENS"
+          grep -q 'Preço por tonelada' "$VIAGENS"
+          grep -q 'Frete total' "$VIAGENS"
+          grep -q 'Comissão' "$VIAGENS"
+          grep -q 'brl(trip.pricePerTon)' "$VIAGENS"
+          grep -q 'brl(trip.commissionValue)' "$VIAGENS"
+
+          if grep -q 'KM entre abastecimentos' "$FUEL"; then echo 'KM entre abastecimentos ainda existe' >&2; exit 1; fi
+          if grep -q 'Média KM/L' "$FUEL"; then echo 'Média KM/L ainda existe' >&2; exit 1; fi
+          if grep -q 'label="KM rodado"' "$FUEL"; then echo 'KM rodado derivado ainda existe' >&2; exit 1; fi
+          if grep -q 'label="KM/L"' "$FUEL"; then echo 'KM/L derivado ainda existe' >&2; exit 1; fi
+          echo 'Operational UI assertions passed.'
       - name: Compile final source
         shell: bash
         run: |
