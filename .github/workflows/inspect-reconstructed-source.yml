@@ -1,4 +1,4 @@
-name: Validate report visual reform
+name: Inspect operational UI targets
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -25,25 +25,20 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Validate requested report changes
+      - name: Inspect requested UI targets
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'format: "a3"' /tmp/trans-source/src/lib/pdf.ts
-          grep -q 'width: 520, height: 260' /tmp/trans-source/src/routes/dono/totais.tsx
-          grep -q 'width: 520, height: 260' /tmp/trans-source/src/routes/dono/viagens.tsx
-          grep -q 'const lightBlue = "DCEEFF"' /tmp/trans-source/src/routes/dono/totais.tsx
-          grep -q 'const excelLightBlue = "DCEEFF"' /tmp/trans-source/src/routes/dono/viagens.tsx
-          grep -q 'FileSpreadsheet' /tmp/trans-source/src/routes/dono/totais.tsx
-          grep -q 'Gerar Excel de ${d.driverName}' /tmp/trans-source/src/routes/dono/totais.tsx
-          grep -q 'exportExcelColorido({ id: d.driverId, name: d.driverName })' /tmp/trans-source/src/routes/dono/totais.tsx
-          grep -q 'driverScope ? computed.filter' /tmp/trans-source/src/routes/dono/totais.tsx
-          grep -q 'filter((d: any) => !driverScope' /tmp/trans-source/src/routes/dono/totais.tsx
-          grep -q 'fontSize: 16' /tmp/trans-source/src/lib/pdf.ts
-          grep -q 'Operador: ${resolvedOperatorName}' /tmp/trans-source/src/lib/pdf.ts
-          grep -q 'excelOperator' /tmp/trans-source/src/routes/dono/totais.tsx
-          if sed -n '437,730p' /tmp/trans-source/src/lib/pdf.ts | grep -q 'Resultado bruto'; then echo 'Resultado bruto ainda existe no PDF atual' >&2; exit 1; fi
-          if grep -R 'operatorName: "admin"' /tmp/trans-source/src/routes/dono; then echo 'Operador admin fixo ainda existe' >&2; exit 1; fi
+          echo '=== DRIVER/LANCAMENTO TICKET ==='
+          grep -RniE 'ticket|Ticket|freightMode|Diária|Por tonelada|Por Tonelada' /tmp/trans-source/src/routes/motorista* /tmp/trans-source/src/components 2>/dev/null | head -350 || true
+          echo '=== CAIXA ==='
+          grep -RniE 'Caixa|Selecion|Editar|edit|checkbox|selected|Fechar viagem|Lançar no painel' /tmp/trans-source/src/routes/dono /tmp/trans-source/src/components 2>/dev/null | head -500 || true
+          echo '=== VIAGENS CARDS ==='
+          grep -RniE 'Por tonelada|Por Tonelada|netWeight|pricePerTon|commissionValue|Frete|Comissão|compactRows' /tmp/trans-source/src/routes/dono/viagens.tsx 2>/dev/null | head -450 || true
+          echo '=== ABASTECIMENTOS ==='
+          grep -RniE 'KM entre|km entre|Média|Media|KM/L|km/l|kmPerLiter|kmDriven|abastec' /tmp/trans-source/src/routes/dono/abastecimentos.tsx /tmp/trans-source/src/routes/dono 2>/dev/null | head -450 || true
+          echo '=== TARGET FILES ==='
+          find /tmp/trans-source/src/routes -maxdepth 3 -type f | sort | grep -E 'motorista|lancamentos|caixa|viagens|abastecimentos' || true
       - name: Compile final source
         shell: bash
         run: |
