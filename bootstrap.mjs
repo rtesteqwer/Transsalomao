@@ -51,6 +51,12 @@ if (!original.includes("apply-report-visual-20260917b.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção da reforma visual não encontrado');
   original = original.replace(dailyMarker, `const reportVisualReform = path.join(repo, 'render-overrides', 'apply-report-visual-20260917b.mjs');\nif (!fs.existsSync(reportVisualReform)) throw new Error('Missing report visual reform patch');\nexecFileSync(process.execPath, [reportVisualReform, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
+
+// Ajuste final do Excel: fundo azul-claro, logo maior e Excel individual por motorista.
+if (!original.includes("apply-excel-blue-driver-20260917.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do Excel por motorista não encontrado');
+  original = original.replace(dailyMarker, `const excelBlueDriver = path.join(repo, 'render-overrides', 'apply-excel-blue-driver-20260917.mjs');\nif (!fs.existsSync(excelBlueDriver)) throw new Error('Missing blue Excel / driver export patch');\nexecFileSync(process.execPath, [excelBlueDriver, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
