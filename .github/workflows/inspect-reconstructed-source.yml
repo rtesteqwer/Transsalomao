@@ -1,4 +1,4 @@
-name: Inspect operational UI targets
+name: Inspect operational source blocks
 
 on:
   push:
@@ -25,20 +25,20 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Inspect requested UI targets
+      - name: Dump exact source blocks
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== DRIVER/LANCAMENTO TICKET ==='
-          grep -RniE 'ticket|Ticket|freightMode|Diária|Por tonelada|Por Tonelada' /tmp/trans-source/src/routes/motorista* /tmp/trans-source/src/components 2>/dev/null | head -350 || true
-          echo '=== CAIXA ==='
-          grep -RniE 'Caixa|Selecion|Editar|edit|checkbox|selected|Fechar viagem|Lançar no painel' /tmp/trans-source/src/routes/dono /tmp/trans-source/src/components 2>/dev/null | head -500 || true
-          echo '=== VIAGENS CARDS ==='
-          grep -RniE 'Por tonelada|Por Tonelada|netWeight|pricePerTon|commissionValue|Frete|Comissão|compactRows' /tmp/trans-source/src/routes/dono/viagens.tsx 2>/dev/null | head -450 || true
-          echo '=== ABASTECIMENTOS ==='
-          grep -RniE 'KM entre|km entre|Média|Media|KM/L|km/l|kmPerLiter|kmDriven|abastec' /tmp/trans-source/src/routes/dono/abastecimentos.tsx /tmp/trans-source/src/routes/dono 2>/dev/null | head -450 || true
-          echo '=== TARGET FILES ==='
-          find /tmp/trans-source/src/routes -maxdepth 3 -type f | sort | grep -E 'motorista|lancamentos|caixa|viagens|abastecimentos' || true
+          echo '=== MOTORISTA 1-340 ==='
+          sed -n '1,340p' /tmp/trans-source/src/routes/motorista.tsx
+          echo '=== LANCAMENTOS 1-340 ==='
+          sed -n '1,340p' /tmp/trans-source/src/routes/dono/lancamentos.tsx
+          echo '=== VIAGENS 240-550 ==='
+          sed -n '240,550p' /tmp/trans-source/src/routes/dono/viagens.tsx
+          echo '=== ABASTECIMENTOS 1-180 ==='
+          sed -n '1,180p' /tmp/trans-source/src/routes/dono/abastecimentos.tsx
+          echo '=== HOOK REPORT MUTATIONS ==='
+          grep -RniE 'use.*Report|update.*Report|report.*mutat|acceptReport|removeReport|pendingReports|useFleetData|useReports' /tmp/trans-source/src | head -500 || true
       - name: Compile final source
         shell: bash
         run: |
