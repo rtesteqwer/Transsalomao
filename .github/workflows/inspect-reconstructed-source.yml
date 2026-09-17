@@ -1,4 +1,4 @@
-name: Inspect reconstructed auth
+name: Inspect freight and reports
 
 on:
   push:
@@ -25,21 +25,23 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Inspect auth logout render references
+      - name: Inspect freight modes and reports
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== AUTH FILES ==='
-          find /tmp/trans-source/src -type f \( -iname '*auth*' -o -iname '*login*' \) -print
-          echo '=== MANAGEMENT AUTH ==='
-          for f in /tmp/trans-source/src/lib/management-auth* /tmp/trans-source/src/**/management-auth*; do
-            [ -f "$f" ] || continue
-            echo "--- $f"
-            sed -n '1,260p' "$f"
-          done
-          echo '=== RENDER REFERENCES ==='
-          grep -RniE 'onrender|render\.com|transteste|RENDER' /tmp/trans-source/src /tmp/trans-source/public || true
-          echo '=== LOGOUT REFERENCES ==='
-          grep -RniE 'logout|signOut|sair|location\.(href|assign|replace)|window\.location' /tmp/trans-source/src | head -300 || true
-          echo '=== ADMIN CREDENTIAL REFERENCES ==='
-          grep -RniE 'admin|Felipe|Emanuel|Murillo|159753|8554|10203040' /tmp/trans-source/src | head -400 || true
+          echo '=== FREIGHT MODE REFERENCES ==='
+          grep -RniE 'Por viagem|por viagem|fixed|freightMode|freight_mode|modo.*frete|mode.*freight|Cegonha|Caixinha' /tmp/trans-source/src | head -500 || true
+          echo '=== MOTORISTA ROUTE ==='
+          sed -n '1,360p' /tmp/trans-source/src/routes/motorista.tsx || true
+          echo '=== TRIP FORM ==='
+          sed -n '1,360p' /tmp/trans-source/src/components/trip-form.tsx || true
+          echo '=== API REPORT/TRIP SECTIONS ==='
+          grep -nE 'createReport|report|freight|commission|gross|net|tons|pricePerTon|fixed' /tmp/trans-source/src/lib/api.ts | head -500 || true
+          echo '=== CALC ==='
+          sed -n '1,360p' /tmp/trans-source/src/lib/calc.ts || true
+          echo '=== GENERAL PDF RELEVANT ==='
+          grep -nE 'COMISSÃO A PAGAR|Comissão a pagar|CUSTO DIESEL|Custo diesel|FATURAMENTO|Faturamento|peso|Peso|observa|Observa|conjunto|Conjunto|adiant|Adiant|logo|REPORT_LOGO|driver|motorista' /tmp/trans-source/src/lib/pdf.ts | head -700 || true
+          echo '=== TOTALS/EXCEL RELEVANT ==='
+          grep -nE 'COMISSÃO A PAGAR|Comissão a pagar|CUSTO DIESEL|Custo diesel|FATURAMENTO|Faturamento|peso|Peso|observa|Observa|conjunto|Conjunto|adiant|Adiant|logo|REPORT_LOGO|Excel|excel|worksheet|workbook|driver|motorista' /tmp/trans-source/src/routes/dono/totais.tsx | head -900 || true
+          echo '=== REPORT SNIPPETS ==='
+          for f in /tmp/trans-source/src/lib/pdf.ts /tmp/trans-source/src/routes/dono/totais.tsx; do echo "--- $f"; done
