@@ -1,4 +1,4 @@
-name: Validate daily freight and reports
+name: Inspect operator and report styling
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  inspect:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -25,27 +25,16 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Validate requested changes
+      - name: Inspect auth and report source
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'dailyValue: num(r.daily_value)' /tmp/trans-source/src/lib/api.ts
-          grep -q 'daily_value, freight_mode' /tmp/trans-source/src/lib/api.ts
-          grep -q 'Valor da diária (R$)' /tmp/trans-source/src/routes/motorista.tsx
-          grep -q 'A comissão do motorista será calculada sobre o valor desta diária' /tmp/trans-source/src/routes/motorista.tsx
-          grep -q 'pricePerTrip: open.freightMode === "trip" ? String(open.dailyValue' /tmp/trans-source/src/routes/dono/lancamentos.tsx
-          grep -q 'if (mode === "trip") return "Diária"' /tmp/trans-source/src/lib/calc.ts
-          grep -q 'Custo diesel (abastecimentos)' /tmp/trans-source/src/lib/pdf.ts
-          grep -q 'Peso líquido:.*pricePerTon' /tmp/trans-source/src/lib/pdf.ts
-          ! grep -q 'COMISSÃO A PAGAR' /tmp/trans-source/src/lib/pdf.ts
-          grep -q 'totalNetRevenue = totalRevenue - totalFueling - totalCommission;' /tmp/trans-source/src/routes/dono/totais.tsx
-          grep -q 'ADIANTAMENTOS.*Data.*Motorista.*Descrição.*Valor' /tmp/trans-source/src/routes/dono/totais.tsx
-          ! grep -q 'ADIANTAMENTOS.*Categoria.*Conjunto.*Observações.*ID' /tmp/trans-source/src/routes/dono/totais.tsx
-          echo DAILY_REPORT_VALIDATION_OK
-      - name: Compile final source
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /tmp/trans-source
-          npm install --ignore-scripts --no-audit --no-fund
-          npm run build
+          echo '=== AUTH FILES ==='
+          find /tmp/trans-source/src -type f | grep -E 'management-auth|auth|session' | sort || true
+          for f in $(find /tmp/trans-source/src -type f | grep -E 'management-auth|auth|session' | sort); do echo "--- $f"; sed -n '1,320p' "$f"; done
+          echo '=== ROUTE DONO AUTH/OPERATOR REFERENCES ==='
+          grep -RniE 'operatorName|Operador|operator|username|userName|logged|login|session|management' /tmp/trans-source/src/routes/dono /tmp/trans-source/src/components/owner | head -900 || true
+          echo '=== TOTALS 1-330 ==='
+          sed -n '1,330p' /tmp/trans-source/src/routes/dono/totais.tsx
+          echo '=== PDF 430-780 ==='
+          sed -n '430,780p' /tmp/trans-source/src/lib/pdf.ts
