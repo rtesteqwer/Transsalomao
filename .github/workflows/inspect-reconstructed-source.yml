@@ -25,6 +25,16 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
+      - name: Inspect per-driver Excel targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== TOTALS REPORT ACTIONS ==='
+          grep -nE 'downloadDriverReportPdf|exportExcelColorido|FileText|Spreadsheet|Excel|PDF|driverTotals|Motorista' /tmp/trans-source/src/routes/dono/totais.tsx | head -500 || true
+          echo '=== TOTALS 110-390 ==='
+          sed -n '110,390p' /tmp/trans-source/src/routes/dono/totais.tsx
+          echo '=== VIAGENS EXCEL 100-160 ==='
+          sed -n '100,160p' /tmp/trans-source/src/routes/dono/viagens.tsx
       - name: Validate requested report changes
         shell: bash
         run: |
