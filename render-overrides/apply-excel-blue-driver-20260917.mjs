@@ -76,6 +76,19 @@ const must = (text, before, after, label) => {
   s = s.replace('    fuelings.forEach((f: any, index: number) => {', '    excelFuelings.forEach((f: any, index: number) => {');
   s = s.replace('    const periodExpenses = (data?.expenses ?? []).filter((e: any) => inPeriod(e.date, period));', '    const periodExpenses = excelExpensesSource;');
 
+  s = must(
+    s,
+    '    (data?.drivers ?? []).forEach((d: any, index: number) => { const row = sheet.addRow(["Motorista", d.name, d.cpf ?? "—", d.phone ?? "—", d.cnh ?? "—", d.cnhCategory ?? d.category ?? "—", Number(d.commissionPct ?? 0), d.status]); styleRow(row, index); row.getCell(7).numFmt = \'0.0%\'; });',
+    '    (data?.drivers ?? []).filter((d: any) => !driverScope || String(d.id) === String(driverScope.id)).forEach((d: any, index: number) => { const row = sheet.addRow(["Motorista", d.name, d.cpf ?? "—", d.phone ?? "—", d.cnh ?? "—", d.cnhCategory ?? d.category ?? "—", Number(d.commissionPct ?? 0), d.status]); styleRow(row, index); row.getCell(7).numFmt = \'0.0%\'; });',
+    'driver registration scope',
+  );
+  s = must(
+    s,
+    '    (data?.fleets ?? []).forEach((f: any, index: number) => { const row = sheet.addRow(["Conjunto", f.name, f.tractorPlate ?? "—", f.trailerPlate ?? "—", f.model ?? f.type ?? "—", "—", "—", f.status]); styleRow(row, index); });',
+    '    (data?.fleets ?? []).filter((f: any) => !driverScope || excelTrips.some((t: any) => String(t.fleetId ?? "") === String(f.id))).forEach((f: any, index: number) => { const row = sheet.addRow(["Conjunto", f.name, f.tractorPlate ?? "—", f.trailerPlate ?? "—", f.model ?? f.type ?? "—", "—", "—", f.status]); styleRow(row, index); });',
+    'fleet registration scope',
+  );
+
   const uniformMarker = '    [40, 30, 20, 28, 28, 28, 28, 32].forEach((width, i) => { sheet.getColumn(i + 1).width = width; });';
   s = must(
     s,
