@@ -1,4 +1,4 @@
-name: Inspect freight and reports
+name: Inspect exact report sections
 
 on:
   push:
@@ -25,23 +25,14 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Inspect freight modes and reports
+      - name: Print exact sections
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== FREIGHT MODE REFERENCES ==='
-          grep -RniE 'Por viagem|por viagem|fixed|freightMode|freight_mode|modo.*frete|mode.*freight|Cegonha|Caixinha' /tmp/trans-source/src | head -500 || true
-          echo '=== MOTORISTA ROUTE ==='
-          sed -n '1,360p' /tmp/trans-source/src/routes/motorista.tsx || true
-          echo '=== TRIP FORM ==='
-          sed -n '1,360p' /tmp/trans-source/src/components/trip-form.tsx || true
-          echo '=== API REPORT/TRIP SECTIONS ==='
-          grep -nE 'createReport|report|freight|commission|gross|net|tons|pricePerTon|fixed' /tmp/trans-source/src/lib/api.ts | head -500 || true
-          echo '=== CALC ==='
-          sed -n '1,360p' /tmp/trans-source/src/lib/calc.ts || true
-          echo '=== GENERAL PDF RELEVANT ==='
-          grep -nE 'COMISSÃO A PAGAR|Comissão a pagar|CUSTO DIESEL|Custo diesel|FATURAMENTO|Faturamento|peso|Peso|observa|Observa|conjunto|Conjunto|adiant|Adiant|logo|REPORT_LOGO|driver|motorista' /tmp/trans-source/src/lib/pdf.ts | head -700 || true
-          echo '=== TOTALS/EXCEL RELEVANT ==='
-          grep -nE 'COMISSÃO A PAGAR|Comissão a pagar|CUSTO DIESEL|Custo diesel|FATURAMENTO|Faturamento|peso|Peso|observa|Observa|conjunto|Conjunto|adiant|Adiant|logo|REPORT_LOGO|Excel|excel|worksheet|workbook|driver|motorista' /tmp/trans-source/src/routes/dono/totais.tsx | head -900 || true
-          echo '=== REPORT SNIPPETS ==='
-          for f in /tmp/trans-source/src/lib/pdf.ts /tmp/trans-source/src/routes/dono/totais.tsx; do echo "--- $f"; done
+          echo '=== TYPES 1-100 ==='; sed -n '1,110p' /tmp/trans-source/src/lib/types.ts
+          echo '=== API 80-130 ==='; sed -n '80,135p' /tmp/trans-source/src/lib/api.ts
+          echo '=== API 320-415 ==='; sed -n '320,420p' /tmp/trans-source/src/lib/api.ts
+          echo '=== MOTORISTA 55-255 ==='; sed -n '55,255p' /tmp/trans-source/src/routes/motorista.tsx
+          echo '=== LANCAMENTOS 150-220 ==='; sed -n '150,225p' /tmp/trans-source/src/routes/dono/lancamentos.tsx
+          echo '=== PDF 450-740 ==='; sed -n '450,745p' /tmp/trans-source/src/lib/pdf.ts
+          echo '=== TOTALS 190-245 ==='; sed -n '190,250p' /tmp/trans-source/src/routes/dono/totais.tsx
