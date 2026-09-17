@@ -1,4 +1,4 @@
-name: Inspect all PDF and Excel generators
+name: Validate report visual reform
 
 on:
   push:
@@ -12,9 +12,9 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,15 +25,24 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Inspect all report generators
+      - name: Validate requested report changes
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== GENERATOR FILES ==='
-          grep -RliE 'exceljs|jsPDF|downloadDriverReportPdf|REPORT_LOGO_JPEG' /tmp/trans-source/src | sort || true
-          echo '=== GENERATOR REFERENCES ==='
-          grep -RniE 'exceljs|jsPDF|downloadDriverReportPdf|REPORT_LOGO_JPEG|operatorName|fontSize|font =|textColor|headStyles' /tmp/trans-source/src/routes/dono /tmp/trans-source/src/routes/klebersom.tsx /tmp/trans-source/src/lib/pdf.ts | head -1600 || true
-          echo '=== DONO INDEX 1-240 ==='
-          sed -n '1,240p' /tmp/trans-source/src/routes/dono/index.tsx
-          echo '=== KLEBERSOM GENERATORS ==='
-          grep -nE 'exceljs|jsPDF|REPORT_LOGO_JPEG|font|textColor|operator|PDF|Excel' /tmp/trans-source/src/routes/klebersom.tsx | head -800 || true
+          grep -q 'format: "a3"' /tmp/trans-source/src/lib/pdf.ts
+          grep -q 'width: 390, height: 195' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'fontSize: 16' /tmp/trans-source/src/lib/pdf.ts
+          grep -q 'Operador: ${resolvedOperatorName}' /tmp/trans-source/src/lib/pdf.ts
+          grep -q 'excelOperator' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'Faturamento total", "Custo diesel", "Comissão total", "Faturamento líquido", "Fretes' /tmp/trans-source/src/lib/pdf.ts
+          if sed -n '437,730p' /tmp/trans-source/src/lib/pdf.ts | grep -q 'Resultado bruto'; then echo 'Resultado bruto ainda existe no PDF atual' >&2; exit 1; fi
+          if grep -R 'operatorName: "admin"' /tmp/trans-source/src/routes/dono; then echo 'Operador admin fixo ainda existe' >&2; exit 1; fi
+          grep -q 'xl:grid-cols-4' /tmp/trans-source/src/routes/dono/index.tsx
+          test "$(grep -c '<Kpi label="Total líquido"' /tmp/trans-source/src/routes/dono/index.tsx)" -eq 1
+      - name: Compile final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/trans-source
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run build
