@@ -1,5 +1,5 @@
-deploy requested 2026-09-17 final auth/logout cleanup
-changes: remove Render runtime/deploy references; logout relative to current Vercel host and clear PWA cache; replace legacy admin/admin with Felipe, Emanuel and Murillo administrators
-validation: reconstructed source contains no onrender.com/transteste runtime URL and no legacy admin/admin authentication
-preserve existing Neon production data
+deploy requested 2026-09-17 daily freight and reports reform
+changes: rename Por viagem to Diária; driver enters daily value; preserve daily value in Gerência closing; commission follows driver percentage; PDF/Excel larger standardized logo and typography; correct net revenue formula; diesel from fuelings; remove COMISSÃO A PAGAR balloon; remove Peso category from report tables; general PDF lists each freight with tonnage details; clean advances/expenses columns
+validation: reconstructed source assertions passed and final source compiled successfully
+preserve existing Neon production data; no schema migration and no destructive SQL
 publish same Vercel project: transsalomao
