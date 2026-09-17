@@ -1,4 +1,4 @@
-name: Inspect daily close flow
+name: Validate daily freight and reports
 
 on:
   push:
@@ -12,24 +12,40 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Reconstruct source only
+      - name: Reconstruct final source
         shell: bash
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Print daily close sections
+      - name: Validate requested changes
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== LANCAMENTOS 1-155 ==='; sed -n '1,155p' /tmp/trans-source/src/routes/dono/lancamentos.tsx
-          echo '=== LANCAMENTOS 220-340 ==='; sed -n '220,340p' /tmp/trans-source/src/routes/dono/lancamentos.tsx
-          echo '=== TRIP FORM 1-190 ==='; sed -n '1,190p' /tmp/trans-source/src/components/owner/trip-form.tsx
-          echo '=== TRIP FORM 190-360 ==='; sed -n '190,360p' /tmp/trans-source/src/components/owner/trip-form.tsx
+          grep -q 'dailyValue: num(r.daily_value)' /tmp/trans-source/src/lib/api.ts
+          grep -q 'daily_value, freight_mode' /tmp/trans-source/src/lib/api.ts
+          grep -q 'Valor da diária (R$)' /tmp/trans-source/src/routes/motorista.tsx
+          grep -q 'A comissão do motorista será calculada sobre o valor desta diária' /tmp/trans-source/src/routes/motorista.tsx
+          grep -q 'pricePerTrip: open.freightMode === "trip" ? String(open.dailyValue' /tmp/trans-source/src/routes/dono/lancamentos.tsx
+          grep -q 'if (mode === "trip") return "Diária"' /tmp/trans-source/src/lib/calc.ts
+          grep -q 'Custo diesel (abastecimentos)' /tmp/trans-source/src/lib/pdf.ts
+          grep -q 'Peso líquido:.*pricePerTon' /tmp/trans-source/src/lib/pdf.ts
+          ! grep -q 'COMISSÃO A PAGAR' /tmp/trans-source/src/lib/pdf.ts
+          grep -q 'totalNetRevenue = totalRevenue - totalFueling - totalCommission;' /tmp/trans-source/src/routes/dono/totais.tsx
+          grep -q 'ADIANTAMENTOS.*Data.*Motorista.*Descrição.*Valor' /tmp/trans-source/src/routes/dono/totais.tsx
+          ! grep -q 'ADIANTAMENTOS.*Categoria.*Conjunto.*Observações.*ID' /tmp/trans-source/src/routes/dono/totais.tsx
+          echo DAILY_REPORT_VALIDATION_OK
+      - name: Compile final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/trans-source
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run build
