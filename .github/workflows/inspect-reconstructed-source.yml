@@ -1,4 +1,4 @@
-name: Inspect operational source blocks
+name: Inspect report API shapes
 
 on:
   push:
@@ -25,20 +25,18 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Dump exact source blocks
+      - name: Dump report API shapes
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== MOTORISTA 1-340 ==='
-          sed -n '1,340p' /tmp/trans-source/src/routes/motorista.tsx
-          echo '=== LANCAMENTOS 1-340 ==='
-          sed -n '1,340p' /tmp/trans-source/src/routes/dono/lancamentos.tsx
-          echo '=== VIAGENS 240-550 ==='
-          sed -n '240,550p' /tmp/trans-source/src/routes/dono/viagens.tsx
-          echo '=== ABASTECIMENTOS 1-180 ==='
-          sed -n '1,180p' /tmp/trans-source/src/routes/dono/abastecimentos.tsx
-          echo '=== HOOK REPORT MUTATIONS ==='
-          grep -RniE 'use.*Report|update.*Report|report.*mutat|acceptReport|removeReport|pendingReports|useFleetData|useReports' /tmp/trans-source/src | head -500 || true
+          echo '=== USE FLEET ==='
+          sed -n '1,135p' /tmp/trans-source/src/lib/use-fleet.ts
+          echo '=== API REPORTS 300-430 ==='
+          sed -n '300,430p' /tmp/trans-source/src/lib/api.ts
+          echo '=== API TRIPS 450-530 ==='
+          sed -n '450,535p' /tmp/trans-source/src/lib/api.ts
+          echo '=== TYPES REPORT ==='
+          grep -n -A40 -B10 'DriverReport' /tmp/trans-source/src/lib/types.ts
       - name: Compile final source
         shell: bash
         run: |
