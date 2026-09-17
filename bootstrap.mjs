@@ -36,7 +36,15 @@ const marker = "const ticketPerformancePatch = path.join(repo, 'render-overrides
 if (!original.includes("apply-request-20260917.mjs")) {
   if (!original.includes(marker)) throw new Error('Ponto de injeção 20260917 não encontrado');
   original = original.replace(marker, `const request20260917 = path.join(repo, 'render-overrides', 'apply-request-20260917.mjs');\nif (!fs.existsSync(request20260917)) throw new Error('Missing 2026-09-17 request patch');\nexecFileSync(process.execPath, [request20260917, work], { cwd: repo, stdio: 'inherit' });\n\n${marker}`);
-  fs.writeFileSync(originalPath, original);
 }
+
+// A reforma de Diária/relatórios deve rodar DEPOIS do patch de performance,
+// pois ele altera API e caixa de lançamentos.
+const dailyMarker = "const biometricGatePath = path.join(work, 'src/components/biometric-gate.tsx');";
+if (!original.includes("apply-daily-and-report-reform-20260917.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção da reforma de Diária não encontrado');
+  original = original.replace(dailyMarker, `const dailyReportReform = path.join(repo, 'render-overrides', 'apply-daily-and-report-reform-20260917.mjs');\nif (!fs.existsSync(dailyReportReform)) throw new Error('Missing daily/report reform patch');\nexecFileSync(process.execPath, [dailyReportReform, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
