@@ -1,4 +1,4 @@
-name: Inspect exact report sections
+name: Inspect daily close flow
 
 on:
   push:
@@ -25,14 +25,11 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Print exact sections
+      - name: Print daily close sections
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== TYPES 1-100 ==='; sed -n '1,110p' /tmp/trans-source/src/lib/types.ts
-          echo '=== API 80-130 ==='; sed -n '80,135p' /tmp/trans-source/src/lib/api.ts
-          echo '=== API 320-415 ==='; sed -n '320,420p' /tmp/trans-source/src/lib/api.ts
-          echo '=== MOTORISTA 55-255 ==='; sed -n '55,255p' /tmp/trans-source/src/routes/motorista.tsx
-          echo '=== LANCAMENTOS 150-220 ==='; sed -n '150,225p' /tmp/trans-source/src/routes/dono/lancamentos.tsx
-          echo '=== PDF 450-740 ==='; sed -n '450,745p' /tmp/trans-source/src/lib/pdf.ts
-          echo '=== TOTALS 190-245 ==='; sed -n '190,250p' /tmp/trans-source/src/routes/dono/totais.tsx
+          echo '=== LANCAMENTOS 1-155 ==='; sed -n '1,155p' /tmp/trans-source/src/routes/dono/lancamentos.tsx
+          echo '=== LANCAMENTOS 220-340 ==='; sed -n '220,340p' /tmp/trans-source/src/routes/dono/lancamentos.tsx
+          echo '=== TRIP FORM 1-190 ==='; sed -n '1,190p' /tmp/trans-source/src/components/owner/trip-form.tsx
+          echo '=== TRIP FORM 190-360 ==='; sed -n '190,360p' /tmp/trans-source/src/components/owner/trip-form.tsx
