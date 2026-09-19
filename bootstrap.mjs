@@ -58,6 +58,12 @@ if (!original.includes("apply-excel-blue-driver-20260917.mjs")) {
   original = original.replace(dailyMarker, `const excelBlueDriver = path.join(repo, 'render-overrides', 'apply-excel-blue-driver-20260917.mjs');\nif (!fs.existsSync(excelBlueDriver)) throw new Error('Missing blue Excel / driver export patch');\nexecFileSync(process.execPath, [excelBlueDriver, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Recuperação não destrutiva dos lançamentos aceitos durante a colisão de tickets de 19/09.
+if (!original.includes("apply-sep19-recovery.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção da recuperação 19/09 não encontrado');
+  original = original.replace(dailyMarker, `const sep19Recovery = path.join(repo, 'render-overrides', 'apply-sep19-recovery.mjs');\nif (!fs.existsSync(sep19Recovery)) throw new Error('Missing Sep 19 recovery patch');\nexecFileSync(process.execPath, [sep19Recovery, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 // Ajustes operacionais finais: ticket automático, edição/seleção da Caixa,
 // detalhes por tonelada nos cartões e simplificação dos abastecimentos.
 if (!original.includes("apply-operational-ui-20260917c.mjs")) {
