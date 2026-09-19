@@ -1,3 +1,4 @@
+// validation probe: inspect reconstructed acceptReports before production deploy
 export const acceptReports = createServerFn({ method: "POST" })
   .validator(z.object({ ids: z.array(z.string().min(1)).min(1).max(500) }))
   .handler(async ({ data }) => {
