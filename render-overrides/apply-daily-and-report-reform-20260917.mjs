@@ -191,7 +191,7 @@ patch('src/lib/pdf.ts', (s) => {
 
   s = mustReplace(s,
     '  addDetailTable("ABASTECIMENTOS", ["Data", "Motorista", "Conjunto", "Posto", "Litros", "Preço/L", "Custo", "KM"], fuelings.map((f: any) => [formatDate(f.date), f.driverName ?? "Sem motorista", f.fleetName ?? "—", f.station ?? "—", liters(Number(f.liters ?? 0)), brl(Number(f.pricePerLiter ?? 0)), brl(Number(f.liters ?? 0) * Number(f.pricePerLiter ?? 0)), integer(Number(f.km ?? 0))]));',
-    '  addDetailTable("ABASTECIMENTOS / CUSTO DIESEL", ["Data", "Motorista", "Posto", "Litros", "Preço/L", "Custo diesel"], fuelings.map((f: any) => [formatDate(f.date), f.driverName ?? trips.find((t: any) => String(t.driverId ?? "") === String(f.driverId ?? ""))?.driverName ?? "Sem motorista", f.station ?? "—", liters(Number(f.liters ?? 0)), brl(Number(f.pricePerLiter ?? 0)), brl(Number(f.liters ?? 0) * Number(f.pricePerLiter ?? 0))]));',
+    '  addDetailTable("ABASTECIMENTOS / CUSTO DIESEL", ["Data", "Motorista", "Posto", "Litros", "Preço/L", "Custo diesel"], fuelings.map((f: any) => [formatDate(f.date), f.driverName ?? "Sem motorista", f.station ?? "—", liters(Number(f.liters ?? 0)), brl(Number(f.pricePerLiter ?? 0)), brl(Number(f.liters ?? 0) * Number(f.pricePerLiter ?? 0))]));',
     'pdf fuel detail');
   s = mustReplace(s,
     '  addDetailTable("DESPESAS", ["Data", "Categoria", "Descrição", "Motorista", "Conjunto", "Valor"], expenses.map((e: any) => [formatDate(e.date), e.category ?? "Despesa", e.description ?? "—", e.driverName ?? "—", e.fleetName ?? "—", brl(Number(e.amount ?? 0))]));',
