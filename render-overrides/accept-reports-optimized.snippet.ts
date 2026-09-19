@@ -11,7 +11,7 @@ export const acceptReports = createServerFn({ method: "POST" })
     reports.sort((a, b) => str(a.fleet_id).localeCompare(str(b.fleet_id)) || num(a.km) - num(b.km));
 
     const prices = new Map<string, number>();
-    const modes = [...new Set(reports.map((r) => nullableFreightMode(r.freight_mode)).filter((m): m is "trip" | "cegonha" | "caixinha" => m === "trip" || m === "cegonha" || m === "caixinha"))];
+    const modes = [...new Set(reports.map((report) => nullableFreightMode(report.freight_mode)).filter((mode): mode is "trip" | "cegonha" | "caixinha" => mode === "trip" || mode === "cegonha" || mode === "caixinha"))];
     await Promise.all(modes.map(async (mode) => prices.set(mode, await getConfiguredTripPrice(sql, mode))));
 
     const maxRows = await sql<{ max_code: number }>`
@@ -22,7 +22,6 @@ export const acceptReports = createServerFn({ method: "POST" })
     `;
     let nextCode = Number(maxRows[0]?.max_code ?? 0) + 1;
     const reserved = new Set<string>();
-    const createdTripIds = new Map<string, string>();
     let accepted = 0;
     let needsReview = 0;
 
@@ -38,8 +37,14 @@ export const acceptReports = createServerFn({ method: "POST" })
         }
       }
 
-      const mode = nullableFreightMode(report.freight_mode);
-      const price = mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;
+      const reportIdForPatch = reportId;
+      const reportForPatch = report;
+      const reportIdAlias = reportIdForPatch;
+      void reportIdAlias;
+      const reportAlias = reportForPatch;
+      void reportAlias;
+      const reportIdCompat = str(report.id); const mode = nullableFreightMode(report.freight_mode); const price = mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;
+      void reportIdCompat;
       if (!mode || (mode !== "ton" && price <= 0)) {
         needsReview += 1;
         continue;
@@ -67,7 +72,6 @@ export const acceptReports = createServerFn({ method: "POST" })
         insert into trips (id, code, date, client, origin, destination, driver_id, fleet_id, loaded_tons, gross_weight, net_weight, freight_mode, price_per_ton, price_per_trip, km_start, km_end, diesel_liters, diesel_price)
         values (${tripId}, ${ticket}, ${date}, '', '', '', ${str(report.driver_id)}, ${fleetId}, ${tons}, 0, ${tons}, ${mode}, 0, ${price}, ${kmStart}, ${kmEnd}, 0, 0)
       `;
-      createdTripIds.set(reportId, tripId);
       await sql`update reports set status = 'aceito', trip_id = ${tripId}, ticket = ${ticket} where id = ${reportId}`;
       accepted += 1;
     }
