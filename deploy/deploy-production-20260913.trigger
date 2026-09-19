@@ -1,7 +1,6 @@
-deploy requested 2026-09-19 driver bulk acceptance persistence fix retry
-changes: each accepted driver report creates and links its own real trip; duplicate ticket codes receive the next free numeric ticket; compatibility with daily freight/report patch restored
+deploy requested 2026-09-19 validated driver bulk acceptance persistence fix
+changes: each accepted driver report creates and links its own real trip; duplicate ticket codes receive the next free numeric ticket; daily freight/report compatibility retained
 preserve existing production data; no destructive SQL
-source fix commit: 955444ba44fc07a24d2d83bc39e1503b912bb552
+validated source commit: 0dd20e107c9fa51e13e450a895d2dc83bad474fa
+validation: reconstruction, operational assertions and final production build all passed
 publish same Vercel project: transsalomao
-compatibility: daily/report patch accepts already-transformed bulk acceptance logic
-validated-build: accepted-trip fix compile passed after literal SQL injection repair
