@@ -60,6 +60,12 @@ jobs:
           if grep -q 'label="KM rodado"' "$FUEL"; then echo 'KM rodado derivado ainda existe' >&2; exit 1; fi
           if grep -q 'label="KM/L"' "$FUEL"; then echo 'KM/L derivado ainda existe' >&2; exit 1; fi
           echo 'Operational UI assertions passed.'
+      - name: Inspect generated API acceptance block
+        shell: bash
+        run: |
+          set -euo pipefail
+          nl -ba /tmp/trans-source/src/lib/api.ts | sed -n '145,180p'
+
       - name: Compile final source
         shell: bash
         run: |
