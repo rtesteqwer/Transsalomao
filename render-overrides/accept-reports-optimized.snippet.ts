@@ -25,7 +25,7 @@ export const acceptReports = createServerFn({ method: "POST" })
       return [str(report.id), num(rows[0]?.km_end)] as const;
     }));
     const previousMap = new Map(previousKms);
-    const maxCodeRows = await sql<{ max_code: number | string }[]>`select coalesce(max(code::bigint), 0) as max_code from trips where code ~ '^[0-9]+$'`;
+    const maxCodeRows = await sql<{ max_code: number | string }>`select coalesce(max(code::bigint), 0) as max_code from trips where code ~ '^[0-9]+$'`;
     let nextNumericCode = Number(maxCodeRows[0]?.max_code ?? 0) + 1;
     const candidates: Array<{ report: Record<string, unknown>; tripId: string; ticket: string; date: string; tons: number; mode: FreightMode; price: number; kmStart: number }> = [];
     let needsReview = 0;
