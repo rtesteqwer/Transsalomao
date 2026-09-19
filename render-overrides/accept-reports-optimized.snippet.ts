@@ -26,25 +26,17 @@ export const acceptReports = createServerFn({ method: "POST" })
     let needsReview = 0;
 
     for (const report of reports) {
-      const reportId = str(report.id);
       const linkedId = str(report.trip_id);
       if (linkedId) {
         const linked = await sql<{ id: string }>`select id from trips where id = ${linkedId} limit 1`;
         if (linked[0]?.id) {
-          await sql`update reports set status = 'aceito' where id = ${reportId}`;
+          await sql`update reports set status = 'aceito' where id = ${str(report.id)}`;
           accepted += 1;
           continue;
         }
       }
 
-      const reportIdForPatch = reportId;
-      const reportForPatch = report;
-      const reportIdAlias = reportIdForPatch;
-      void reportIdAlias;
-      const reportAlias = reportForPatch;
-      void reportAlias;
-      const reportIdCompat = str(report.id); const mode = nullableFreightMode(report.freight_mode); const price = mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;
-      void reportIdCompat;
+      const reportId = str(report.id); const mode = nullableFreightMode(report.freight_mode); const price = mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;
       if (!mode || (mode !== "ton" && price <= 0)) {
         needsReview += 1;
         continue;
