@@ -4,3 +4,4 @@ preserve existing production data; no destructive SQL
 validated source commit: 0dd20e107c9fa51e13e450a895d2dc83bad474fa
 validation: reconstruction, operational assertions and final production build all passed
 publish same Vercel project: transsalomao
+recovery: apply idempotent 0011 repair for Sep 19 08:33 BRT Cegonha reports mislinked by old ticket-collision acceptance
