@@ -42,14 +42,15 @@ patch('src/lib/api.ts', (s) => {
     "      insert into reports (id, ticket, driver_id, fleet_id, km, tons, freight_mode, status)\n      values (${id}, ${ticket}, ${data.driverId}, ${data.fleetId}, ${data.km}, ${data.tons}, ${data.freightMode ?? null}, 'pendente')",
     "      insert into reports (id, ticket, driver_id, fleet_id, km, tons, daily_value, freight_mode, status)\n      values (${id}, ${ticket}, ${data.driverId}, ${data.fleetId}, ${data.km}, ${data.tons}, ${data.dailyValue}, ${data.freightMode ?? null}, 'pendente')",
     'report insert dailyValue');
-  s = mustReplace(s,
-    'const modes = [...new Set(reports.map((report) => nullableFreightMode(report.freight_mode)).filter((mode): mode is "trip" | "cegonha" | "caixinha" => mode === "trip" || mode === "cegonha" || mode === "caixinha"))];',
-    'const modes = [...new Set(reports.map((report) => nullableFreightMode(report.freight_mode)).filter((mode): mode is "cegonha" | "caixinha" => mode === "cegonha" || mode === "caixinha"))];',
-    'global prices exclude daily');
-  s = mustReplace(s,
-    '      const reportId = str(report.id); const mode = nullableFreightMode(report.freight_mode); const price = mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;',
-    '      const reportId = str(report.id); const mode = nullableFreightMode(report.freight_mode); const price = mode === "trip" ? num(report.daily_value) : mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;',
-    'daily price in bulk accept');
+  const modesBefore = 'const modes = [...new Set(reports.map((report) => nullableFreightMode(report.freight_mode)).filter((mode): mode is "trip" | "cegonha" | "caixinha" => mode === "trip" || mode === "cegonha" || mode === "caixinha"))];';
+  const modesAfter = 'const modes = [...new Set(reports.map((report) => nullableFreightMode(report.freight_mode)).filter((mode): mode is "cegonha" | "caixinha" => mode === "cegonha" || mode === "caixinha"))];';
+  if (s.includes(modesBefore)) s = s.replace(modesBefore, modesAfter);
+  else if (!s.includes(modesAfter)) throw new Error('daily-report-reform: compatible bulk modes block not found');
+
+  const priceBefore = '      const reportId = str(report.id); const mode = nullableFreightMode(report.freight_mode); const price = mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;';
+  const priceAfter = '      const reportId = str(report.id); const mode = nullableFreightMode(report.freight_mode); const price = mode === "trip" ? num(report.daily_value) : mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;';
+  if (s.includes(priceBefore)) s = s.replace(priceBefore, priceAfter);
+  else if (!s.includes(priceAfter)) throw new Error('daily-report-reform: compatible bulk daily price block not found');
   return s;
 });
 
