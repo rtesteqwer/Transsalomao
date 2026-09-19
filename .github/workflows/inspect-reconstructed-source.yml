@@ -66,6 +66,15 @@ jobs:
           set -euo pipefail
           nl -ba /tmp/trans-source/src/lib/api.ts | sed -n '145,180p'
 
+      - name: Inspect trip report schema for safe recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- schema files ---'
+          find /tmp/trans-source -maxdepth 4 -type f \( -name '*.sql' -o -name '*schema*' -o -name '*migrat*' \) | sort | head -120
+          echo '--- trips/reports definitions ---'
+          grep -RniE 'create table.*(trips|reports)|created_at|trip_id' /tmp/trans-source --include='*.sql' --include='*.ts' --include='*.mjs' | head -220 || true
+
       - name: Compile final source
         shell: bash
         run: |
