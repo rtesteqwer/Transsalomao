@@ -74,6 +74,13 @@ jobs:
           find /tmp/trans-source -maxdepth 4 -type f \( -name '*.sql' -o -name '*schema*' -o -name '*migrat*' \) | sort | head -120
           echo '--- trips/reports definitions ---'
           grep -RniE 'create table.*(trips|reports)|created_at|trip_id' /tmp/trans-source --include='*.sql' --include='*.ts' --include='*.mjs' | head -220 || true
+          echo '--- core trip/report schema ---'
+          sed -n '1,65p' /tmp/trans-source/migrations/0002_schema.sql
+          echo '--- freight/report extensions ---'
+          cat /tmp/trans-source/migrations/0003_freight_mode.sql
+          cat /tmp/trans-source/migrations/0004_driver_reports_and_fuelings.sql
+          cat /tmp/trans-source/migrations/0005_cegonha_caixinha_despesas.sql
+          cat /tmp/trans-source/migrations/0006_motorista_campos_opcionais.sql
 
       - name: Compile final source
         shell: bash
