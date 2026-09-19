@@ -43,7 +43,7 @@ async function normalizeTicketCodes(sql: Awaited<ReturnType<typeof getSql>>) {
   if (!s.includes('async function nextTicketCode')) {
     const nextTicketHelper = [
       'async function nextTicketCode(sql: Awaited<ReturnType<typeof getSql>>) {',
-      '  const rows = await sql<{ next: number }>`select (select count(*) from trips) + (select count(*) from reports where status = \'pendente\') + 1 as next`;',
+      '  const rows = await sql<{ next: number | string }>`select greatest(coalesce((select max(code::bigint) from trips where code ~ \'^[0-9]+$\'), 0), coalesce((select max(ticket::bigint) from reports where ticket ~ \'^[0-9]+$\'), 0)) + 1 as next`;',
       '  return String(Number(rows[0]?.next ?? 1));',
       '}',
       '',
