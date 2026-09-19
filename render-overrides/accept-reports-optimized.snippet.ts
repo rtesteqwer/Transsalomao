@@ -25,26 +25,24 @@ export const acceptReports = createServerFn({ method: "POST" })
       return [str(report.id), num(rows[0]?.km_end)] as const;
     }));
     const previousMap = new Map(previousKms);
-    const maxCodeRows = await sql<{ max_code: number | string }>`select coalesce(max(code::bigint), 0) as max_code from trips where code ~ '^[0-9]+$'`;
-    let nextNumericCode = Number(maxCodeRows[0]?.max_code ?? 0) + 1;
     const candidates: Array<{ report: Record<string, unknown>; tripId: string; ticket: string; date: string; tons: number; mode: FreightMode; price: number; kmStart: number }> = [];
     let needsReview = 0;
     for (const report of reports) {
       const reportId = str(report.id); const mode = nullableFreightMode(report.freight_mode); const price = mode && mode !== "ton" ? (prices.get(mode) ?? 0) : 0;
       if (!mode || (mode !== "ton" && price <= 0)) { needsReview += 1; continue; }
-      let ticket = str(report.ticket).toUpperCase();
-      if (existingMap.get(reportId)) ticket = String(nextNumericCode++);
+      if (existingMap.get(reportId)) continue;
       const created = report.created_at; const createdAt = created instanceof Date ? created.toISOString() : str(created);
-      candidates.push({ report, tripId: newId("trip"), ticket, date: /^\d{4}-\d{2}-\d{2}/.test(createdAt) ? createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10), tons: num(report.tons), mode, price, kmStart: previousMap.get(reportId) ?? 0 });
+      candidates.push({ report, tripId: newId("trip"), ticket: str(report.ticket).toUpperCase(), date: /^\d{4}-\d{2}-\d{2}/.test(createdAt) ? createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10), tons: num(report.tons), mode, price, kmStart: previousMap.get(reportId) ?? 0 });
     }
     await Promise.all(candidates.map((item) => sql`
       insert into trips (id, code, date, client, origin, destination, driver_id, fleet_id, loaded_tons, gross_weight, net_weight, freight_mode, price_per_ton, price_per_trip, km_start, km_end, diesel_liters, diesel_price)
       values (${item.tripId}, ${item.ticket}, ${item.date}, '', '', '', ${str(item.report.driver_id)}, ${str(item.report.fleet_id)}, ${item.tons}, 0, ${item.tons}, ${item.mode}, 0, ${item.price}, ${item.kmStart}, ${num(item.report.km)}, 0, 0)
     `));
     await Promise.all(reports.map((report) => {
-      const id = str(report.id); const created = candidates.find((item) => str(item.report.id) === id);
-      if (created) return sql`update reports set status = 'aceito', trip_id = ${created.tripId}, ticket = ${created.ticket} where id = ${id}`;
+      const id = str(report.id); const existing = existingMap.get(id); const created = candidates.find((item) => str(item.report.id) === id);
+      if (existing) return sql`update reports set status = 'aceito', trip_id = ${existing} where id = ${id}`;
+      if (created) return sql`update reports set status = 'aceito', trip_id = ${created.tripId} where id = ${id}`;
       return Promise.resolve();
     }));
-    return { ok: true, accepted: candidates.length, needsReview };
+    return { ok: true, accepted: existingMap.size + candidates.length, needsReview };
   });
