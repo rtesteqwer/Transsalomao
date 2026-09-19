@@ -49,7 +49,7 @@ async function normalizeTicketCodes(sql: Awaited<ReturnType<typeof getSql>>) {
       '',
       'function newId(prefix: string) {',
     ].join('\n');
-    s = s.replace('function newId(prefix: string) {', nextTicketHelper);
+    s = s.replace('function newId(prefix: string) {', () => nextTicketHelper);
   }
   s = s.replace('    const ticket = data.ticket.trim() ? data.ticket.toUpperCase() : autoTicket;', '    const ticket = await nextTicketCode(sql);');
   s = s.replace('    const code = data.code.toUpperCase();', '    const code = data.id ? data.code.toUpperCase() : await nextTicketCode(sql);');
