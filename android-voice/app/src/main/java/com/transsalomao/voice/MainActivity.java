@@ -8,6 +8,8 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -19,54 +21,69 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
-import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.text.Normalizer;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity implements TextToSpeech.OnInitListener {
     private static final int AUDIO_PERMISSION_REQUEST = 1001;
     private static final String HOME_URL = "https://transsalomao.vercel.app/";
+    private static final String ASSISTANT_URL = HOME_URL + "api/assistant";
 
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final ExecutorService network = Executors.newSingleThreadExecutor();
+    private final ArrayList<AssistantMemory.ChatMessage> chatHistory = new ArrayList<>();
+
+    private AssistantMemory memory;
     private WebView webView;
+    private ScrollView chatScroll;
+    private LinearLayout chatMessages;
+    private EditText input;
+    private TextView status;
+    private TextView modeInfo;
+    private Button micButton;
+    private Button chatButton;
+    private Button siteButton;
+    private Button assistantButton;
+
     private SpeechRecognizer speechRecognizer;
     private Intent recognizerIntent;
     private TextToSpeech tts;
-    private AssistantMemory memory;
-
-    private TextView status;
-    private TextView info;
-    private Button micButton;
-    private Button assistantButton;
-
-    private boolean listening = false;
-    private boolean speechReady = false;
-    private boolean pageReady = false;
-
-    private String pendingDangerousCommand;
-    private String currentCommandKey;
-    private String currentUtterance;
-    private String currentTarget;
-    private String lastFailedCommandKey;
-    private String lastFailedUtterance;
-    private long lastFailedAt;
-    private String queuedAssistantCommand;
-
-    private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean listening;
+    private boolean speechReady;
+    private boolean asking;
+    private boolean showingSite;
+    private boolean siteLoaded;
+    private String queuedVoiceCommand;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,13 +93,14 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         buildUi();
         configureWebView();
         configureSpeech();
+        restoreChat();
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, AUDIO_PERMISSION_REQUEST);
         }
 
-        handleAssistantIntent(getIntent());
         webView.loadUrl(HOME_URL);
+        handleAssistantIntent(getIntent());
         updateAssistantState();
     }
 
@@ -97,93 +115,131 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     protected void onResume() {
         super.onResume();
         updateAssistantState();
+        if (!showingSite) checkServerState();
     }
 
     private void buildUi() {
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.BLACK);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(0xFF0B0B0C);
 
-        webView = new WebView(this);
-        FrameLayout.LayoutParams webParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT);
-        webParams.topMargin = dp(92);
-        webParams.bottomMargin = dp(70);
-        root.addView(webView, webParams);
-
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.VERTICAL);
-        top.setPadding(dp(14), dp(8), dp(14), dp(8));
-        top.setBackgroundColor(0xFF101010);
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(dp(16), dp(10), dp(16), dp(8));
+        header.setBackgroundColor(0xFF111214);
 
         TextView title = new TextView(this);
-        title.setText("SALOMÃO IA • TRANS SALOMÃO");
+        title.setText("SALOMÃO IA");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(17);
-        title.setGravity(Gravity.CENTER);
-        title.setTypeface(null, android.graphics.Typeface.BOLD);
-        top.addView(title);
+        title.setTextSize(21);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER_HORIZONTAL);
+        header.addView(title);
 
-        info = new TextView(this);
-        info.setTextColor(0xFFBDBDBD);
-        info.setTextSize(11);
-        info.setGravity(Gravity.CENTER);
-        top.addView(info);
+        modeInfo = new TextView(this);
+        modeInfo.setText("Agente de dados • Trans Salomão");
+        modeInfo.setTextColor(0xFFAAAAAA);
+        modeInfo.setTextSize(11);
+        modeInfo.setGravity(Gravity.CENTER_HORIZONTAL);
+        header.addView(modeInfo);
 
         status = new TextView(this);
-        status.setText("Carregando o site…");
-        status.setTextColor(0xFFFFFFFF);
+        status.setText("Conectando ao sistema…");
+        status.setTextColor(0xFFE0E0E0);
         status.setTextSize(12);
-        status.setGravity(Gravity.CENTER);
-        top.addView(status);
+        status.setGravity(Gravity.CENTER_HORIZONTAL);
+        header.addView(status);
+        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(86)));
 
-        root.addView(top, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(92),
-                Gravity.TOP));
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        tabs.setPadding(dp(6), dp(4), dp(6), dp(4));
+        tabs.setBackgroundColor(0xFF111214);
 
-        LinearLayout controls = new LinearLayout(this);
-        controls.setOrientation(LinearLayout.HORIZONTAL);
-        controls.setGravity(Gravity.CENTER);
-        controls.setPadding(dp(5), dp(5), dp(5), dp(7));
-        controls.setBackgroundColor(0xFF101010);
+        chatButton = smallButton("💬 Chat IA");
+        chatButton.setOnClickListener(v -> showChat());
+        tabs.addView(chatButton, tabParams());
 
-        micButton = makeButton("🎤 OUVIR");
-        micButton.setOnClickListener(v -> toggleListening());
-        controls.addView(micButton, weightedParams());
+        siteButton = smallButton("🌐 Site");
+        siteButton.setOnClickListener(v -> showSite());
+        tabs.addView(siteButton, tabParams());
 
-        assistantButton = makeButton("ATIVAR 24/7");
+        assistantButton = smallButton("🎙 24/7");
         assistantButton.setOnClickListener(v -> openAssistantSetup());
-        controls.addView(assistantButton, weightedParams());
+        tabs.addView(assistantButton, tabParams());
+        root.addView(tabs, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)));
 
-        Button memoryButton = makeButton("MEMÓRIA");
-        memoryButton.setOnClickListener(v -> showMemory());
-        controls.addView(memoryButton, weightedParams());
+        FrameLayout content = new FrameLayout(this);
+        root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        Button homeButton = makeButton("INÍCIO");
-        homeButton.setOnClickListener(v -> webView.loadUrl(HOME_URL));
-        controls.addView(homeButton, weightedParams());
+        chatScroll = new ScrollView(this);
+        chatScroll.setFillViewport(true);
+        chatScroll.setBackgroundColor(0xFF0B0B0C);
+        chatMessages = new LinearLayout(this);
+        chatMessages.setOrientation(LinearLayout.VERTICAL);
+        chatMessages.setPadding(dp(12), dp(14), dp(12), dp(20));
+        chatScroll.addView(chatMessages, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        content.addView(chatScroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        root.addView(controls, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(70),
-                Gravity.BOTTOM));
+        webView = new WebView(this);
+        webView.setVisibility(View.GONE);
+        content.addView(webView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout composer = new LinearLayout(this);
+        composer.setOrientation(LinearLayout.HORIZONTAL);
+        composer.setGravity(Gravity.CENTER_VERTICAL);
+        composer.setPadding(dp(8), dp(7), dp(8), dp(8));
+        composer.setBackgroundColor(0xFF111214);
+
+        input = new EditText(this);
+        input.setHint("Pergunte sobre motorista, viagens, faturamento…");
+        input.setHintTextColor(0xFF777777);
+        input.setTextColor(Color.WHITE);
+        input.setTextSize(14);
+        input.setSingleLine(false);
+        input.setMaxLines(3);
+        input.setPadding(dp(12), dp(8), dp(12), dp(8));
+        input.setBackground(roundRect(0xFF1D1F22, dp(18)));
+        composer.addView(input, new LinearLayout.LayoutParams(0, dp(54), 1f));
+
+        micButton = smallButton("🎤");
+        micButton.setTextSize(20);
+        micButton.setOnClickListener(v -> toggleListening());
+        LinearLayout.LayoutParams icon = new LinearLayout.LayoutParams(dp(54), dp(54));
+        icon.setMargins(dp(5), 0, dp(3), 0);
+        composer.addView(micButton, icon);
+
+        Button send = smallButton("➤");
+        send.setTextSize(20);
+        send.setOnClickListener(v -> sendTyped());
+        composer.addView(send, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        root.addView(composer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)));
 
         setContentView(root);
+        setTabVisuals();
     }
 
-    private Button makeButton(String text) {
+    private Button smallButton(String text) {
         Button b = new Button(this);
         b.setText(text);
-        b.setTextSize(11);
         b.setAllCaps(false);
+        b.setTextSize(12);
+        b.setTextColor(Color.WHITE);
+        b.setBackground(roundRect(0xFF25272A, dp(12)));
         return b;
     }
 
-    private LinearLayout.LayoutParams weightedParams() {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(54), 1f);
+    private LinearLayout.LayoutParams tabParams() {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(44), 1f);
         p.setMargins(dp(2), 0, dp(2), 0);
         return p;
+    }
+
+    private GradientDrawable roundRect(int color, int radius) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radius);
+        return d;
     }
 
     private int dp(int value) {
@@ -198,66 +254,258 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/2.0");
-
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/3.0");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
-
-        webView.addJavascriptInterface(new VoiceBridge(), "TransVoice");
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String host = request.getUrl().getHost();
-                if (host != null && (host.equals("transsalomao.vercel.app") || host.endsWith("vercel.app"))) {
-                    return false;
-                }
-                startActivity(new Intent(Intent.ACTION_VIEW, request.getUrl()));
+                if (host != null && (host.equals("transsalomao.vercel.app") || host.endsWith("vercel.app"))) return false;
+                try { startActivity(new Intent(Intent.ACTION_VIEW, request.getUrl())); } catch (Exception ignored) {}
                 return true;
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                pageReady = true;
-                injectLearningBridge();
-                status.setText("Pronto • diga “Salomão” ou toque em OUVIR");
-                updateAssistantState();
-                if (queuedAssistantCommand != null && !queuedAssistantCommand.trim().isEmpty()) {
-                    String q = queuedAssistantCommand;
-                    queuedAssistantCommand = null;
-                    handler.postDelayed(() -> executeVoiceCommand(q), 350);
-                }
+                siteLoaded = true;
+                CookieManager.getInstance().flush();
+                if (showingSite) status.setText("Site conectado. Entre na Gerência para liberar os dados do chat.");
+                checkServerState();
             }
         });
     }
 
-    private void injectLearningBridge() {
-        String js = "(function(){" +
-                "if(window.__salomaoLearnInstalled)return;window.__salomaoLearnInstalled=true;" +
-                "function vis(e){const r=e.getBoundingClientRect();return r.width>0&&r.height>0;}" +
-                "function label(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||e.title||'')+'').trim().replace(/\\s+/g,' ').slice(0,180);}" +
-                "function sel(e){if(e.id)return '#'+CSS.escape(e.id);" +
-                "let p=[],n=e;while(n&&n.nodeType===1&&n!==document.body&&p.length<5){let x=n.tagName.toLowerCase();let i=1,s=n;while((s=s.previousElementSibling)){if(s.tagName===n.tagName)i++;}x+=':nth-of-type('+i+')';p.unshift(x);n=n.parentElement;}return p.join('>');}" +
-                "document.addEventListener('click',function(ev){let e=ev.target&&ev.target.closest?ev.target.closest('button,a,[role=button],[role=tab],input[type=button],input[type=submit],[onclick]'):null;" +
-                "if(!e||!vis(e))return;if(e.__salomaoVoiceClick&&Date.now()-e.__salomaoVoiceClick<1800)return;" +
-                "try{TransVoice.manualClick(sel(e),label(e),location.pathname||'/');}catch(x){}},true);" +
-                "})();";
-        webView.evaluateJavascript(js, null);
+    private void restoreChat() {
+        List<AssistantMemory.ChatMessage> saved = memory.recentChat(30);
+        chatHistory.clear();
+        chatHistory.addAll(saved);
+        if (saved.isEmpty()) addAssistantWelcome();
+        else for (AssistantMemory.ChatMessage m : saved) addBubble(m.role, m.content, false);
+    }
+
+    private void addAssistantWelcome() {
+        String welcome = "Olá. Eu sou o Salomão IA. Posso consultar diretamente os dados do Trans Salomão. Pergunte, por exemplo: “dados do Klebersom”, “quanto ele faturou?”, “abastecimentos dele”, “viagens de hoje” ou “faturamento por motorista”.";
+        addBubble("assistant", welcome, false);
+    }
+
+    private void sendTyped() {
+        String text = input.getText().toString().trim();
+        if (text.isEmpty()) return;
+        input.setText("");
+        askAssistant(text, false);
+    }
+
+    private void askAssistant(String text, boolean speakAnswer) {
+        if (asking) {
+            Toast.makeText(this, "Ainda estou respondendo a pergunta anterior.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String clean = text == null ? "" : text.trim();
+        clean = clean.replaceFirst("(?i)^salom[aã]o[ ,.:;!?-]*", "").trim();
+        if (clean.isEmpty()) {
+            speak("Oi. Pode falar.");
+            startListening();
+            return;
+        }
+
+        if (clean.equalsIgnoreCase("abrir site") || clean.equalsIgnoreCase("site")) {
+            showSite();
+            if (speakAnswer) speak("Abrindo o site.");
+            return;
+        }
+        if (clean.equalsIgnoreCase("abrir chat") || clean.equalsIgnoreCase("chat")) {
+            showChat();
+            if (speakAnswer) speak("Voltando para o chat.");
+            return;
+        }
+
+        final ArrayList<AssistantMemory.ChatMessage> prior = new ArrayList<>(chatHistory);
+        addChatMessage("user", clean, true);
+        asking = true;
+        status.setText("Consultando dados…");
+        addTypingBubble();
+
+        final String question = clean;
+        network.execute(() -> {
+            AssistantResponse result;
+            try {
+                result = callAssistant(question, prior);
+            } catch (Exception e) {
+                result = new AssistantResponse(false, "erro", "Não consegui consultar o sistema agora. " + safeError(e), false);
+            }
+            final AssistantResponse response = result;
+            runOnUiThread(() -> {
+                removeTypingBubble();
+                asking = false;
+                addChatMessage("assistant", response.answer, true);
+                if (response.loginRequired) {
+                    status.setText("Login da Gerência necessário");
+                    if (speakAnswer) speak("Preciso que você entre na Gerência. Abri o site para login.");
+                    handler.postDelayed(this::showSite, 450);
+                } else {
+                    status.setText(response.ok ? "Dados atualizados" : "Falha na consulta");
+                    modeInfo.setText("Agente de dados • " + ("gpt".equals(response.mode) ? "GPT-5.6 Sol" : "modo local"));
+                    if (speakAnswer) speak(response.answer);
+                }
+            });
+        });
+    }
+
+    private AssistantResponse callAssistant(String message, List<AssistantMemory.ChatMessage> prior) throws Exception {
+        URL url = new URL(ASSISTANT_URL);
+        HttpURLConnection c = (HttpURLConnection) url.openConnection();
+        c.setRequestMethod("POST");
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(60000);
+        c.setDoOutput(true);
+        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        c.setRequestProperty("Accept", "application/json");
+        c.setRequestProperty("X-Salomao-App", "1");
+        String cookie = CookieManager.getInstance().getCookie(HOME_URL);
+        if (cookie != null && !cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);
+
+        JSONObject body = new JSONObject();
+        body.put("message", message);
+        JSONArray history = new JSONArray();
+        int start = Math.max(0, prior.size() - 16);
+        for (int i = start; i < prior.size(); i++) {
+            AssistantMemory.ChatMessage m = prior.get(i);
+            JSONObject row = new JSONObject();
+            row.put("role", "assistant".equals(m.role) ? "assistant" : "user");
+            row.put("content", m.content);
+            history.put(row);
+        }
+        body.put("history", history);
+
+        byte[] payload = body.toString().getBytes(StandardCharsets.UTF_8);
+        try (OutputStream os = c.getOutputStream()) { os.write(payload); }
+        int code = c.getResponseCode();
+        String raw = readAll(code >= 400 ? c.getErrorStream() : c.getInputStream());
+        JSONObject json = raw.isEmpty() ? new JSONObject() : new JSONObject(raw);
+        String answer = json.optString("answer", code == 401 ? "Abra a aba Site e faça login na Gerência." : "O servidor não retornou uma resposta.");
+        String mode = json.optString("mode", "local");
+        return new AssistantResponse(code >= 200 && code < 300, mode, answer, code == 401 || "LOGIN_REQUIRED".equals(json.optString("code")));
+    }
+
+    private String readAll(InputStream input) throws Exception {
+        if (input == null) return "";
+        StringBuilder b = new StringBuilder();
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) b.append(line).append('\n');
+        }
+        return b.toString().trim();
+    }
+
+    private void checkServerState() {
+        network.execute(() -> {
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL(ASSISTANT_URL).openConnection();
+                c.setRequestMethod("GET");
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(8000);
+                String cookie = CookieManager.getInstance().getCookie(HOME_URL);
+                if (cookie != null && !cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);
+                int code = c.getResponseCode();
+                String raw = readAll(code >= 400 ? c.getErrorStream() : c.getInputStream());
+                JSONObject json = raw.isEmpty() ? new JSONObject() : new JSONObject(raw);
+                boolean configured = json.optBoolean("aiConfigured", false);
+                runOnUiThread(() -> {
+                    if (code == 200) {
+                        modeInfo.setText(configured ? "Agente de dados • GPT-5.6 Sol" : "Agente de dados • modo local");
+                        if (!showingSite && !asking) status.setText("Conectado aos dados da Gerência");
+                    } else if (!showingSite && !asking) status.setText("Entre na Gerência pela aba Site");
+                });
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private TextView typingBubble;
+
+    private void addTypingBubble() {
+        typingBubble = makeBubble("assistant", "Consultando o sistema…");
+        chatMessages.addView(typingBubble);
+        scrollBottom();
+    }
+
+    private void removeTypingBubble() {
+        if (typingBubble != null) {
+            chatMessages.removeView(typingBubble);
+            typingBubble = null;
+        }
+    }
+
+    private void addChatMessage(String role, String content, boolean persist) {
+        AssistantMemory.ChatMessage m = new AssistantMemory.ChatMessage(role, content, System.currentTimeMillis());
+        chatHistory.add(m);
+        while (chatHistory.size() > 60) chatHistory.remove(0);
+        if (persist) memory.addChat(role, content);
+        addBubble(role, content, true);
+    }
+
+    private void addBubble(String role, String content, boolean scroll) {
+        TextView bubble = makeBubble(role, content);
+        chatMessages.addView(bubble);
+        if (scroll) scrollBottom();
+    }
+
+    private TextView makeBubble(String role, String content) {
+        TextView v = new TextView(this);
+        v.setText(content);
+        v.setTextSize(15);
+        v.setTextColor(Color.WHITE);
+        v.setLineSpacing(0, 1.08f);
+        v.setPadding(dp(14), dp(11), dp(14), dp(11));
+        boolean user = "user".equals(role);
+        v.setBackground(roundRect(user ? 0xFF255BC7 : 0xFF202226, dp(16)));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                user ? (int)(getResources().getDisplayMetrics().widthPixels * 0.78f) : ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.gravity = user ? Gravity.END : Gravity.START;
+        p.setMargins(user ? dp(46) : 0, dp(5), user ? 0 : dp(20), dp(5));
+        v.setLayoutParams(p);
+        return v;
+    }
+
+    private void scrollBottom() {
+        handler.postDelayed(() -> chatScroll.fullScroll(View.FOCUS_DOWN), 100);
+    }
+
+    private void showChat() {
+        showingSite = false;
+        webView.setVisibility(View.GONE);
+        chatScroll.setVisibility(View.VISIBLE);
+        setTabVisuals();
+        checkServerState();
+    }
+
+    private void showSite() {
+        showingSite = true;
+        chatScroll.setVisibility(View.GONE);
+        webView.setVisibility(View.VISIBLE);
+        setTabVisuals();
+        if (!siteLoaded) webView.loadUrl(HOME_URL);
+        status.setText("Site aberto • faça login na Gerência se necessário");
+    }
+
+    private void setTabVisuals() {
+        if (chatButton == null || siteButton == null) return;
+        chatButton.setBackground(roundRect(!showingSite ? 0xFF255BC7 : 0xFF25272A, dp(12)));
+        siteButton.setBackground(roundRect(showingSite ? 0xFF255BC7 : 0xFF25272A, dp(12)));
     }
 
     private void configureSpeech() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            status.setText("O reconhecimento de voz não está disponível neste aparelho.");
+            status.setText("Reconhecimento de voz indisponível neste aparelho.");
             micButton.setEnabled(false);
             return;
         }
-
         try {
             if (android.os.Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
                 speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
-            } else {
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
-            }
+            } else speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
         } catch (Exception e) {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
         }
@@ -271,34 +519,21 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
 
         speechRecognizer.setRecognitionListener(new RecognitionListener() {
-            @Override public void onReadyForSpeech(Bundle params) {
-                listening = true;
-                micButton.setText("■ PARAR");
-                status.setText("Estou ouvindo…");
-            }
+            @Override public void onReadyForSpeech(Bundle params) { listening = true; micButton.setText("■"); status.setText("Estou ouvindo…"); }
             @Override public void onBeginningOfSpeech() { status.setText("Pode falar."); }
             @Override public void onRmsChanged(float rmsdB) {}
             @Override public void onBufferReceived(byte[] buffer) {}
             @Override public void onEndOfSpeech() { status.setText("Entendendo…"); }
-
-            @Override public void onError(int error) {
-                listening = false;
-                micButton.setText("🎤 OUVIR");
-                if (error != SpeechRecognizer.ERROR_CLIENT && error != SpeechRecognizer.ERROR_NO_MATCH) {
-                    status.setText("Não consegui ouvir. Tente novamente.");
-                }
-            }
-
+            @Override public void onError(int error) { listening = false; micButton.setText("🎤"); if (!asking) status.setText("Não entendi. Tente de novo."); }
             @Override public void onResults(Bundle results) {
                 listening = false;
-                micButton.setText("🎤 OUVIR");
+                micButton.setText("🎤");
                 ArrayList<String> texts = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                 if (texts != null && !texts.isEmpty()) {
-                    status.setText("Você: " + texts.get(0));
-                    executeVoiceCommand(texts.get(0));
+                    showChat();
+                    askAssistant(texts.get(0), true);
                 }
             }
-
             @Override public void onPartialResults(Bundle partialResults) {
                 ArrayList<String> texts = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                 if (texts != null && !texts.isEmpty()) status.setText("Ouvindo: " + texts.get(0));
@@ -307,28 +542,11 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         });
     }
 
-    private void handleAssistantIntent(Intent intent) {
-        if (intent == null) return;
-        boolean wake = intent.getBooleanExtra("assistant_wake", false);
-        String command = intent.getStringExtra("assistant_command");
-        if (command != null && !command.trim().isEmpty()) {
-            if (pageReady) handler.postDelayed(() -> executeVoiceCommand(command), 250);
-            else queuedAssistantCommand = command;
-        } else if (wake) {
-            handler.postDelayed(() -> {
-                speak("Oi. Pode falar.");
-                startListening();
-            }, 450);
-        }
-        intent.removeExtra("assistant_wake");
-        intent.removeExtra("assistant_command");
-    }
-
     private void toggleListening() {
         if (listening) {
             try { speechRecognizer.stopListening(); } catch (Exception ignored) {}
             listening = false;
-            micButton.setText("🎤 OUVIR");
+            micButton.setText("🎤");
         } else startListening();
     }
 
@@ -342,247 +560,26 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         catch (Exception e) { status.setText("Não consegui iniciar o microfone."); }
     }
 
-    private void executeVoiceCommand(String original) {
-        String command = normalize(original);
-        command = command.replaceFirst("^salomao[ ,.:;!?-]*", "").trim();
-        if (command.isEmpty()) {
-            speak("Oi. Pode falar.");
-            startListening();
-            return;
+    private void handleAssistantIntent(Intent intent) {
+        if (intent == null) return;
+        boolean wake = intent.getBooleanExtra("assistant_wake", false);
+        String command = intent.getStringExtra("assistant_command");
+        if (command != null && !command.trim().isEmpty()) {
+            queuedVoiceCommand = command;
+            showChat();
+            handler.postDelayed(() -> {
+                if (queuedVoiceCommand != null) {
+                    String q = queuedVoiceCommand;
+                    queuedVoiceCommand = null;
+                    askAssistant(q, true);
+                }
+            }, 450);
+        } else if (wake) {
+            showChat();
+            handler.postDelayed(() -> { speak("Oi. Pode falar."); startListening(); }, 350);
         }
-
-        if (isConfirmation(command)) {
-            if (pendingDangerousCommand != null) {
-                String approved = pendingDangerousCommand;
-                pendingDangerousCommand = null;
-                speak("Certo. Vou executar.");
-                executeSafeCommand(approved, approved);
-            } else speak("Não há nenhuma ação aguardando confirmação.");
-            return;
-        }
-
-        if (command.equals("cancelar") || command.equals("cancela") || command.equals("nao")) {
-            pendingDangerousCommand = null;
-            speak("Tudo bem. Cancelei.");
-            return;
-        }
-
-        if (isDangerous(command)) {
-            pendingDangerousCommand = command;
-            status.setText("Ação sensível aguardando confirmação");
-            speak("Essa ação pode apagar dados. Diga confirmar para continuar.");
-            memory.logCommand(original, command, "aguardando confirmação", false);
-            return;
-        }
-
-        if (command.startsWith("lembre que ")) {
-            rememberFact(command.substring("lembre que ".length()).trim(), original);
-            return;
-        }
-
-        if (command.startsWith("o que voce lembra sobre ")) {
-            String key = command.substring("o que voce lembra sobre ".length()).trim();
-            String value = memory.recallFact(key);
-            if (value == null) speak("Ainda não tenho nada salvo sobre " + key + ".");
-            else speak("Eu lembro que " + key + " é " + value + ".");
-            return;
-        }
-
-        executeSafeCommand(command, original);
-    }
-
-    private void rememberFact(String phrase, String original) {
-        String[] separators = {" e ", " eh ", " = "};
-        for (String sep : separators) {
-            int i = phrase.indexOf(sep);
-            if (i > 0 && i < phrase.length() - sep.length()) {
-                String key = phrase.substring(0, i).trim();
-                String value = phrase.substring(i + sep.length()).trim();
-                memory.rememberFact(key, value);
-                memory.logCommand(original, normalize(original), "memória: " + key, true);
-                updateAssistantState();
-                speak("Certo. Vou lembrar disso.");
-                return;
-            }
-        }
-        speak("Diga, por exemplo: lembre que meu conjunto principal é Volvo Klebersom.");
-    }
-
-    private boolean isConfirmation(String c) {
-        return c.equals("confirmar") || c.equals("confirmo") || c.equals("pode confirmar") || c.equals("sim confirmar");
-    }
-
-    private boolean isDangerous(String c) {
-        return c.contains("apagar") || c.contains("excluir") || c.contains("deletar") ||
-                c.contains("remover tudo") || c.contains("limpar tudo");
-    }
-
-    private void executeSafeCommand(String command, String original) {
-        if (command.equals("voltar") || command.equals("volte")) {
-            if (webView.canGoBack()) webView.goBack(); else webView.evaluateJavascript("history.back()", null);
-            memory.logCommand(original, command, "voltar", true);
-            speak("Certo.");
-            return;
-        }
-        if (command.contains("atualizar") || command.contains("recarregar")) {
-            webView.reload();
-            memory.logCommand(original, command, "atualizar", true);
-            speak("Atualizando.");
-            return;
-        }
-        if (command.equals("inicio") || command.equals("home") || command.contains("pagina inicial")) {
-            webView.loadUrl(HOME_URL);
-            memory.logCommand(original, command, "início", true);
-            speak("Voltando para o início.");
-            return;
-        }
-        if (command.contains("rolar para baixo") || command.equals("descer")) {
-            webView.evaluateJavascript("window.scrollBy({top:Math.max(window.innerHeight*0.75,500),behavior:'smooth'});", null);
-            memory.logCommand(original, command, "rolar para baixo", true);
-            return;
-        }
-        if (command.contains("rolar para cima") || command.equals("subir")) {
-            webView.evaluateJavascript("window.scrollBy({top:-Math.max(window.innerHeight*0.75,500),behavior:'smooth'});", null);
-            memory.logCommand(original, command, "rolar para cima", true);
-            return;
-        }
-        if (command.equals("mostrar memoria") || command.equals("abrir memoria") || command.equals("memoria")) {
-            showMemory();
-            return;
-        }
-
-        if (command.startsWith("digitar ")) {
-            currentUtterance = original;
-            currentCommandKey = "digitar:" + command.substring(8).trim();
-            setActiveField(command.substring(8).trim());
-            return;
-        }
-
-        if ((command.startsWith("preencher ") || command.startsWith("preencha ")) && command.contains(" com ")) {
-            String tmp = command.replaceFirst("^preencher ", "").replaceFirst("^preencha ", "");
-            int idx = tmp.indexOf(" com ");
-            if (idx > 0) {
-                currentUtterance = original;
-                currentCommandKey = "preencher:" + tmp.substring(0, idx).trim();
-                fillField(tmp.substring(0, idx).trim(), tmp.substring(idx + 5).trim());
-                return;
-            }
-        }
-
-        if (command.startsWith("selecionar ") || command.startsWith("selecione ")) {
-            currentUtterance = original;
-            currentCommandKey = "selecionar:" + command.replaceFirst("^selecionar ", "").replaceFirst("^selecione ", "").trim();
-            selectOption(command.replaceFirst("^selecionar ", "").replaceFirst("^selecione ", "").trim());
-            return;
-        }
-
-        currentUtterance = original;
-        currentCommandKey = canonicalCommand(command);
-        currentTarget = extractTarget(command);
-        AssistantMemory.LearnedAction learned = memory.findAction(currentCommandKey, pageKey());
-        if (learned != null) clickLearned(learned);
-        else semanticClick(currentTarget);
-    }
-
-    private String canonicalCommand(String command) {
-        return "abrir:" + canonicalTarget(extractTarget(command));
-    }
-
-    private String extractTarget(String command) {
-        String t = command;
-        String[] prefixes = {"clicar em ", "clique em ", "abrir ", "abra ", "ir para ", "entrar em ", "mostrar ", "mostre "};
-        for (String p : prefixes) if (t.startsWith(p)) return t.substring(p.length()).trim();
-        return t.trim();
-    }
-
-    private String canonicalTarget(String t) {
-        t = normalize(t);
-        if (t.equals("viagem")) return "viagens";
-        if (t.equals("relatorio")) return "relatorios";
-        if (t.equals("abastecimento") || t.equals("combustivel")) return "abastecimentos";
-        if (t.equals("motorista")) return "motoristas";
-        if (t.equals("carreta") || t.equals("conjunto de carreta")) return "conjuntos";
-        if (t.equals("gerencia")) return "painel da gerencia";
-        return t;
-    }
-
-    private String[] aliases(String target) {
-        String t = canonicalTarget(target);
-        if (t.equals("viagens")) return new String[]{"viagens", "registrar viagens", "lancar viagens"};
-        if (t.equals("relatorios")) return new String[]{"relatorios", "relatorio"};
-        if (t.equals("abastecimentos")) return new String[]{"abastecimentos", "abastecimento", "combustivel"};
-        if (t.equals("motoristas")) return new String[]{"motoristas", "cadastro de motoristas"};
-        if (t.equals("conjuntos")) return new String[]{"conjuntos", "carretas", "cadastro de carretas"};
-        if (t.equals("painel da gerencia")) return new String[]{"painel da gerencia", "gerenciamento", "gerencia"};
-        return new String[]{t};
-    }
-
-    private void clickLearned(AssistantMemory.LearnedAction learned) {
-        String selector = js(learned.selector);
-        String script = "(function(){const e=document.querySelector('" + selector + "');" +
-                "if(!e){TransVoice.actionResult('learned_miss','','','');return;}" +
-                "e.__salomaoVoiceClick=Date.now();e.scrollIntoView({block:'center',behavior:'smooth'});setTimeout(()=>e.click(),140);" +
-                "TransVoice.actionResult('ok','" + js(currentCommandKey) + "','" + selector + "','" + js(learned.label) + "');})();";
-        webView.evaluateJavascript(script, null);
-    }
-
-    private void semanticClick(String target) {
-        String[] as = aliases(target);
-        StringBuilder arr = new StringBuilder("[");
-        for (int i = 0; i < as.length; i++) {
-            if (i > 0) arr.append(",");
-            arr.append("'").append(js(as[i])).append("'");
-        }
-        arr.append("]");
-        String script = "(function(){" +
-                "const n=s=>(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim().replace(/\\s+/g,' ');" +
-                "const qs=" + arr + ".map(n);" +
-                "const label=e=>n(e.innerText||e.value||e.getAttribute('aria-label')||e.title||'');" +
-                "const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&!e.disabled};" +
-                "const sel=e=>{if(e.id)return '#'+CSS.escape(e.id);let p=[],x=e;while(x&&x.nodeType===1&&x!==document.body&&p.length<5){let z=x.tagName.toLowerCase(),i=1,s=x;while((s=s.previousElementSibling)){if(s.tagName===x.tagName)i++;}p.unshift(z+':nth-of-type('+i+')');x=x.parentElement;}return p.join('>');};" +
-                "let all=[...document.querySelectorAll('button,a,[role=button],[role=tab],input[type=button],input[type=submit],[onclick]')].filter(vis);" +
-                "let exact=all.filter(e=>qs.includes(label(e)));" +
-                "let candidates=exact.length?exact:all.filter(e=>qs.some(q=>label(e).startsWith(q)||label(e).includes(q)));" +
-                "candidates=[...new Set(candidates)];" +
-                "if(candidates.length===1){const e=candidates[0],l=(e.innerText||e.value||e.getAttribute('aria-label')||e.title||'').trim().replace(/\\s+/g,' ');const s=sel(e);e.__salomaoVoiceClick=Date.now();e.scrollIntoView({block:'center',behavior:'smooth'});setTimeout(()=>e.click(),140);TransVoice.actionResult('ok','" + js(currentCommandKey) + "',s,l);return;}" +
-                "if(candidates.length>1){const names=candidates.slice(0,4).map(e=>(e.innerText||e.value||e.getAttribute('aria-label')||e.title||'').trim()).join(' | ');TransVoice.actionResult('ambiguous','" + js(currentCommandKey) + "','',names);return;}" +
-                "TransVoice.actionResult('miss','" + js(currentCommandKey) + "','','" + js(target) + "');})();";
-        webView.evaluateJavascript(script, null);
-    }
-
-    private void setActiveField(String value) {
-        String v = js(value);
-        webView.evaluateJavascript("(function(){const e=document.activeElement;if(e&&(e.tagName==='INPUT'||e.tagName==='TEXTAREA')){" +
-                "e.value='" + v + "';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));TransVoice.simpleResult('ok','Texto preenchido');" +
-                "}else TransVoice.simpleResult('miss','Toque primeiro no campo que quer preencher');})();", null);
-    }
-
-    private void fillField(String field, String value) {
-        String f = js(canonicalTarget(field)), v = js(value);
-        String script = "(function(){const n=s=>(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();" +
-                "const q=n('" + f + "'),all=[...document.querySelectorAll('input,textarea')];" +
-                "let e=all.find(x=>[x.name,x.id,x.placeholder,x.getAttribute('aria-label')].some(y=>n(y)===q));" +
-                "if(!e){for(const l of document.querySelectorAll('label')){if(n(l.innerText)===q||n(l.innerText).includes(q)){e=l.htmlFor?document.getElementById(l.htmlFor):l.querySelector('input,textarea');if(e)break;}}}" +
-                "if(e){e.focus();e.value='" + v + "';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));TransVoice.simpleResult('ok','Campo preenchido');}" +
-                "else TransVoice.simpleResult('miss','Não achei esse campo');})();";
-        webView.evaluateJavascript(script, null);
-    }
-
-    private void selectOption(String target) {
-        String t = js(canonicalTarget(target));
-        String script = "(function(){const n=s=>(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();const q=n('" + t + "');" +
-                "let hits=[];for(const s of document.querySelectorAll('select'))for(const o of s.options){if(n(o.textContent)===q)hits.push([s,o]);}" +
-                "if(hits.length===1){const s=hits[0][0],o=hits[0][1];s.value=o.value;s.dispatchEvent(new Event('change',{bubbles:true}));TransVoice.simpleResult('ok','Opção selecionada');}" +
-                "else TransVoice.simpleResult(hits.length>1?'ambiguous':'miss',hits.length>1?'Encontrei mais de uma opção com esse nome':'Não achei essa opção');})();";
-        webView.evaluateJavascript(script, null);
-    }
-
-    private String pageKey() {
-        String url = webView == null ? null : webView.getUrl();
-        if (url == null) return "/";
-        int q = url.indexOf('?'); if (q >= 0) url = url.substring(0, q);
-        int h = url.indexOf('#'); if (h >= 0) url = url.substring(0, h);
-        return url;
+        intent.removeExtra("assistant_wake");
+        intent.removeExtra("assistant_command");
     }
 
     private void openAssistantSetup() {
@@ -591,101 +588,52 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             return;
         }
         if (isAssistantActive()) {
-            speak("O modo vinte e quatro horas já está ativo. É só dizer Salomão.");
+            Toast.makeText(this, "Salomão IA já está configurado como assistente.", Toast.LENGTH_SHORT).show();
             return;
         }
-
         new AlertDialog.Builder(this)
                 .setTitle("Ativar Salomão 24/7")
-                .setMessage("Na próxima tela, escolha “Salomão IA” ou “Trans Salomão” como assistente de voz padrão. Depois disso o Android mantém o serviço do assistente disponível para a chamada “Salomão”.")
-                .setNegativeButton("Agora não", null)
+                .setMessage("Escolha Salomão IA como assistente de voz padrão do Android. Depois, a chamada “Salomão” fica disponível pelo serviço de assistente do sistema.")
+                .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Abrir configurações", (d, w) -> {
                     try { startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)); }
                     catch (ActivityNotFoundException e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
-                })
-                .show();
+                }).show();
     }
 
     private boolean isAssistantActive() {
-        try {
-            return VoiceInteractionService.isActiveService(this, new ComponentName(this, SalomaoVoiceService.class));
-        } catch (Exception e) {
-            return false;
-        }
+        try { return VoiceInteractionService.isActiveService(this, new ComponentName(this, SalomaoVoiceService.class)); }
+        catch (Exception e) { return false; }
     }
 
     private void updateAssistantState() {
-        boolean active = isAssistantActive();
-        if (assistantButton != null) assistantButton.setText(active ? "24/7 ATIVO" : "ATIVAR 24/7");
-        if (info != null) {
-            info.setText("Chamada: “Salomão” • 24/7: " + (active ? "ATIVO" : "CONFIGURAR") +
-                    " • Aprendeu " + memory.learnedCount() + " ações • " + memory.historyCount() + " comandos gravados");
-        }
-    }
-
-    private void showMemory() {
-        String body = "Ações aprendidas: " + memory.learnedCount() +
-                "\nComandos gravados: " + memory.historyCount() +
-                "\nFatos lembrados: " + memory.factsCount() +
-                "\n\nÚltimos comandos:\n" + memory.recentSummary(12);
-        new AlertDialog.Builder(this)
-                .setTitle("Memória do Salomão")
-                .setMessage(body)
-                .setPositiveButton("Fechar", null)
-                .show();
-    }
-
-    private String normalize(String s) {
-        if (s == null) return "";
-        return Normalizer.normalize(s, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .toLowerCase(new Locale("pt", "BR"))
-                .trim()
-                .replaceAll("\\s+", " ");
-    }
-
-    private String js(String value) {
-        if (value == null) return "";
-        return value.replace("\\", "\\\\")
-                .replace("'", "\\'")
-                .replace("\n", " ")
-                .replace("\r", " ");
+        if (assistantButton != null) assistantButton.setText(isAssistantActive() ? "🎙 24/7 ✓" : "🎙 24/7");
     }
 
     private void speak(String text) {
-        status.setText("Salomão: " + text);
-        if (tts != null && speechReady) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "salomao");
-    }
-
-    private void speakDone(String label) {
-        String clean = label == null || label.trim().isEmpty() ? currentTarget : label.trim();
-        int pick = Math.abs((currentCommandKey == null ? clean : currentCommandKey).hashCode()) % 4;
-        if (pick == 0) speak("Pronto. Abri " + clean + ".");
-        else if (pick == 1) speak("Certo. Já estou em " + clean + ".");
-        else if (pick == 2) speak("Feito. " + clean + " está aberto.");
-        else speak("Ok. Indo para " + clean + ".");
+        if (text == null || text.trim().isEmpty()) return;
+        String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v3");
     }
 
     @Override
-    public void onInit(int statusCode) {
-        if (statusCode != TextToSpeech.SUCCESS) return;
+    public void onInit(int code) {
+        if (code != TextToSpeech.SUCCESS) return;
         Locale ptBR = new Locale("pt", "BR");
         tts.setLanguage(ptBR);
-        tts.setSpeechRate(1.03f);
-        tts.setPitch(1.02f);
+        tts.setSpeechRate(1.04f);
+        tts.setPitch(1.01f);
         try {
             Voice best = null;
             Set<Voice> voices = tts.getVoices();
-            if (voices != null) {
-                for (Voice v : voices) {
-                    if (!"pt".equals(v.getLocale().getLanguage())) continue;
-                    if (best == null) best = v;
-                    boolean br = "BR".equalsIgnoreCase(v.getLocale().getCountry());
-                    boolean bestBr = "BR".equalsIgnoreCase(best.getLocale().getCountry());
-                    if (br && !bestBr) best = v;
-                    else if (br == bestBr && !v.isNetworkConnectionRequired() && best.isNetworkConnectionRequired()) best = v;
-                    else if (br == bestBr && v.getQuality() > best.getQuality()) best = v;
-                }
+            if (voices != null) for (Voice v : voices) {
+                if (!"pt".equals(v.getLocale().getLanguage())) continue;
+                if (best == null) best = v;
+                boolean br = "BR".equalsIgnoreCase(v.getLocale().getCountry());
+                boolean bestBr = best != null && "BR".equalsIgnoreCase(best.getLocale().getCountry());
+                if (br && !bestBr) best = v;
+                else if (br == bestBr && !v.isNetworkConnectionRequired() && best.isNetworkConnectionRequired()) best = v;
+                else if (br == bestBr && v.getQuality() > best.getQuality()) best = v;
             }
             if (best != null) tts.setVoice(best);
         } catch (Exception ignored) {}
@@ -695,23 +643,23 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == AUDIO_PERMISSION_REQUEST) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                speak("Microfone liberado.");
-                updateAssistantState();
-            } else status.setText("O microfone é necessário para chamar o Salomão.");
+        if (requestCode == AUDIO_PERMISSION_REQUEST && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            status.setText("Microfone liberado");
         }
     }
 
     @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
+        if (showingSite) {
+            if (webView.canGoBack()) webView.goBack();
+            else showChat();
+        } else super.onBackPressed();
     }
 
     @Override
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        network.shutdownNow();
         if (speechRecognizer != null) speechRecognizer.destroy();
         if (tts != null) { tts.stop(); tts.shutdown(); }
         if (webView != null) webView.destroy();
@@ -719,64 +667,18 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         super.onDestroy();
     }
 
-    public class VoiceBridge {
-        @JavascriptInterface
-        public void actionResult(String type, String commandKey, String selector, String label) {
-            runOnUiThread(() -> {
-                if ("learned_miss".equals(type)) {
-                    semanticClick(currentTarget == null ? "" : currentTarget);
-                    return;
-                }
-                if ("ok".equals(type)) {
-                    String key = commandKey == null || commandKey.isEmpty() ? currentCommandKey : commandKey;
-                    memory.learnAction(key, pageKey(), selector, label);
-                    memory.logCommand(currentUtterance == null ? key : currentUtterance, key, label, true);
-                    lastFailedCommandKey = null;
-                    updateAssistantState();
-                    speakDone(label);
-                    return;
-                }
+    private String safeError(Exception e) {
+        String m = e.getMessage();
+        return m == null || m.trim().isEmpty() ? "Verifique a internet e tente novamente." : m;
+    }
 
-                String key = commandKey == null || commandKey.isEmpty() ? currentCommandKey : commandKey;
-                memory.logCommand(currentUtterance == null ? key : currentUtterance, key, type + ": " + label, false);
-                lastFailedCommandKey = key;
-                lastFailedUtterance = currentUtterance;
-                lastFailedAt = System.currentTimeMillis();
-                if ("ambiguous".equals(type)) {
-                    status.setText("Encontrei mais de um alvo: " + label);
-                    speak("Encontrei mais de um lugar parecido e não vou clicar no errado. Toque uma vez no botão correto e eu vou aprender.");
-                } else {
-                    status.setText("Não encontrei um alvo seguro para: " + currentTarget);
-                    speak("Não achei um alvo seguro. Toque uma vez no lugar correto e eu vou aprender para a próxima.");
-                }
-                updateAssistantState();
-            });
-        }
-
-        @JavascriptInterface
-        public void manualClick(String selector, String label, String path) {
-            runOnUiThread(() -> {
-                if (lastFailedCommandKey == null || System.currentTimeMillis() - lastFailedAt > 45000) return;
-                memory.learnAction(lastFailedCommandKey, pageKey(), selector, label);
-                memory.logCommand(lastFailedUtterance == null ? lastFailedCommandKey : lastFailedUtterance,
-                        lastFailedCommandKey, "aprendido manualmente: " + label, true);
-                lastFailedCommandKey = null;
-                lastFailedUtterance = null;
-                updateAssistantState();
-                speak("Aprendi. Da próxima vez eu vou direto nesse lugar.");
-            });
-        }
-
-        @JavascriptInterface
-        public void simpleResult(String type, String message) {
-            runOnUiThread(() -> {
-                boolean ok = "ok".equals(type);
-                memory.logCommand(currentUtterance == null ? currentCommandKey : currentUtterance,
-                        currentCommandKey == null ? "" : currentCommandKey, message, ok);
-                updateAssistantState();
-                if (ok) speak(message + ".");
-                else speak(message + ".");
-            });
+    private static class AssistantResponse {
+        final boolean ok;
+        final String mode;
+        final String answer;
+        final boolean loginRequired;
+        AssistantResponse(boolean ok, String mode, String answer, boolean loginRequired) {
+            this.ok = ok; this.mode = mode; this.answer = answer; this.loginRequired = loginRequired;
         }
     }
 }
