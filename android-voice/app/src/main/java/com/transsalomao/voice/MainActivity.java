@@ -237,7 +237,6 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                 "function vis(e){const r=e.getBoundingClientRect();return r.width>0&&r.height>0;}" +
                 "function label(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||e.title||'')+'').trim().replace(/\\s+/g,' ').slice(0,180);}" +
                 "function sel(e){if(e.id)return '#'+CSS.escape(e.id);" +
-                "for(const a of ['data-testid','data-test','name','aria-label']){const v=e.getAttribute&&e.getAttribute(a);if(v)return e.tagName.toLowerCase()+'['+a+'=\\"'+CSS.escape(v)+'\\"]';}" +
                 "let p=[],n=e;while(n&&n.nodeType===1&&n!==document.body&&p.length<5){let x=n.tagName.toLowerCase();let i=1,s=n;while((s=s.previousElementSibling)){if(s.tagName===n.tagName)i++;}x+=':nth-of-type('+i+')';p.unshift(x);n=n.parentElement;}return p.join('>');}" +
                 "document.addEventListener('click',function(ev){let e=ev.target&&ev.target.closest?ev.target.closest('button,a,[role=button],[role=tab],input[type=button],input[type=submit],[onclick]'):null;" +
                 "if(!e||!vis(e))return;if(e.__salomaoVoiceClick&&Date.now()-e.__salomaoVoiceClick<1800)return;" +
@@ -540,7 +539,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                 "const qs=" + arr + ".map(n);" +
                 "const label=e=>n(e.innerText||e.value||e.getAttribute('aria-label')||e.title||'');" +
                 "const vis=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&!e.disabled};" +
-                "const sel=e=>{if(e.id)return '#'+CSS.escape(e.id);for(const a of ['data-testid','data-test','name','aria-label']){const v=e.getAttribute&&e.getAttribute(a);if(v)return e.tagName.toLowerCase()+'['+a+'=\\"'+CSS.escape(v)+'\\"]';}let p=[],x=e;while(x&&x.nodeType===1&&x!==document.body&&p.length<5){let z=x.tagName.toLowerCase(),i=1,s=x;while((s=s.previousElementSibling)){if(s.tagName===x.tagName)i++;}p.unshift(z+':nth-of-type('+i+')');x=x.parentElement;}return p.join('>');};" +
+                "const sel=e=>{if(e.id)return '#'+CSS.escape(e.id);let p=[],x=e;while(x&&x.nodeType===1&&x!==document.body&&p.length<5){let z=x.tagName.toLowerCase(),i=1,s=x;while((s=s.previousElementSibling)){if(s.tagName===x.tagName)i++;}p.unshift(z+':nth-of-type('+i+')');x=x.parentElement;}return p.join('>');};" +
                 "let all=[...document.querySelectorAll('button,a,[role=button],[role=tab],input[type=button],input[type=submit],[onclick]')].filter(vis);" +
                 "let exact=all.filter(e=>qs.includes(label(e)));" +
                 "let candidates=exact.length?exact:all.filter(e=>qs.some(q=>label(e).startsWith(q)||label(e).includes(q)));" +
