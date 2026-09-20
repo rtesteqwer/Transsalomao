@@ -11,6 +11,7 @@ const copies = [
   ['assistant-v4/api-assistant-auth.ts', 'src/routes/api/assistant/auth.ts'],
   ['assistant-v4/api-assistant.ts', 'src/routes/api/assistant.ts'],
   ['assistant-v4/0012_management_users_assistant_sessions.sql', 'migrations/0012_management_users_assistant_sessions.sql'],
+  ['assistant-v4/0013_assistant_secrets.sql', 'migrations/0013_assistant_secrets.sql'],
 ];
 for (const [srcRel, dstRel] of copies) {
   const src = path.join(repo, srcRel);
