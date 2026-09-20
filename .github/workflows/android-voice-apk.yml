@@ -7,6 +7,12 @@ on:
     paths:
       - 'android-voice/**'
       - '.github/workflows/android-voice-apk.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'android-voice/**'
+      - '.github/workflows/android-voice-apk.yml'
   workflow_dispatch:
 
 permissions:
