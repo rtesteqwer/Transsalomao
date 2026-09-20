@@ -77,6 +77,13 @@ if (!original.includes("apply-assistant-data-agent-v3.mjs")) {
   original = original.replace(dailyMarker, `const assistantDataAgentV3 = path.join(repo, 'render-overrides', 'apply-assistant-data-agent-v3.mjs');\nif (!fs.existsSync(assistantDataAgentV3)) throw new Error('Missing assistant data agent v3 patch');\nexecFileSync(process.execPath, [assistantDataAgentV3, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+
+// Salomão IA v4: autenticação independente, roteamento de intenção e ações do sistema.
+if (!original.includes("apply-salomao-v4-actions.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do Salomão v4 não encontrado');
+  original = original.replace(dailyMarker, `const salomaoV4 = path.join(repo, 'render-overrides', 'apply-salomao-v4-actions.mjs');\nif (!fs.existsSync(salomaoV4)) throw new Error('Missing Salomao v4 patch');\nexecFileSync(process.execPath, [salomaoV4, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
