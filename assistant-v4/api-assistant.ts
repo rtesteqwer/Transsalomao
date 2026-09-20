@@ -14,7 +14,7 @@ export const Route = createFileRoute("/api/assistant")({
           authenticated: true,
           username: auth.username,
           via: auth.via,
-          aiConfigured: !!process.env.OPENAI_API_KEY?.trim(),
+          aiConfigured: !!(await loadOpenAIKey()),
           model: modelName(),
           capabilities: ["consultar", "criar", "editar", "lançar", "aprovar", "configurar acesso"],
         });
@@ -41,7 +41,7 @@ export const Route = createFileRoute("/api/assistant")({
         const deterministic = await highPriorityAction(message, history, auth.username);
         if (deterministic) return out({ ok: true, mode: "action-router", ...deterministic });
 
-        const apiKey = process.env.OPENAI_API_KEY?.trim();
+        const apiKey = await loadOpenAIKey();
         if (apiKey) {
           try {
             return out({ ok: true, mode: "gpt", answer: await gptAnswer(message, history, apiKey, auth.username) });
@@ -65,6 +65,24 @@ function out(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }
 function modelName() { return process.env.OPENAI_ASSISTANT_MODEL?.trim() || "gpt-5.6-sol"; }
+async function loadOpenAIKey() {
+  const env = process.env.OPENAI_API_KEY?.trim();
+  if (env) return env;
+  try {
+    const sql = await getSql();
+    const rows = await sql<{ secret_value: string }>`
+      select secret_value
+      from assistant_secrets
+      where name = 'openai_api_key'
+      limit 1
+    `;
+    const key = rows[0]?.secret_value?.trim();
+    return key || undefined;
+  } catch (error) {
+    console.error("[salomao-ai-v4] secret lookup failed");
+    return undefined;
+  }
+}
 function n(v: unknown) { const x = Number(v ?? 0); return Number.isFinite(x) ? x : 0; }
 function norm(v: unknown) { return String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim(); }
 function brl(v: number) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v); }
