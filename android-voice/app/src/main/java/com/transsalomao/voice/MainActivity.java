@@ -193,9 +193,11 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         assistantButton = smallButton("🎙 24/7");
         assistantButton.setOnClickListener(v -> openAssistantSetup());
         assistantButton.setOnLongClickListener(v -> {
-            WakeListenerService.stop(this);
-            updateAssistantState();
-            Toast.makeText(this, "Escuta em segundo plano desativada.", Toast.LENGTH_SHORT).show();
+            if (WakeListenerService.isEnabled(this)) {
+                WakeListenerService.stop(this);
+                handler.postDelayed(this::updateAssistantState, 250);
+                Toast.makeText(this, "24/7 desativado.", Toast.LENGTH_SHORT).show();
+            }
             return true;
         });
         tabs.addView(assistantButton, tabParams());
@@ -287,7 +289,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.0");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.1");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -748,10 +750,16 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             @Override public void onRmsChanged(float rmsdB) {}
             @Override public void onBufferReceived(byte[] buffer) {}
             @Override public void onEndOfSpeech() { status.setText("Entendendo…"); }
-            @Override public void onError(int error) { listening = false; micButton.setText("🎤"); if (!asking) status.setText("Não entendi. Tente de novo."); }
+            @Override public void onError(int error) {
+                listening = false;
+                micButton.setText("🎤");
+                WakeListenerService.resumeAfterManualVoice(MainActivity.this);
+                if (!asking) status.setText("Não entendi. Tente de novo.");
+            }
             @Override public void onResults(Bundle results) {
                 listening = false;
                 micButton.setText("🎤");
+                handler.postDelayed(() -> WakeListenerService.resumeAfterManualVoice(MainActivity.this), 1800);
                 ArrayList<String> texts = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                 if (texts != null && !texts.isEmpty()) {
                     showChat();
@@ -771,7 +779,10 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             try { speechRecognizer.stopListening(); } catch (Exception ignored) {}
             listening = false;
             micButton.setText("🎤");
-        } else startListening();
+            WakeListenerService.resumeAfterManualVoice(this);
+        } else {
+            startListening();
+        }
     }
 
     private void startListening() {
@@ -780,8 +791,20 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, AUDIO_PERMISSION_REQUEST);
             return;
         }
-        try { speechRecognizer.startListening(recognizerIntent); }
-        catch (Exception e) { status.setText("Não consegui iniciar o microfone."); }
+
+        // O 24/7 e o botão manual não podem segurar o microfone ao mesmo tempo.
+        WakeListenerService.pauseForManualVoice(this);
+        status.setText("Preparando microfone…");
+
+        handler.postDelayed(() -> {
+            if (speechRecognizer == null || listening) return;
+            try {
+                speechRecognizer.startListening(recognizerIntent);
+            } catch (Exception e) {
+                WakeListenerService.resumeAfterManualVoice(this);
+                status.setText("Não consegui iniciar o microfone.");
+            }
+        }, WakeListenerService.isEnabled(this) ? 650 : 50);
     }
 
     private void handleAssistantIntent(Intent intent) {
@@ -807,6 +830,15 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     }
 
     private void openAssistantSetup() {
+        // Um toque no mesmo botão desliga o modo 24/7.
+        if (WakeListenerService.isEnabled(this)) {
+            WakeListenerService.stop(this);
+            handler.postDelayed(this::updateAssistantState, 300);
+            status.setText("24/7 desativado");
+            Toast.makeText(this, "Escuta em segundo plano desativada.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             WakeListenerService.setEnabled(this, true);
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, AUDIO_PERMISSION_REQUEST);
@@ -818,21 +850,21 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
         }
 
-        WakeListenerService.setEnabled(this, true);
-
         if (isAssistantActive()) {
             WakeListenerService.start(this);
-            updateAssistantState();
+            handler.postDelayed(this::updateAssistantState, 250);
+            status.setText("24/7 ativo");
             Toast.makeText(this,
-                    "Salomão 24/7 ativado. Pode sair do app e chamar “Salomão”.",
+                    "Salomão 24/7 ativado. Toque novamente em 24/7 para desligar.",
                     Toast.LENGTH_LONG).show();
             return;
         }
 
+        WakeListenerService.setEnabled(this, true);
         new AlertDialog.Builder(this)
                 .setTitle("Ativar Salomão 24/7")
-                .setMessage("Para o Android permitir que eu fique disponível em segundo plano, escolha Salomão IA como assistente digital padrão. Depois volte ao app e toque novamente em 24/7. A escuta ativa fica indicada por uma notificação permanente.")
-                .setNegativeButton("Cancelar", null)
+                .setMessage("Escolha Salomão IA como assistente digital padrão. Depois volte ao app e toque em 24/7. Para desligar, basta tocar no mesmo botão novamente.")
+                .setNegativeButton("Cancelar", (d, w) -> WakeListenerService.setEnabled(this, false))
                 .setPositiveButton("Abrir configurações", (d, w) -> {
                     try { startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)); }
                     catch (ActivityNotFoundException e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
@@ -867,7 +899,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v5");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v51");
     }
 
     @Override
