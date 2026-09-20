@@ -20,6 +20,7 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -53,17 +54,23 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MainActivity extends Activity implements TextToSpeech.OnInitListener {
     private static final int AUDIO_PERMISSION_REQUEST = 1001;
     private static final String HOME_URL = "https://transsalomao.vercel.app/";
     private static final String ASSISTANT_URL = HOME_URL + "api/assistant";
+    private static final String AUTH_URL = HOME_URL + "api/assistant/auth";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private final ArrayList<AssistantMemory.ChatMessage> chatHistory = new ArrayList<>();
 
     private AssistantMemory memory;
+    private SecureTokenStore tokenStore;
+    private String assistantToken;
+
     private WebView webView;
     private ScrollView chatScroll;
     private LinearLayout chatMessages;
@@ -74,6 +81,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private Button chatButton;
     private Button siteButton;
     private Button assistantButton;
+    private Button accessButton;
 
     private SpeechRecognizer speechRecognizer;
     private Intent recognizerIntent;
@@ -83,13 +91,17 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private boolean asking;
     private boolean showingSite;
     private boolean siteLoaded;
+    private boolean accessChecking;
     private String queuedVoiceCommand;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         memory = new AssistantMemory(this);
+        tokenStore = new SecureTokenStore(this);
+        assistantToken = tokenStore.load();
         tts = new TextToSpeech(this, this);
+
         buildUi();
         configureWebView();
         configureSpeech();
@@ -102,6 +114,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         webView.loadUrl(HOME_URL);
         handleAssistantIntent(getIntent());
         updateAssistantState();
+        ensureIndependentAccess(false);
     }
 
     @Override
@@ -115,6 +128,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     protected void onResume() {
         super.onResume();
         updateAssistantState();
+        ensureIndependentAccess(false);
         if (!showingSite) checkServerState();
     }
 
@@ -137,7 +151,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         header.addView(title);
 
         modeInfo = new TextView(this);
-        modeInfo.setText("Agente de dados • Trans Salomão");
+        modeInfo.setText("Agente operacional • Trans Salomão");
         modeInfo.setTextColor(0xFFAAAAAA);
         modeInfo.setTextSize(11);
         modeInfo.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -153,10 +167,10 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabs.setPadding(dp(6), dp(4), dp(6), dp(4));
+        tabs.setPadding(dp(5), dp(4), dp(5), dp(4));
         tabs.setBackgroundColor(0xFF111214);
 
-        chatButton = smallButton("💬 Chat IA");
+        chatButton = smallButton("💬 Chat");
         chatButton.setOnClickListener(v -> showChat());
         tabs.addView(chatButton, tabParams());
 
@@ -164,9 +178,18 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         siteButton.setOnClickListener(v -> showSite());
         tabs.addView(siteButton, tabParams());
 
+        accessButton = smallButton("🔐 Acesso");
+        accessButton.setOnClickListener(v -> ensureIndependentAccess(true));
+        accessButton.setOnLongClickListener(v -> {
+            revokeIndependentAccess();
+            return true;
+        });
+        tabs.addView(accessButton, tabParams());
+
         assistantButton = smallButton("🎙 24/7");
         assistantButton.setOnClickListener(v -> openAssistantSetup());
         tabs.addView(assistantButton, tabParams());
+
         root.addView(tabs, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)));
 
         FrameLayout content = new FrameLayout(this);
@@ -192,7 +215,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         composer.setBackgroundColor(0xFF111214);
 
         input = new EditText(this);
-        input.setHint("Pergunte sobre motorista, viagens, faturamento…");
+        input.setHint("Peça dados ou mande executar uma função…");
         input.setHintTextColor(0xFF777777);
         input.setTextColor(Color.WHITE);
         input.setTextSize(14);
@@ -223,7 +246,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         Button b = new Button(this);
         b.setText(text);
         b.setAllCaps(false);
-        b.setTextSize(12);
+        b.setTextSize(11);
         b.setTextColor(Color.WHITE);
         b.setBackground(roundRect(0xFF25272A, dp(12)));
         return b;
@@ -254,7 +277,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/3.0");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/4.0");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -271,14 +294,14 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             public void onPageFinished(WebView view, String url) {
                 siteLoaded = true;
                 CookieManager.getInstance().flush();
-                if (showingSite) status.setText("Site conectado. Entre na Gerência para liberar os dados do chat.");
-                checkServerState();
+                ensureIndependentAccess(false);
+                if (showingSite) status.setText("Site conectado • o acesso do assistente é separado e seguro");
             }
         });
     }
 
     private void restoreChat() {
-        List<AssistantMemory.ChatMessage> saved = memory.recentChat(30);
+        List<AssistantMemory.ChatMessage> saved = memory.recentChat(35);
         chatHistory.clear();
         chatHistory.addAll(saved);
         if (saved.isEmpty()) addAssistantWelcome();
@@ -286,8 +309,9 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     }
 
     private void addAssistantWelcome() {
-        String welcome = "Olá. Eu sou o Salomão IA. Posso consultar diretamente os dados do Trans Salomão. Pergunte, por exemplo: “dados do Klebersom”, “quanto ele faturou?”, “abastecimentos dele”, “viagens de hoje” ou “faturamento por motorista”.";
-        addBubble("assistant", welcome, false);
+        addBubble("assistant",
+                "Olá. Agora eu separo consulta de ação. Posso buscar dados reais e também executar funções autorizadas do Trans Salomão, como criar login, cadastrar motorista, conjunto, viagem, abastecimento e despesa. Para apagar dados, eu exijo confirmação explícita.",
+                false);
     }
 
     private void sendTyped() {
@@ -302,6 +326,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             Toast.makeText(this, "Ainda estou respondendo a pergunta anterior.", Toast.LENGTH_SHORT).show();
             return;
         }
+
         String clean = text == null ? "" : text.trim();
         clean = clean.replaceFirst("(?i)^salom[aã]o[ ,.:;!?-]*", "").trim();
         if (clean.isEmpty()) {
@@ -324,7 +349,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         final ArrayList<AssistantMemory.ChatMessage> prior = new ArrayList<>(chatHistory);
         addChatMessage("user", clean, true);
         asking = true;
-        status.setText("Consultando dados…");
+        status.setText("Entendendo a intenção…");
         addTypingBubble();
 
         final String question = clean;
@@ -333,7 +358,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             try {
                 result = callAssistant(question, prior);
             } catch (Exception e) {
-                result = new AssistantResponse(false, "erro", "Não consegui consultar o sistema agora. " + safeError(e), false);
+                result = new AssistantResponse(false, "erro", "Não consegui acessar o sistema agora. " + safeError(e), false);
             }
             final AssistantResponse response = result;
             runOnUiThread(() -> {
@@ -341,12 +366,14 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                 asking = false;
                 addChatMessage("assistant", response.answer, true);
                 if (response.loginRequired) {
-                    status.setText("Login da Gerência necessário");
-                    if (speakAnswer) speak("Preciso que você entre na Gerência. Abri o site para login.");
-                    handler.postDelayed(this::showSite, 450);
+                    status.setText("Ative o acesso independente");
+                    if (speakAnswer) speak("Preciso autenticar o acesso do assistente.");
+                    ensureIndependentAccess(true);
                 } else {
-                    status.setText(response.ok ? "Dados atualizados" : "Falha na consulta");
-                    modeInfo.setText("Agente de dados • " + ("gpt".equals(response.mode) ? "GPT-5.6 Sol" : "modo local"));
+                    status.setText(response.ok ? "Pronto" : "Falha na operação");
+                    String mode = "gpt".equals(response.mode) ? "GPT-5.6 Sol" :
+                            "action-router".equals(response.mode) ? "Ação direta" : "modo local";
+                    modeInfo.setText("Agente operacional • " + mode);
                     if (speakAnswer) speak(response.answer);
                 }
             });
@@ -354,22 +381,14 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     }
 
     private AssistantResponse callAssistant(String message, List<AssistantMemory.ChatMessage> prior) throws Exception {
-        URL url = new URL(ASSISTANT_URL);
-        HttpURLConnection c = (HttpURLConnection) url.openConnection();
-        c.setRequestMethod("POST");
-        c.setConnectTimeout(15000);
-        c.setReadTimeout(60000);
-        c.setDoOutput(true);
-        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        c.setRequestProperty("Accept", "application/json");
+        HttpURLConnection c = openJsonConnection(ASSISTANT_URL, "POST");
+        applyAssistantAuth(c);
         c.setRequestProperty("X-Salomao-App", "1");
-        String cookie = CookieManager.getInstance().getCookie(HOME_URL);
-        if (cookie != null && !cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);
 
         JSONObject body = new JSONObject();
         body.put("message", message);
         JSONArray history = new JSONArray();
-        int start = Math.max(0, prior.size() - 16);
+        int start = Math.max(0, prior.size() - 18);
         for (int i = start; i < prior.size(); i++) {
             AssistantMemory.ChatMessage m = prior.get(i);
             JSONObject row = new JSONObject();
@@ -378,15 +397,42 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             history.put(row);
         }
         body.put("history", history);
+        writeJson(c, body);
 
-        byte[] payload = body.toString().getBytes(StandardCharsets.UTF_8);
-        try (OutputStream os = c.getOutputStream()) { os.write(payload); }
         int code = c.getResponseCode();
         String raw = readAll(code >= 400 ? c.getErrorStream() : c.getInputStream());
         JSONObject json = raw.isEmpty() ? new JSONObject() : new JSONObject(raw);
-        String answer = json.optString("answer", code == 401 ? "Abra a aba Site e faça login na Gerência." : "O servidor não retornou uma resposta.");
+        String answer = json.optString("answer",
+                code == 401 ? "O acesso independente ainda não foi autenticado." : "O servidor não retornou uma resposta.");
         String mode = json.optString("mode", "local");
-        return new AssistantResponse(code >= 200 && code < 300, mode, answer, code == 401 || "LOGIN_REQUIRED".equals(json.optString("code")));
+        return new AssistantResponse(code >= 200 && code < 300, mode, answer,
+                code == 401 || "LOGIN_REQUIRED".equals(json.optString("code")));
+    }
+
+    private HttpURLConnection openJsonConnection(String url, String method) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setRequestMethod(method);
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(60000);
+        c.setRequestProperty("Accept", "application/json");
+        if (!"GET".equals(method)) {
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        }
+        return c;
+    }
+
+    private void applyAssistantAuth(HttpURLConnection c) {
+        if (assistantToken != null && !assistantToken.isEmpty()) {
+            c.setRequestProperty("Authorization", "Bearer " + assistantToken);
+        }
+        String cookie = CookieManager.getInstance().getCookie(HOME_URL);
+        if (cookie != null && !cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);
+    }
+
+    private void writeJson(HttpURLConnection c, JSONObject body) throws Exception {
+        byte[] payload = body.toString().getBytes(StandardCharsets.UTF_8);
+        try (OutputStream os = c.getOutputStream()) { os.write(payload); }
     }
 
     private String readAll(InputStream input) throws Exception {
@@ -399,24 +445,181 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         return b.toString().trim();
     }
 
+    private void ensureIndependentAccess(boolean interactive) {
+        if (accessChecking) return;
+        accessChecking = true;
+        network.execute(() -> {
+            try {
+                if (assistantToken != null && !assistantToken.isEmpty()) {
+                    HttpURLConnection check = openJsonConnection(AUTH_URL, "GET");
+                    check.setRequestProperty("Authorization", "Bearer " + assistantToken);
+                    if (check.getResponseCode() == 200) {
+                        String raw = readAll(check.getInputStream());
+                        JSONObject json = raw.isEmpty() ? new JSONObject() : new JSONObject(raw);
+                        String username = json.optString("username", "Gerência");
+                        runOnUiThread(() -> setAccessReady(username));
+                        return;
+                    }
+                    tokenStore.clear();
+                    assistantToken = null;
+                }
+
+                String cookie = CookieManager.getInstance().getCookie(HOME_URL);
+                if (cookie != null && !cookie.isEmpty()) {
+                    HttpURLConnection pair = openJsonConnection(AUTH_URL, "POST");
+                    pair.setRequestProperty("Cookie", cookie);
+                    JSONObject body = new JSONObject();
+                    body.put("action", "pair");
+                    body.put("deviceLabel", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL);
+                    writeJson(pair, body);
+                    if (pair.getResponseCode() == 200) {
+                        JSONObject json = new JSONObject(readAll(pair.getInputStream()));
+                        String token = json.optString("token", "");
+                        if (!token.isEmpty()) {
+                            assistantToken = token;
+                            tokenStore.save(token);
+                            String username = json.optString("username", "Gerência");
+                            runOnUiThread(() -> setAccessReady(username));
+                            return;
+                        }
+                    }
+                }
+
+                runOnUiThread(() -> {
+                    setAccessMissing();
+                    if (interactive) showCredentialDialog();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    setAccessMissing();
+                    if (interactive) Toast.makeText(this, safeError(e), Toast.LENGTH_LONG).show();
+                });
+            } finally {
+                accessChecking = false;
+            }
+        });
+    }
+
+    private void showCredentialDialog() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(18), dp(4), dp(18), 0);
+
+        EditText username = new EditText(this);
+        username.setHint("Login");
+        username.setText("Felipe");
+        username.setSingleLine(true);
+        box.addView(username);
+
+        EditText password = new EditText(this);
+        password.setHint("Senha");
+        password.setSingleLine(true);
+        password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        box.addView(password);
+
+        TextView note = new TextView(this);
+        note.setText("A senha é enviada apenas por HTTPS para autenticar uma vez. O APK guarda somente um token criptografado pelo Android Keystore.");
+        note.setTextSize(12);
+        note.setPadding(0, dp(8), 0, 0);
+        box.addView(note);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Acesso independente")
+                .setView(box)
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Entrar e salvar acesso", null)
+                .create();
+
+        dialog.setOnShowListener(v -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(btn -> {
+            String u = username.getText().toString().trim();
+            String p = password.getText().toString();
+            if (u.isEmpty() || p.isEmpty()) {
+                Toast.makeText(this, "Informe login e senha.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+            status.setText("Autenticando acesso…");
+            network.execute(() -> {
+                try {
+                    HttpURLConnection c = openJsonConnection(AUTH_URL, "POST");
+                    JSONObject body = new JSONObject();
+                    body.put("action", "login");
+                    body.put("username", u);
+                    body.put("password", p);
+                    body.put("deviceLabel", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL);
+                    writeJson(c, body);
+                    int code = c.getResponseCode();
+                    String raw = readAll(code >= 400 ? c.getErrorStream() : c.getInputStream());
+                    JSONObject json = raw.isEmpty() ? new JSONObject() : new JSONObject(raw);
+                    if (code != 200) throw new IllegalArgumentException("Login ou senha inválidos.");
+                    String token = json.optString("token", "");
+                    if (token.isEmpty()) throw new IllegalStateException("O servidor não retornou o token.");
+                    assistantToken = token;
+                    tokenStore.save(token);
+                    String savedUser = json.optString("username", u);
+                    runOnUiThread(() -> {
+                        password.setText("");
+                        dialog.dismiss();
+                        setAccessReady(savedUser);
+                        Toast.makeText(this, "Acesso independente salvo com segurança.", Toast.LENGTH_SHORT).show();
+                        checkServerState();
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                        status.setText("Não foi possível autenticar");
+                        Toast.makeText(this, safeError(e), Toast.LENGTH_LONG).show();
+                    });
+                }
+            });
+        }));
+        dialog.show();
+    }
+
+    private void revokeIndependentAccess() {
+        final String token = assistantToken;
+        assistantToken = null;
+        tokenStore.clear();
+        setAccessMissing();
+        if (token == null || token.isEmpty()) return;
+        network.execute(() -> {
+            try {
+                HttpURLConnection c = openJsonConnection(AUTH_URL, "DELETE");
+                c.setRequestProperty("Authorization", "Bearer " + token);
+                c.getResponseCode();
+            } catch (Exception ignored) {}
+        });
+        Toast.makeText(this, "Acesso independente removido deste aparelho.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void setAccessReady(String username) {
+        if (accessButton != null) accessButton.setText("🔐 " + username + " ✓");
+        if (!showingSite && !asking) status.setText("Acesso independente ativo");
+    }
+
+    private void setAccessMissing() {
+        if (accessButton != null) accessButton.setText("🔐 Acesso");
+        if (!showingSite && !asking) status.setText("Toque em Acesso para autenticar");
+    }
+
     private void checkServerState() {
         network.execute(() -> {
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(ASSISTANT_URL).openConnection();
-                c.setRequestMethod("GET");
-                c.setConnectTimeout(8000);
-                c.setReadTimeout(8000);
-                String cookie = CookieManager.getInstance().getCookie(HOME_URL);
-                if (cookie != null && !cookie.isEmpty()) c.setRequestProperty("Cookie", cookie);
+                HttpURLConnection c = openJsonConnection(ASSISTANT_URL, "GET");
+                applyAssistantAuth(c);
                 int code = c.getResponseCode();
                 String raw = readAll(code >= 400 ? c.getErrorStream() : c.getInputStream());
                 JSONObject json = raw.isEmpty() ? new JSONObject() : new JSONObject(raw);
                 boolean configured = json.optBoolean("aiConfigured", false);
+                String username = json.optString("username", "");
                 runOnUiThread(() -> {
                     if (code == 200) {
-                        modeInfo.setText(configured ? "Agente de dados • GPT-5.6 Sol" : "Agente de dados • modo local");
-                        if (!showingSite && !asking) status.setText("Conectado aos dados da Gerência");
-                    } else if (!showingSite && !asking) status.setText("Entre na Gerência pela aba Site");
+                        if (!username.isEmpty()) setAccessReady(username);
+                        modeInfo.setText(configured ? "Agente operacional • GPT-5.6 Sol" : "Agente operacional • roteador local");
+                        if (!showingSite && !asking) status.setText("Conectado ao Trans Salomão");
+                    } else if (!showingSite && !asking) {
+                        setAccessMissing();
+                    }
                 });
             } catch (Exception ignored) {}
         });
@@ -425,7 +628,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private TextView typingBubble;
 
     private void addTypingBubble() {
-        typingBubble = makeBubble("assistant", "Consultando o sistema…");
+        typingBubble = makeBubble("assistant", "Analisando intenção e sistema…");
         chatMessages.addView(typingBubble);
         scrollBottom();
     }
@@ -437,12 +640,20 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         }
     }
 
+    private String redactLocalSecrets(String content) {
+        if (content == null) return "";
+        Pattern p = Pattern.compile("(?i)(senha\\s*(?:é|e|:|=)?\\s*)([^\\s,;]+)");
+        Matcher m = p.matcher(content);
+        return m.replaceAll("$1••••••");
+    }
+
     private void addChatMessage(String role, String content, boolean persist) {
-        AssistantMemory.ChatMessage m = new AssistantMemory.ChatMessage(role, content, System.currentTimeMillis());
+        String safe = "user".equals(role) ? redactLocalSecrets(content) : content;
+        AssistantMemory.ChatMessage m = new AssistantMemory.ChatMessage(role, safe, System.currentTimeMillis());
         chatHistory.add(m);
         while (chatHistory.size() > 60) chatHistory.remove(0);
-        if (persist) memory.addChat(role, content);
-        addBubble(role, content, true);
+        if (persist) memory.addChat(role, safe);
+        addBubble(role, safe, true);
     }
 
     private void addBubble(String role, String content, boolean scroll) {
@@ -487,7 +698,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         webView.setVisibility(View.VISIBLE);
         setTabVisuals();
         if (!siteLoaded) webView.loadUrl(HOME_URL);
-        status.setText("Site aberto • faça login na Gerência se necessário");
+        status.setText("Site aberto • você pode usar o login normal da Gerência");
     }
 
     private void setTabVisuals() {
@@ -502,10 +713,13 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             micButton.setEnabled(false);
             return;
         }
+
         try {
             if (android.os.Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
                 speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
-            } else speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            } else {
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            }
         } catch (Exception e) {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
         }
@@ -608,12 +822,13 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
     private void updateAssistantState() {
         if (assistantButton != null) assistantButton.setText(isAssistantActive() ? "🎙 24/7 ✓" : "🎙 24/7");
+        if (accessButton != null && assistantToken != null && !assistantToken.isEmpty()) accessButton.setText("🔐 Acesso ✓");
     }
 
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v3");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v4");
     }
 
     @Override
@@ -653,7 +868,9 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         if (showingSite) {
             if (webView.canGoBack()) webView.goBack();
             else showChat();
-        } else super.onBackPressed();
+        } else {
+            super.onBackPressed();
+        }
     }
 
     @Override
@@ -677,8 +894,12 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         final String mode;
         final String answer;
         final boolean loginRequired;
+
         AssistantResponse(boolean ok, String mode, String answer, boolean loginRequired) {
-            this.ok = ok; this.mode = mode; this.answer = answer; this.loginRequired = loginRequired;
+            this.ok = ok;
+            this.mode = mode;
+            this.answer = answer;
+            this.loginRequired = loginRequired;
         }
     }
 }
