@@ -11,3 +11,4 @@ security: read-only assistant data tools; management session required; no destru
 salomao-v4: publish intent routing, editable management users, independent assistant sessions and write tools
 validation: reconstructed production build passed; Android v4 build and APK verification passed
 security: password not embedded in source/APK; Android stores only revocable token encrypted with Keystore; destructive actions require confirmation
+salomao-gpt56: redeploy after OPENAI_API_KEY configuration; verify /api/assistant/status
