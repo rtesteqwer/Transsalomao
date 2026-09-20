@@ -59,6 +59,7 @@ import java.util.regex.Pattern;
 
 public class MainActivity extends Activity implements TextToSpeech.OnInitListener {
     private static final int AUDIO_PERMISSION_REQUEST = 1001;
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 1002;
     private static final String HOME_URL = "https://transsalomao.vercel.app/";
     private static final String ASSISTANT_URL = HOME_URL + "api/assistant";
     private static final String AUTH_URL = HOME_URL + "api/assistant/auth";
@@ -109,6 +110,9 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, AUDIO_PERMISSION_REQUEST);
+        } else if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
         }
 
         webView.loadUrl(HOME_URL);
@@ -188,6 +192,12 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
         assistantButton = smallButton("🎙 24/7");
         assistantButton.setOnClickListener(v -> openAssistantSetup());
+        assistantButton.setOnLongClickListener(v -> {
+            WakeListenerService.stop(this);
+            updateAssistantState();
+            Toast.makeText(this, "Escuta em segundo plano desativada.", Toast.LENGTH_SHORT).show();
+            return true;
+        });
         tabs.addView(assistantButton, tabParams());
 
         root.addView(tabs, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)));
@@ -277,7 +287,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/4.0");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.0");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -310,7 +320,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
     private void addAssistantWelcome() {
         addBubble("assistant",
-                "Olá. Agora eu separo consulta de ação. Posso buscar dados reais e também executar funções autorizadas do Trans Salomão, como criar login, cadastrar motorista, conjunto, viagem, abastecimento e despesa. Para apagar dados, eu exijo confirmação explícita.",
+                "Olá. Posso ficar disponível em segundo plano: ative 24/7 e me chame por “Salomão” mesmo fora do app. Também posso buscar dados reais e executar funções autorizadas do Trans Salomão. Para apagar dados, eu exijo confirmação explícita.",
                 false);
     }
 
@@ -798,16 +808,30 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
     private void openAssistantSetup() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            WakeListenerService.setEnabled(this, true);
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, AUDIO_PERMISSION_REQUEST);
             return;
         }
+
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
+        }
+
+        WakeListenerService.setEnabled(this, true);
+
         if (isAssistantActive()) {
-            Toast.makeText(this, "Salomão IA já está configurado como assistente.", Toast.LENGTH_SHORT).show();
+            WakeListenerService.start(this);
+            updateAssistantState();
+            Toast.makeText(this,
+                    "Salomão 24/7 ativado. Pode sair do app e chamar “Salomão”.",
+                    Toast.LENGTH_LONG).show();
             return;
         }
+
         new AlertDialog.Builder(this)
                 .setTitle("Ativar Salomão 24/7")
-                .setMessage("Escolha Salomão IA como assistente de voz padrão do Android. Depois, a chamada “Salomão” fica disponível pelo serviço de assistente do sistema.")
+                .setMessage("Para o Android permitir que eu fique disponível em segundo plano, escolha Salomão IA como assistente digital padrão. Depois volte ao app e toque novamente em 24/7. A escuta ativa fica indicada por uma notificação permanente.")
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Abrir configurações", (d, w) -> {
                     try { startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)); }
@@ -821,14 +845,29 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     }
 
     private void updateAssistantState() {
-        if (assistantButton != null) assistantButton.setText(isAssistantActive() ? "🎙 24/7 ✓" : "🎙 24/7");
-        if (accessButton != null && assistantToken != null && !assistantToken.isEmpty()) accessButton.setText("🔐 Acesso ✓");
+        boolean assistantActive = isAssistantActive();
+        boolean wakeEnabled = WakeListenerService.isEnabled(this);
+
+        if (assistantActive && wakeEnabled
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                && !WakeListenerService.isRunning()) {
+            WakeListenerService.start(this);
+        }
+
+        if (assistantButton != null) {
+            if (assistantActive && wakeEnabled) assistantButton.setText("🎙 24/7 ✓");
+            else if (assistantActive) assistantButton.setText("🎙 ATIVAR");
+            else assistantButton.setText("🎙 24/7");
+        }
+        if (accessButton != null && assistantToken != null && !assistantToken.isEmpty()) {
+            accessButton.setText("🔐 Acesso ✓");
+        }
     }
 
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v4");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v5");
     }
 
     @Override
@@ -858,8 +897,23 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == AUDIO_PERMISSION_REQUEST && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+
+        if (requestCode == AUDIO_PERMISSION_REQUEST
+                && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             status.setText("Microfone liberado");
+            if (WakeListenerService.isEnabled(this) && isAssistantActive()) {
+                WakeListenerService.start(this);
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
+            }
+            updateAssistantState();
+        }
+
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST) {
+            updateAssistantState();
         }
     }
 
