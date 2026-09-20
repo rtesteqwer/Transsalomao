@@ -8,3 +8,6 @@ recovery: apply idempotent 0011 repair for Sep 19 08:33 BRT Cegonha reports misl
 assistant-v3: publish direct-data /api/assistant and Salomao IA chat integration
 validation: reconstructed production site build passed; Android v3 build and APK verification passed
 security: read-only assistant data tools; management session required; no destructive SQL
+salomao-v4: publish intent routing, editable management users, independent assistant sessions and write tools
+validation: reconstructed production build passed; Android v4 build and APK verification passed
+security: password not embedded in source/APK; Android stores only revocable token encrypted with Keystore; destructive actions require confirmation
