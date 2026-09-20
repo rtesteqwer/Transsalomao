@@ -26,6 +26,8 @@ import java.util.Locale;
 public class WakeListenerService extends Service {
     public static final String ACTION_START = "com.transsalomao.voice.START_WAKE_LISTENER";
     public static final String ACTION_STOP = "com.transsalomao.voice.STOP_WAKE_LISTENER";
+    public static final String ACTION_PAUSE = "com.transsalomao.voice.PAUSE_WAKE_LISTENER";
+    public static final String ACTION_RESUME = "com.transsalomao.voice.RESUME_WAKE_LISTENER";
     private static final String CHANNEL_ID = "salomao_wake_listener";
     private static final int NOTIFICATION_ID = 5047;
     private static final String PREFS = "salomao_voice_prefs";
@@ -37,6 +39,7 @@ public class WakeListenerService extends Service {
     private boolean listening;
     private boolean triggered;
     private boolean destroyed;
+    private boolean suspended;
     private long restartGeneration;
     private static volatile boolean running;
 
@@ -70,6 +73,18 @@ public class WakeListenerService extends Service {
         }
     }
 
+    public static void pauseForManualVoice(android.content.Context context) {
+        if (!isEnabled(context)) return;
+        Intent i = new Intent(context, WakeListenerService.class).setAction(ACTION_PAUSE);
+        try { context.startService(i); } catch (Exception ignored) {}
+    }
+
+    public static void resumeAfterManualVoice(android.content.Context context) {
+        if (!isEnabled(context)) return;
+        Intent i = new Intent(context, WakeListenerService.class).setAction(ACTION_RESUME);
+        try { context.startService(i); } catch (Exception ignored) {}
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -82,8 +97,32 @@ public class WakeListenerService extends Service {
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
             setEnabled(this, false);
+            suspended = true;
+            restartGeneration++;
+            if (recognizer != null) {
+                try { recognizer.cancel(); } catch (Exception ignored) {}
+            }
+            stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return START_NOT_STICKY;
+        }
+
+        if (ACTION_PAUSE.equals(action)) {
+            suspended = true;
+            restartGeneration++;
+            listening = false;
+            if (recognizer != null) {
+                try { recognizer.cancel(); } catch (Exception ignored) {}
+            }
+            return START_STICKY;
+        }
+
+        if (ACTION_RESUME.equals(action)) {
+            suspended = false;
+            triggered = false;
+            listening = false;
+            scheduleStart(900);
+            return START_STICKY;
         }
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -93,10 +132,10 @@ public class WakeListenerService extends Service {
         }
 
         setEnabled(this, true);
+        suspended = false;
         startForegroundCompat();
         prepareRecognizer();
         scheduleStart(300);
-        scheduleHealthCheck();
         return START_STICKY;
     }
 
@@ -169,6 +208,9 @@ public class WakeListenerService extends Service {
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 4);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 600000L);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 600000L);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 600000L);
 
         recognizer.setRecognitionListener(new RecognitionListener() {
             @Override public void onReadyForSpeech(Bundle params) {
@@ -182,7 +224,7 @@ public class WakeListenerService extends Service {
 
             @Override public void onError(int error) {
                 listening = false;
-                if (destroyed || !isEnabled(WakeListenerService.this)) return;
+                if (destroyed || suspended || !isEnabled(WakeListenerService.this)) return;
                 long delay = error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ? 1800 : 700;
                 scheduleStart(delay);
             }
@@ -195,7 +237,7 @@ public class WakeListenerService extends Service {
                         if (detectWake(text)) break;
                     }
                 }
-                if (!destroyed && isEnabled(WakeListenerService.this)) {
+                if (!destroyed && !suspended && isEnabled(WakeListenerService.this)) {
                     scheduleStart(triggered ? 3200 : 450);
                 }
             }
@@ -234,7 +276,7 @@ public class WakeListenerService extends Service {
     private void scheduleStart(long delayMs) {
         final long generation = ++restartGeneration;
         handler.postDelayed(() -> {
-            if (destroyed || generation != restartGeneration || !isEnabled(WakeListenerService.this)) return;
+            if (destroyed || suspended || generation != restartGeneration || !isEnabled(WakeListenerService.this)) return;
             if (recognizer == null) prepareRecognizer();
             if (recognizer == null || listening) return;
             try {
@@ -244,18 +286,6 @@ public class WakeListenerService extends Service {
                 scheduleStart(1800);
             }
         }, delayMs);
-    }
-
-    private void scheduleHealthCheck() {
-        handler.postDelayed(new Runnable() {
-            @Override public void run() {
-                if (destroyed) return;
-                if (isEnabled(WakeListenerService.this) && !listening && !triggered) {
-                    scheduleStart(200);
-                }
-                handler.postDelayed(this, 12000);
-            }
-        }, 12000);
     }
 
     private String normalize(String s) {
