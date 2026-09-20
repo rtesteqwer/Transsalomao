@@ -70,6 +70,13 @@ if (!original.includes("apply-operational-ui-20260917c.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção dos ajustes operacionais não encontrado');
   original = original.replace(dailyMarker, `const operationalUiPatch = path.join(repo, 'render-overrides', 'apply-operational-ui-20260917c.mjs');\nif (!fs.existsSync(operationalUiPatch)) throw new Error('Missing operational UI patch');\nexecFileSync(process.execPath, [operationalUiPatch, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
+
+// Instala o endpoint de dados do Salomão IA depois de todas as reformas da aplicação.
+if (!original.includes("apply-assistant-data-agent-v3.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do Salomão IA não encontrado');
+  original = original.replace(dailyMarker, `const assistantDataAgentV3 = path.join(repo, 'render-overrides', 'apply-assistant-data-agent-v3.mjs');\nif (!fs.existsSync(assistantDataAgentV3)) throw new Error('Missing assistant data agent v3 patch');\nexecFileSync(process.execPath, [assistantDataAgentV3, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
