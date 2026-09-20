@@ -10,6 +10,9 @@ on:
       - 'bootstrap.original.mjs'
       - 'render-overrides/**'
       - 'deploy/**'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
