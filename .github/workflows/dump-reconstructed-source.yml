@@ -1,0 +1,37 @@
+name: Dump reconstructed source
+
+on:
+  push:
+    branches:
+      - assistant-data-agent-v3
+    paths:
+      - '.github/workflows/dump-reconstructed-source.yml'
+      - 'bootstrap.mjs'
+      - 'bootstrap.original.mjs'
+      - 'render-overrides/**'
+      - 'deploy/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Reconstruct source
+        env:
+          TRANS_SOURCE_DUMP: ${{ runner.temp }}/trans-source
+        run: node bootstrap.mjs
+      - name: Pack source
+        run: tar -czf "${RUNNER_TEMP}/trans-source.tgz" -C "${RUNNER_TEMP}/trans-source" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transsalomao-reconstructed-source
+          path: ${{ runner.temp }}/trans-source.tgz
+          retention-days: 2
