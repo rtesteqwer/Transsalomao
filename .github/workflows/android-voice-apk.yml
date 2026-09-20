@@ -8,6 +8,7 @@ on:
       - assistant-data-agent-v3
       - salomao-ia-v4-actions
       - salomao-v5-background-listener
+      - salomao-v51-mic-fix
     paths:
       - 'android-voice/**'
       - '.github/workflows/android-voice-apk.yml'
@@ -50,7 +51,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Salomao-IA-v5-APK
+          name: Salomao-IA-v51-APK
           path: android-voice/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
