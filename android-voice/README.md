@@ -24,3 +24,5 @@ gradle assembleDebug
 ```
 
 Saída esperada: `app/build/outputs/apk/debug/app-debug.apk`.
+
+Build automático configurado para gerar o artefato `TransSalomao-Voz-APK`.
