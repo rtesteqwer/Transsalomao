@@ -1,0 +1,39 @@
+name: Check OpenAI Key Placement
+
+on:
+  push:
+    paths:
+      - 'deploy/check-openai-placement.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      TEAM_ID: team_CmpJdXo3MzDAX3TZXFp9am5F
+    steps:
+      - name: Check project env metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess
+          token=os.environ['VERCEL_TOKEN']; team=os.environ['TEAM_ID']
+          for project in ['prj_jB9N2LQ3grttSuBALVVGp5X5gVdH','motorista-seguro-v02']:
+              url=f'https://api.vercel.com/v9/projects/{project}/env?teamId={team}'
+              p=subprocess.run(['curl','-sS','-H',f'Authorization: Bearer {token}',url],capture_output=True,text=True)
+              try:
+                  d=json.loads(p.stdout or '{}')
+              except Exception:
+                  print(project, 'invalid_response')
+                  continue
+              if 'error' in d:
+                  print(project, 'error', d['error'].get('code',''))
+                  continue
+              rows=d.get('envs',[]) if isinstance(d,dict) else []
+              found=[x for x in rows if x.get('key')=='OPENAI_API_KEY']
+              print(project, 'openai_key_present', bool(found), 'targets', [x.get('target') for x in found])
+          PY
