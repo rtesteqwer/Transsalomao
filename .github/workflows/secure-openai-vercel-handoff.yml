@@ -34,6 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           HANDSHAKE_ID="$(cat /proc/sys/kernel/random/uuid)"
+          export HANDSHAKE_ID
           echo "HANDSHAKE_ID=$HANDSHAKE_ID" >> "$GITHUB_ENV"
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out /tmp/openai-handoff-private.pem >/dev/null 2>&1
           openssl pkey -in /tmp/openai-handoff-private.pem -pubout -out /tmp/openai-handoff-public.pem >/dev/null 2>&1
