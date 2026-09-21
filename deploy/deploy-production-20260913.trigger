@@ -13,3 +13,4 @@ validation: reconstructed production build passed; Android v4 build and APK veri
 security: password not embedded in source/APK; Android stores only revocable token encrypted with Keystore; destructive actions require confirmation
 salomao-gpt56: redeploy after OPENAI_API_KEY configuration; verify /api/assistant/status
 redeploy-2026-09-21: activate OpenAI runtime and assistant status validation
+salomao-v52: intent accuracy fixes
