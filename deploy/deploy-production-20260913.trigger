@@ -16,3 +16,4 @@ redeploy-2026-09-21: activate OpenAI runtime and assistant status validation
 salomao-v52: intent accuracy fixes
 
 openai-env-20260921T125318Z
+activate-openai-production-2026-09-21
