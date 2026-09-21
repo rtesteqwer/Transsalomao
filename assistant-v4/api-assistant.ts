@@ -45,8 +45,27 @@ export const Route = createFileRoute("/api/assistant")({
         if (apiKey) {
           try {
             return out({ ok: true, mode: "gpt", answer: await gptAnswer(message, history, apiKey, auth.username) });
-          } catch (error) {
+          } catch (error: any) {
+            const detail = String(error?.message ?? error ?? "");
             console.error("[salomao-ai-v4] GPT fallback", error);
+
+            if (detail.includes("billing_not_active") || detail.includes("credit_balance_exhausted")) {
+              return out({
+                ok: false,
+                mode: "gpt-unavailable",
+                code: "OPENAI_BILLING_INACTIVE",
+                answer: "A IA avançada está configurada, mas o faturamento da API OpenAI ainda não está ativo. Ative o billing da API e tente novamente. Não vou responder pelo modo local para evitar uma resposta errada."
+              }, 503);
+            }
+
+            if (detail.includes("invalid_api_key") || detail.includes("Incorrect API key")) {
+              return out({
+                ok: false,
+                mode: "gpt-unavailable",
+                code: "OPENAI_KEY_INVALID",
+                answer: "A chave da OpenAI configurada no servidor foi recusada. É necessário substituir a OPENAI_API_KEY por uma chave válida."
+              }, 503);
+            }
           }
         }
 
