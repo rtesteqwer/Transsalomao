@@ -14,3 +14,5 @@ security: password not embedded in source/APK; Android stores only revocable tok
 salomao-gpt56: redeploy after OPENAI_API_KEY configuration; verify /api/assistant/status
 redeploy-2026-09-21: activate OpenAI runtime and assistant status validation
 salomao-v52: intent accuracy fixes
+
+openai-env-20260921T125318Z
