@@ -17,3 +17,4 @@ salomao-v52: intent accuracy fixes
 
 openai-env-20260921T125318Z
 activate-openai-production-2026-09-21
+salomao-v53: billing error handling
