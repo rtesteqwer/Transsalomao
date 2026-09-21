@@ -1,0 +1,23 @@
+name: Cleanup OpenAI Recipient Artifact
+
+on:
+  push:
+    paths:
+      - 'deploy/openai-artifact-cleanup.trigger'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete temporary recipient artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/10638149382"
+          echo "Temporary artifact deleted"
