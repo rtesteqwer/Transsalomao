@@ -479,8 +479,46 @@ async function highPriorityAction(message:string,history:Turn[],actor:string){
   return{answer:"Entendi que você quer executar uma ação no sistema. Com a IA avançada conectada eu consigo extrair os campos do seu pedido e chamar a função correta; no modo local, diga a ação e os dados principais de forma explícita para eu não alterar o registro errado."};
 }
 
-function mentionedDriver(s:Snapshot,text:string){let best:any=null,bestScore=0;for(const d of s.drivers){let sc=norm(text).includes(norm(d.name))?100:0;for(const token of norm(d.name).split(" ").filter((x)=>x.length>=4))if(norm(text).includes(token))sc+=10;if(sc>bestScore){best=d;bestScore=sc;}}return bestScore>=10?best:null;}
-function mentionedFleet(s:Snapshot,text:string){let best:any=null,bestScore=0;for(const f of s.fleets){const sc=Math.max(score(f.name,text),score(f.tractor_plate,text),score(f.trailer_plate,text));if(sc>bestScore){best=f;bestScore=sc;}}return bestScore>=10?best:null;}
+function mentionedDriver(s:Snapshot,text:string){
+  const t=norm(text);
+  if(!t)return null;
+  const exact=s.drivers
+    .filter((d)=>norm(d.name).length>=3&&t.includes(norm(d.name)))
+    .sort((a,b)=>norm(b.name).length-norm(a.name).length);
+  if(exact.length)return exact[0];
+
+  const words=new Set(t.split(/[^a-z0-9]+/).filter((x)=>x.length>=4));
+  const candidates=s.drivers.filter((d)=>{
+    const tokens=norm(d.name).split(/[^a-z0-9]+/).filter((x)=>x.length>=4);
+    return tokens.some((x)=>words.has(x));
+  });
+  return candidates.length===1?candidates[0]:null;
+}
+
+function mentionedFleet(s:Snapshot,text:string){
+  const t=norm(text);
+  if(!t)return null;
+  const compact=(v:unknown)=>norm(v).replace(/[^a-z0-9]/g,"");
+  const tc=compact(text);
+  const candidates=s.fleets.filter((f)=>{
+    const name=norm(f.name);
+    const tractor=compact(f.tractor_plate);
+    const trailer=compact(f.trailer_plate);
+    return (name.length>=4&&t.includes(name)) ||
+      (tractor.length>=5&&tc.includes(tractor)) ||
+      (trailer.length>=5&&tc.includes(trailer));
+  });
+  return candidates.length===1?candidates[0]:null;
+}
+
+function localPeriod(text:string){
+  const t=norm(text), today=todayBR();
+  if(t.includes("hoje"))return{from:today,to:today,label:" hoje"};
+  if(t.includes("este mes")||t.includes("esse mes")||t.includes("mes atual")){
+    return{from:`${today.slice(0,7)}-01`,to:today,label:" neste mês"};
+  }
+  return{from:null as string|null,to:null as string|null,label:""};
+}
 
 async function localAnswer(message:string,history:Turn[]){
   const s=await snapshot(),text=norm(message);
@@ -488,18 +526,88 @@ async function localAnswer(message:string,history:Turn[]){
   const needsContext=hasAny(text,["ele","dele","dela","esse motorista","essa motorista","esse conjunto","desse motorista","desse conjunto"]);
   const contextText=needsContext?`${message} ${userHistory}`:message;
   const d=mentionedDriver(s,contextText),f=mentionedFleet(s,contextText);
+  const period=localPeriod(text);
+  const qbase={date_from:period.from,date_to:period.to,limit:50};
 
   if(hasAny(text,["login","usuario","acesso","administrador","operador"])){
-    const r:any=await querySystem({operation:"management_users",driver:null,fleet:null,date_from:null,date_to:null,limit:100});
+    const r:any=await querySystem({operation:"management_users",driver:null,fleet:null,...qbase});
     return{answer:r.rows.length?`Há ${r.rows.length} login(s) de gerenciamento: ${r.rows.map((x:any)=>x.username+" ("+x.status+")").join(", ")}.`:"Não há logins cadastrados."};
   }
-  if(text.includes("abastec")||text.includes("diesel")||text.includes("combustivel")){const r:any=await querySystem({operation:"fuelings",driver:d?.name||null,fleet:f?.name||null,date_from:null,date_to:null,limit:30});return{answer:`Encontrei ${r.count} abastecimento(s)${d?" de "+d.name:""}, totalizando ${brl(r.totalCost)}.`,data:r};}
-  if(text.includes("despesa")||text.includes("gasto")){const r:any=await querySystem({operation:"expenses",driver:d?.name||null,fleet:f?.name||null,date_from:null,date_to:null,limit:30});return{answer:`Encontrei ${r.count} despesa(s)${d?" relacionadas a "+d.name:""}, somando ${brl(r.total)}.`,data:r};}
-  if(text.includes("pendente")||text.includes("caixa")||text.includes("lancamento")){const r:any=await querySystem({operation:"pending",driver:d?.name||null,fleet:f?.name||null,date_from:null,date_to:null,limit:50});return{answer:`Há ${r.count} lançamento(s) pendente(s)${d?" de "+d.name:""}.`,data:r};}
-  if(text.includes("viagem")||text.includes("frete")){const r:any=await querySystem({operation:"trips",driver:d?.name||null,fleet:f?.name||null,date_from:null,date_to:null,limit:30});return{answer:`Encontrei ${r.count} viagem(ns)${d?" de "+d.name:""}, totalizando ${brl(r.totalFreight)} de frete.`,data:r};}
-  if((text.includes("fatur")||text.includes("comissao"))&&d){const r:any=await querySystem({operation:"driver_overview",driver:d.name,fleet:null,date_from:null,date_to:null,limit:20});return{answer:`${d.name} possui ${r.summary.tripCount} viagens e ${brl(r.summary.freight)} de faturamento. Comissão: ${brl(r.summary.commission)}; após comissão: ${brl(r.summary.afterCommission)}.`,data:r};}
-  if(text.includes("fatur")||text.includes("comissao")||text.includes("motoristas")){const r:any=await querySystem({operation:"financial_by_driver",driver:null,fleet:null,date_from:null,date_to:null,limit:50});return{answer:`O faturamento total registrado é ${brl(r.totals.freight)}, com ${brl(r.totals.commission)} em comissões e ${r.totals.trips} viagens.`,data:r};}
-  if(text.includes("conjunto")||text.includes("carreta")||text.includes("placa")||f){const r:any=await querySystem({operation:"fleet_overview",driver:null,fleet:f?.name||message,date_from:null,date_to:null,limit:20});if(!r.found)return{answer:"Não consegui identificar esse conjunto."};return{answer:`${r.fleet.name}: cavalo ${r.fleet.tractorPlate}, carreta ${r.fleet.trailerPlate}, modelo ${r.fleet.model||"não informado"}. Possui ${r.summary.tripCount} viagens e ${brl(r.summary.freight)} de faturamento.`,data:r};}
-  if(text.includes("motorista")||d){const r:any=await querySystem({operation:"driver_overview",driver:d?.name||message,fleet:null,date_from:null,date_to:null,limit:20});if(!r.found)return{answer:"Não consegui identificar o motorista."};return{answer:`${r.driver.name} — ${r.driver.status}, categoria ${r.driver.category||"não informada"}, telefone ${r.driver.phone||"não informado"}, comissão ${dec(r.driver.commissionPct*100,0)}%. Possui ${r.summary.tripCount} viagens, ${dec(r.summary.netTons,3)} t líquidas, ${dec(r.summary.km,0)} km e ${brl(r.summary.freight)} de faturamento. Comissão calculada: ${brl(r.summary.commission)}. Há ${r.summary.pendingReports} lançamento(s) pendente(s).`,data:r};}
-  return{answer:"Posso consultar dados e também executar funções do Trans Salomão. Para inteligência conversacional no nível do ChatGPT, conecte a IA avançada; enquanto isso, o roteador local separa consultas de ações para não confundir login com motorista."};
+
+  if((text.includes("quantos")||text.includes("quantas"))&&hasAny(text,["motorista","motoristas"])){
+    const active=s.drivers.filter((x)=>x.status==="ativo");
+    return{answer:`Há ${active.length} motorista(s) ativo(s) cadastrado(s).`,data:{rows:active.map((x)=>({name:x.name,status:x.status}))}};
+  }
+
+  if(hasAny(text,["quais motoristas","listar motoristas","lista de motoristas","mostrar motoristas","motoristas cadastrados"])){
+    const rows=s.drivers.map((x)=>({name:x.name,status:x.status,category:x.category,commissionPct:n(x.commission_pct)}));
+    return{answer:rows.length?`Motoristas cadastrados: ${rows.map((x)=>x.name+" ("+x.status+")").join(", ")}.`:"Não há motoristas cadastrados.",data:{rows}};
+  }
+
+  if((text.includes("quantos")||text.includes("quantas"))&&hasAny(text,["conjunto","conjuntos","carreta","carretas"])){
+    const active=s.fleets.filter((x)=>x.status==="ativo");
+    return{answer:`Há ${active.length} conjunto(s) ativo(s) cadastrado(s).`,data:{rows:active.map((x)=>({name:x.name,status:x.status}))}};
+  }
+
+  if(hasAny(text,["quais conjuntos","listar conjuntos","lista de conjuntos","mostrar conjuntos","carretas cadastradas","conjuntos cadastrados"])){
+    const rows=s.fleets.map((x)=>({name:x.name,tractorPlate:x.tractor_plate,trailerPlate:x.trailer_plate,status:x.status}));
+    return{answer:rows.length?`Conjuntos cadastrados: ${rows.map((x)=>x.name+" — cavalo "+x.tractorPlate+", carreta "+x.trailerPlate).join("; ")}.`:"Não há conjuntos cadastrados.",data:{rows}};
+  }
+
+  if(text.includes("abastec")||text.includes("diesel")||text.includes("combustivel")){
+    const r:any=await querySystem({operation:"fuelings",driver:d?.name||null,fleet:f?.name||null,...qbase});
+    return{answer:`Encontrei ${r.count} abastecimento(s)${d?" de "+d.name:""}${f?" do conjunto "+f.name:""}${period.label}, totalizando ${brl(r.totalCost)}.`,data:r};
+  }
+
+  if(text.includes("despesa")||text.includes("gasto")){
+    const r:any=await querySystem({operation:"expenses",driver:d?.name||null,fleet:f?.name||null,...qbase});
+    return{answer:`Encontrei ${r.count} despesa(s)${d?" relacionadas a "+d.name:""}${f?" do conjunto "+f.name:""}${period.label}, somando ${brl(r.total)}.`,data:r};
+  }
+
+  if(text.includes("pendente")||text.includes("caixa")||text.includes("lancamento")){
+    const r:any=await querySystem({operation:"pending",driver:d?.name||null,fleet:f?.name||null,...qbase});
+    return{answer:`Há ${r.count} lançamento(s) pendente(s)${d?" de "+d.name:""}${f?" do conjunto "+f.name:""}.`,data:r};
+  }
+
+  if((text.includes("fatur")||text.includes("comissao"))&&d){
+    const r:any=await querySystem({operation:"driver_overview",driver:d.name,fleet:null,...qbase});
+    return{answer:`${d.name}${period.label} possui ${r.summary.tripCount} viagem(ns) e ${brl(r.summary.freight)} de faturamento. Comissão: ${brl(r.summary.commission)}; após comissão: ${brl(r.summary.afterCommission)}.`,data:r};
+  }
+
+  if(hasAny(text,["faturamento por motorista","faturamento dos motoristas","comissao por motorista","comissoes por motorista"]) ||
+     ((text.includes("fatur")||text.includes("comissao"))&&!d)){
+    const r:any=await querySystem({operation:"financial_by_driver",driver:null,fleet:null,...qbase});
+    return{answer:`O faturamento total${period.label} é ${brl(r.totals.freight)}, com ${brl(r.totals.commission)} em comissões e ${r.totals.trips} viagem(ns).`,data:r};
+  }
+
+  if(text.includes("viagem")||text.includes("frete")){
+    const r:any=await querySystem({operation:"trips",driver:d?.name||null,fleet:f?.name||null,...qbase});
+    if(hasAny(text,["ultima viagem","última viagem","mais recente"])&&r.rows?.length){
+      const x=r.rows[0];
+      return{answer:`A viagem mais recente é ${x.code||"sem código"}, em ${x.date||"data não informada"}, ${x.driver} / ${x.fleet}, com frete de ${brl(n(x.freight))}.`,data:x};
+    }
+    return{answer:`Encontrei ${r.count} viagem(ns)${d?" de "+d.name:""}${f?" do conjunto "+f.name:""}${period.label}, totalizando ${brl(r.totalFreight)} de frete.`,data:r};
+  }
+
+  if(f){
+    const r:any=await querySystem({operation:"fleet_overview",driver:null,fleet:f.name,...qbase});
+    if(!r.found)return{answer:"Não consegui identificar esse conjunto com segurança."};
+    return{answer:`${r.fleet.name}: cavalo ${r.fleet.tractorPlate}, carreta ${r.fleet.trailerPlate}, modelo ${r.fleet.model||"não informado"}. Possui ${r.summary.tripCount} viagem(ns)${period.label} e ${brl(r.summary.freight)} de faturamento.`,data:r};
+  }
+
+  if(d){
+    const r:any=await querySystem({operation:"driver_overview",driver:d.name,fleet:null,...qbase});
+    if(!r.found)return{answer:"Não consegui identificar o motorista com segurança."};
+    return{answer:`${r.driver.name} — ${r.driver.status}, categoria ${r.driver.category||"não informada"}, telefone ${r.driver.phone||"não informado"}, comissão ${dec(r.driver.commissionPct*100,0)}%. Possui ${r.summary.tripCount} viagem(ns)${period.label}, ${dec(r.summary.netTons,3)} t líquidas, ${dec(r.summary.km,0)} km e ${brl(r.summary.freight)} de faturamento. Comissão calculada: ${brl(r.summary.commission)}. Há ${r.summary.pendingReports} lançamento(s) pendente(s).`,data:r};
+  }
+
+  if(text.includes("motorista")){
+    return{answer:"Diga o nome do motorista para eu consultar os dados corretos. Se quiser a lista, diga “listar motoristas”."};
+  }
+
+  if(hasAny(text,["conjunto","carreta","placa"])){
+    return{answer:"Diga o nome do conjunto ou a placa para eu consultar o registro correto. Se quiser a lista, diga “listar conjuntos”."};
+  }
+
+  return{answer:"Não tenho segurança para responder essa pergunta pelo roteador local. A IA avançada ainda não está conectada neste servidor; prefiro não inventar uma resposta. Para dados do Trans Salomão, diga claramente o que deseja consultar, por exemplo: “faturamento hoje”, “listar motoristas”, “viagens do Clóvis” ou “abastecimentos do conjunto X”."};
 }
