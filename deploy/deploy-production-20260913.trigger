@@ -26,3 +26,4 @@ real-weight-history-20260922: show exact trip tonnage with 3 decimal places in L
 real-weight-history-retry-20260922: fix patch injection newline syntax
 pf-auto-sync-20260922: secure Meu Capital PF endpoint; 3% company gross monthly + 20% Felipe driver freight commission; source IDs prevent duplicate PF income
 felipe-owner-share-20260922: Felipe-only management tab for 3% company gross participation
+felipe-owner-share-fix-20260922: fix newline escaping and redeploy 3% participation tab
