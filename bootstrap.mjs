@@ -96,7 +96,7 @@ const ownerShareProductionUrl = String(process.env.VERCEL_PROJECT_PRODUCTION_URL
 const installOwnerShare = process.env.VERCEL !== '1' || ownerShareProductionUrl.includes('transsalomao.vercel.app');
 if (installOwnerShare && !original.includes("apply-owner-share-tab.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção da participação do Felipe não encontrado');
-  original = original.replace(dailyMarker, `const ownerShareTab = path.join(repo, 'render-overrides', 'apply-owner-share-tab.mjs');\\nif (!fs.existsSync(ownerShareTab)) throw new Error('Missing Felipe 3% share tab patch');\\nexecFileSync(process.execPath, [ownerShareTab, work], { cwd: repo, stdio: 'inherit' });\\n\\n${dailyMarker}`);
+  original = original.replace(dailyMarker, `const ownerShareTab = path.join(repo, 'render-overrides', 'apply-owner-share-tab.mjs');\nif (!fs.existsSync(ownerShareTab)) throw new Error('Missing Felipe 3% share tab patch');\nexecFileSync(process.execPath, [ownerShareTab, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 } else if (!installOwnerShare) {
   console.log('[owner-share-tab] skipped: Vercel project is not Trans Salomao');
 }
