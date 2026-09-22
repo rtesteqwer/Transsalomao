@@ -1,9 +1,9 @@
-name: Build Meu Capital PF APK
+name: Build Meu Capital PF APK v1.2
 
 on:
   push:
     branches:
-      - meu-capital-pf-apk-v1
+      - meu-capital-pf-apk-v12
     paths:
       - 'meu-capital-pf-build/**'
       - '.github/workflows/meu-capital-pf-apk.yml'
@@ -29,7 +29,7 @@ jobs:
         run: |
           cat meu-capital-pf-build/part-* > /tmp/meu-capital-pf-project.b64
           base64 -d /tmp/meu-capital-pf-project.b64 > /tmp/MeuCapitalPF-Android-project.tgz
-          echo "a5154efa373a2f7af0030da3521eb1ac58310c8e495215a80f95142d62512937  /tmp/MeuCapitalPF-Android-project.tgz" | sha256sum -c -
+          echo "4bc31e19b1160a459fe2d1535ac9fbb3d2581b445a9cc85b256db51c8e4e3841  /tmp/MeuCapitalPF-Android-project.tgz" | sha256sum -c -
           tar -xzf /tmp/MeuCapitalPF-Android-project.tgz
 
       - name: Java 17
@@ -46,36 +46,35 @@ jobs:
       - name: Inspect preinstalled Android SDK
         shell: bash
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          ls -1 "$ANDROID_HOME/platforms" | tail -20 || true
-          ls -1 "$ANDROID_HOME/build-tools" | tail -20 || true
+          test -d "$ANDROID_HOME/platforms/android-35"
+          test -d "$ANDROID_HOME/build-tools/35.0.0"
 
       - name: Build APK
-        run: gradle -p MeuCapitalPF-Android :app:assembleDebug --stacktrace
+        run: gradle -p MeuCapitalPF-Android-v12 :app:assembleDebug --stacktrace
 
       - name: Prepare and verify APK
         shell: bash
         run: |
-          cp MeuCapitalPF-Android/app/build/outputs/apk/debug/app-debug.apk Meu-Capital-PF-v1.0.0.apk
-          sha256sum Meu-Capital-PF-v1.0.0.apk | tee Meu-Capital-PF-v1.0.0.apk.sha256
+          cp MeuCapitalPF-Android-v12/app/build/outputs/apk/debug/app-debug.apk Meu-Capital-PF-v1.2.0.apk
+          sha256sum Meu-Capital-PF-v1.2.0.apk | tee Meu-Capital-PF-v1.2.0.apk.sha256
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
-          "$AAPT" dump badging Meu-Capital-PF-v1.0.0.apk | head -20
-          unzip -t Meu-Capital-PF-v1.0.0.apk >/dev/null
+          "$AAPT" dump badging Meu-Capital-PF-v1.2.0.apk | head -20
+          unzip -t Meu-Capital-PF-v1.2.0.apk >/dev/null
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Meu-Capital-PF-APK
+          name: Meu-Capital-PF-APK-v1.2
           path: |
-            Meu-Capital-PF-v1.0.0.apk
-            Meu-Capital-PF-v1.0.0.apk.sha256
+            Meu-Capital-PF-v1.2.0.apk
+            Meu-Capital-PF-v1.2.0.apk.sha256
           if-no-files-found: error
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: meu-capital-pf-v1.0.0-apk
+          TAG: meu-capital-pf-v1.2.0-apk
         shell: bash
         run: |
           gh release delete "$TAG" --cleanup-tag -y || true
-          gh release create "$TAG" Meu-Capital-PF-v1.0.0.apk Meu-Capital-PF-v1.0.0.apk.sha256 --target "$GITHUB_SHA" --title "Meu Capital PF v1.0.0 APK" --notes "APK Android instalável da primeira versão do Meu Capital PF. Os dados financeiros permanecem locais no aparelho. Package: br.com.meucapitalpf."
+          gh release create "$TAG" Meu-Capital-PF-v1.2.0.apk Meu-Capital-PF-v1.2.0.apk.sha256 --target "$GITHUB_SHA" --title "Meu Capital PF v1.2.0 APK" --notes "Sincronização automática com a Trans Salomão: 3% do faturamento bruto mensal e 20% do frete das viagens de Felipe Rocha Garcia, além de despesas mensais fixas. Package: br.com.meucapitalpf."
