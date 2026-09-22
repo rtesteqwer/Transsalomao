@@ -24,3 +24,4 @@ whatsapp-image-20260922: weigh-ticket vision, net-weight-only, group Caixa inges
 whatsapp-management-mode-20260922: management selects trip type in Caixa before closing
 real-weight-history-20260922: show exact trip tonnage with 3 decimal places in Lancamentos history
 real-weight-history-retry-20260922: fix patch injection newline syntax
+pf-auto-sync-20260922: secure Meu Capital PF endpoint; 3% company gross monthly + 20% Felipe driver freight commission; source IDs prevent duplicate PF income
