@@ -1,0 +1,77 @@
+name: Build Meu Capital PF APK
+
+on:
+  push:
+    branches:
+      - meu-capital-pf-apk-v1
+    paths:
+      - 'meu-capital-pf-build/**'
+      - '.github/workflows/meu-capital-pf-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct Android project
+        shell: bash
+        run: |
+          cat meu-capital-pf-build/part-* > /tmp/meu-capital-pf-project.b64
+          base64 -d /tmp/meu-capital-pf-project.b64 > /tmp/MeuCapitalPF-Android-project.tgz
+          echo "a5154efa373a2f7af0030da3521eb1ac58310c8e495215a80f95142d62512937  /tmp/MeuCapitalPF-Android-project.tgz" | sha256sum -c -
+          tar -xzf /tmp/MeuCapitalPF-Android-project.tgz
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build APK
+        run: gradle -p MeuCapitalPF-Android :app:assembleDebug --stacktrace
+
+      - name: Prepare and verify APK
+        shell: bash
+        run: |
+          cp MeuCapitalPF-Android/app/build/outputs/apk/debug/app-debug.apk Meu-Capital-PF-v1.0.0.apk
+          sha256sum Meu-Capital-PF-v1.0.0.apk | tee Meu-Capital-PF-v1.0.0.apk.sha256
+          aapt dump badging Meu-Capital-PF-v1.0.0.apk | head -20
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Meu-Capital-PF-APK
+          path: |
+            Meu-Capital-PF-v1.0.0.apk
+            Meu-Capital-PF-v1.0.0.apk.sha256
+          if-no-files-found: error
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: meu-capital-pf-v1.0.0-apk
+        shell: bash
+        run: |
+          gh release delete "$TAG" --cleanup-tag -y || true
+          gh release create "$TAG"             Meu-Capital-PF-v1.0.0.apk             Meu-Capital-PF-v1.0.0.apk.sha256             --title "Meu Capital PF v1.0.0 APK"             --notes "APK Android instalável da primeira versão do Meu Capital PF. Dados financeiros permanecem locais no aparelho. Package: br.com.meucapitalpf."
