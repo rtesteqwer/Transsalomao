@@ -18,3 +18,5 @@ salomao-v52: intent accuracy fixes
 openai-env-20260921T125318Z
 activate-openai-production-2026-09-21
 salomao-v53: billing error handling
+
+whatsapp-20260922: publish validated ingestion bdfcb89d6c49f41dbe99fb6adc06883a19ef853f; 12 tests and full application build passed; Meta connection and explicit auto-post activation pending.
