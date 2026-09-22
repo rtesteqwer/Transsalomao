@@ -28,3 +28,4 @@ pf-auto-sync-20260922: secure Meu Capital PF endpoint; 3% company gross monthly 
 felipe-owner-share-20260922: Felipe-only management tab for 3% company gross participation
 felipe-owner-share-fix-20260922: fix newline escaping and redeploy 3% participation tab
 felipe-owner-share-inline-20260922: move 3% participation into /dono dashboard for Felipe login
+felipe-share-periods-20260922: restore standard billing options and add 7d 30d month all filters for Felipe 3%
