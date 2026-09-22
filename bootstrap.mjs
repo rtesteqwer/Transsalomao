@@ -84,6 +84,12 @@ if (!original.includes("apply-salomao-v4-actions.mjs")) {
   original = original.replace(dailyMarker, `const salomaoV4 = path.join(repo, 'render-overrides', 'apply-salomao-v4-actions.mjs');\nif (!fs.existsSync(salomaoV4)) throw new Error('Missing Salomao v4 patch');\nexecFileSync(process.execPath, [salomaoV4, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Integração segura do Meu Capital PF: 3% do faturamento bruto + 20% das viagens de Felipe.
+if (!original.includes("apply-pf-sync.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do Meu Capital PF não encontrado');
+  original = original.replace(dailyMarker, `const pfSync = path.join(repo, 'render-overrides', 'apply-pf-sync.mjs');\nif (!fs.existsSync(pfSync)) throw new Error('Missing Meu Capital PF sync patch');\nexecFileSync(process.execPath, [pfSync, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 // Entrada operacional via WhatsApp: só pertence ao projeto Trans Salomão.
 // O mesmo repositório também está conectado a outro projeto Vercel; nele o patch é ignorado.
 const vercelProductionUrl = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').toLowerCase();
