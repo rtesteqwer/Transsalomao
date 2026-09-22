@@ -84,6 +84,17 @@ if (!original.includes("apply-salomao-v4-actions.mjs")) {
   original = original.replace(dailyMarker, `const salomaoV4 = path.join(repo, 'render-overrides', 'apply-salomao-v4-actions.mjs');\nif (!fs.existsSync(salomaoV4)) throw new Error('Missing Salomao v4 patch');\nexecFileSync(process.execPath, [salomaoV4, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Entrada operacional via WhatsApp: só pertence ao projeto Trans Salomão.
+// O mesmo repositório também está conectado a outro projeto Vercel; nele o patch é ignorado.
+const vercelProductionUrl = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').toLowerCase();
+const installWhatsApp = process.env.VERCEL !== '1' || vercelProductionUrl.includes('transsalomao.vercel.app');
+if (installWhatsApp && !original.includes("apply-whatsapp-ingestion-v1.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do WhatsApp não encontrado');
+  original = original.replace(dailyMarker, `const whatsappIngestionV1 = path.join(repo, 'render-overrides', 'apply-whatsapp-ingestion-v1.mjs');\nif (!fs.existsSync(whatsappIngestionV1)) throw new Error('Missing WhatsApp ingestion v1 patch');\nexecFileSync(process.execPath, [whatsappIngestionV1, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+} else if (!installWhatsApp) {
+  console.log('[whatsapp-ingestion-v1] skipped: Vercel project is not Trans Salomao');
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
