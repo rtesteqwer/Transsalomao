@@ -37,12 +37,19 @@ function fixture({ env = {}, drivers = [], parsed = { kind: 'unknown', confidenc
     throw new Error('Unexpected SQL in test: ' + query);
   };
   const fetchMock = async (url) => {
-    assert.equal(url, 'https://api.openai.com/v1/responses', 'No outgoing WhatsApp messages during ingestion tests');
+    if (url === 'https://graph.facebook.com/v-test/media-test') {
+      return Response.json({ url: 'https://media.example.test/ticket.jpg', mime_type: 'image/jpeg' });
+    }
+    if (url === 'https://media.example.test/ticket.jpg') {
+      return new Response(Buffer.from('fake-ticket-image'), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    }
+    assert.equal(url, 'https://api.openai.com/v1/responses', 'Unexpected outgoing request during ingestion test');
     aiCalls++;
     return Response.json({ output_text: JSON.stringify(parsed) });
   };
   const runtime = { env: { WHATSAPP_APP_SECRET: 'unit-test-secret', WHATSAPP_VERIFY_TOKEN: 'unit-test-verify',
-    WHATSAPP_PHONE_NUMBER_ID: 'business-phone-id', OPENAI_API_KEY: 'unit-test-only', ...env } };
+    WHATSAPP_PHONE_NUMBER_ID: 'business-phone-id', OPENAI_API_KEY: 'unit-test-only',
+    WHATSAPP_ACCESS_TOKEN: 'unit-test-access', WHATSAPP_GRAPH_VERSION: 'v-test', ...env } };
   const api = factory(createHmac, randomUUID, timingSafeEqual, () => (route) => route, async () => sql, runtime, fetchMock);
   return { ...api, audit, aiCalls: () => aiCalls };
 }
@@ -134,8 +141,15 @@ test('Even confident extraction stays pending until automatic posting is enabled
   assert.equal([...api.audit.values()][0].status, 'pending_review');
 });
 
-test('Media without text remains pending; no OCR or transcription is claimed', async () => {
+test('Image tickets are downloaded and sent to vision', async () => {
   const api = fixture({ drivers: [driver] });
+  await api.receiveWebhook(signed(payload({ type: 'image' })));
+  assert.equal([...api.audit.values()][0].status, 'pending_review');
+  assert.equal(api.aiCalls(), 1);
+});
+
+test('Image stays pending when WhatsApp media credentials are unavailable', async () => {
+  const api = fixture({ drivers: [driver], env: { WHATSAPP_ACCESS_TOKEN: '', WHATSAPP_GRAPH_VERSION: '' } });
   await api.receiveWebhook(signed(payload({ type: 'image' })));
   assert.equal([...api.audit.values()][0].status, 'pending_media');
   assert.equal(api.aiCalls(), 0);
