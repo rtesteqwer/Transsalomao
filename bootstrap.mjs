@@ -84,6 +84,12 @@ if (!original.includes("apply-salomao-v4-actions.mjs")) {
   original = original.replace(dailyMarker, `const salomaoV4 = path.join(repo, 'render-overrides', 'apply-salomao-v4-actions.mjs');\nif (!fs.existsSync(salomaoV4)) throw new Error('Missing Salomao v4 patch');\nexecFileSync(process.execPath, [salomaoV4, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Entrada operacional via WhatsApp: webhook assinado, IA estruturada e auditoria.
+if (!original.includes("apply-whatsapp-ingestion-v1.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do WhatsApp não encontrado');
+  original = original.replace(dailyMarker, `const whatsappIngestionV1 = path.join(repo, 'render-overrides', 'apply-whatsapp-ingestion-v1.mjs');\nif (!fs.existsSync(whatsappIngestionV1)) throw new Error('Missing WhatsApp ingestion v1 patch');\nexecFileSync(process.execPath, [whatsappIngestionV1, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
