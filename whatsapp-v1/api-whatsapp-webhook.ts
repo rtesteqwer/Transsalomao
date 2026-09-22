@@ -437,10 +437,8 @@ async function createImageReport(parsed: Parsed, driver: Row | null, fleet: Row 
   if (!driver) throw new Error("Motorista não identificado com segurança.");
   if (!fleet) throw new Error("Conjunto não identificado com segurança.");
 
-  const mode = parsed.freight_mode === "cegonha" || parsed.freight_mode === "caixinha"
-    ? parsed.freight_mode : "ton";
   const net = num(parsed.net_weight);
-  if (mode === "ton" && net <= 0) throw new Error("Peso líquido não identificado com segurança na foto.");
+  if (net <= 0) throw new Error("Peso líquido não identificado com segurança na foto.");
 
   const sql = await getSql();
   const id = "report_" + randomUUID().replace(/-/g, "").slice(0, 12);
@@ -452,8 +450,8 @@ async function createImageReport(parsed: Parsed, driver: Row | null, fleet: Row 
       insert into reports
         (id,ticket,driver_id,fleet_id,km,tons,status,freight_mode,loading_date,quantity,trip_billing_type,daily_value)
       values
-        (${id},${ticket},${driver.id},${fleet.id},${num(parsed.km)},${mode === "ton" ? net : 0},
-         'pendente',${mode},${date},1,'fixed',0)
+        (${id},${ticket},${driver.id},${fleet.id},${num(parsed.km)},${net},
+         'pendente',null,${date},1,'fixed',0)
       returning id
     )
     update whatsapp_messages
@@ -461,8 +459,11 @@ async function createImageReport(parsed: Parsed, driver: Row | null, fleet: Row 
     from created where provider_message_id=${sourceId}
   `;
 
-  const detail = mode === "ton" ? `peso líquido ${net} t` : mode;
-  return { type: "report", id, summary: `lançamento ${ticket} criado na Caixa para ${driver.name}: ${detail}.` };
+  return {
+    type: "report",
+    id,
+    summary: `lançamento ${ticket} criado na Caixa para ${driver.name}: peso líquido ${net} t; modalidade a definir pela Gerência.`,
+  };
 }
 
 async function createTrip(parsed: Parsed, driver: Row | null, fleet: Row | null, sourceId: string) {
@@ -638,8 +639,8 @@ Responda somente pelo schema fornecido. Não invente dados ausentes.
 Classifique como trip, fueling, expense ou unknown.
 Quando houver FOTO DE TICKET/PESAGEM de grupo operacional: trate como trip; leia SOMENTE o PESO LÍQUIDO para net_weight e loaded_tons.
 Ignore peso bruto, tara, peso de entrada/saída e valores monetários impressos na foto para esse fluxo.
-Se a legenda/mensagem disser "cegonha", use freight_mode "cegonha"; se disser "caixinha", use "caixinha".
-Sem esses avisos, uma foto de pesagem válida deve usar freight_mode "ton".
+Para fotos de pesagem, freight_mode deve ser null: a modalidade final é escolhida exclusivamente pelo Painel da Gerência ao fechar a viagem na Caixa.
+Se a legenda mencionar cegonha, caixinha, diária ou tonelada, preserve essa informação apenas em notes como contexto; não escolha a modalidade.
 "por tonelada", "R$/t", peso/toneladas em mensagem de texto => freight_mode "ton".
 "diária" ou "por viagem" => freight_mode "trip"; cegonha => "cegonha"; caixinha => "caixinha".
 Para peso brasileiro como 41.860 em contexto de carga/toneladas, interprete como 41.860 toneladas, não quarenta e um mil toneladas.
