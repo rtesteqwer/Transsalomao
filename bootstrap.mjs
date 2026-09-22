@@ -100,6 +100,12 @@ if (installWhatsApp && !original.includes("apply-whatsapp-management-mode.mjs"))
   original = original.replace(dailyMarker, `const whatsappManagementMode = path.join(repo, 'render-overrides', 'apply-whatsapp-management-mode.mjs');\nif (!fs.existsSync(whatsappManagementMode)) throw new Error('Missing WhatsApp management mode patch');\nexecFileSync(process.execPath, [whatsappManagementMode, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Exibe o peso real no histórico da aba Lançamentos, com precisão de kg (3 casas).
+if (!original.includes("apply-lancamentos-real-weight.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do peso real em Lançamentos não encontrado');
+  original = original.replace(dailyMarker, `const lancamentosRealWeight = path.join(repo, 'render-overrides', 'apply-lancamentos-real-weight.mjs');\\nif (!fs.existsSync(lancamentosRealWeight)) throw new Error('Missing real-weight display patch');\\nexecFileSync(process.execPath, [lancamentosRealWeight, work], { cwd: repo, stdio: 'inherit' });\\n\\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
