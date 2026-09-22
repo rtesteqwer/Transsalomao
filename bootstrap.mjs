@@ -95,6 +95,11 @@ if (installWhatsApp && !original.includes("apply-whatsapp-ingestion-v1.mjs")) {
   console.log('[whatsapp-ingestion-v1] skipped: Vercel project is not Trans Salomao');
 }
 
+if (installWhatsApp && !original.includes("apply-whatsapp-management-mode.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção da decisão de modalidade WhatsApp não encontrado');
+  original = original.replace(dailyMarker, `const whatsappManagementMode = path.join(repo, 'render-overrides', 'apply-whatsapp-management-mode.mjs');\nif (!fs.existsSync(whatsappManagementMode)) throw new Error('Missing WhatsApp management mode patch');\nexecFileSync(process.execPath, [whatsappManagementMode, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
