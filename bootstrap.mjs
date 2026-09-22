@@ -90,6 +90,12 @@ if (!original.includes("apply-pf-sync.mjs")) {
   original = original.replace(dailyMarker, `const pfSync = path.join(repo, 'render-overrides', 'apply-pf-sync.mjs');\nif (!fs.existsSync(pfSync)) throw new Error('Missing Meu Capital PF sync patch');\nexecFileSync(process.execPath, [pfSync, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Aba societária exclusiva do Felipe: 3% do faturamento bruto.
+if (!original.includes("apply-owner-share-tab.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção da participação do Felipe não encontrado');
+  original = original.replace(dailyMarker, `const ownerShareTab = path.join(repo, 'render-overrides', 'apply-owner-share-tab.mjs');\\nif (!fs.existsSync(ownerShareTab)) throw new Error('Missing Felipe 3% share tab patch');\\nexecFileSync(process.execPath, [ownerShareTab, work], { cwd: repo, stdio: 'inherit' });\\n\\n${dailyMarker}`);
+}
+
 // Entrada operacional via WhatsApp: só pertence ao projeto Trans Salomão.
 // O mesmo repositório também está conectado a outro projeto Vercel; nele o patch é ignorado.
 const vercelProductionUrl = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').toLowerCase();
