@@ -182,9 +182,9 @@ async function processMessage(item: any, fullPayload: any) {
   const auditId = "wa_" + randomUUID().replace(/-/g, "").slice(0, 18);
   await sql`
     insert into whatsapp_messages
-      (id,provider_message_id,sender_phone,sender_name,message_type,raw_text,media_id,raw_payload,status)
+      (id,provider_message_id,sender_phone,sender_name,group_id,message_type,raw_text,media_id,raw_payload,status)
     values
-      (${auditId},${item.id},${item.from},${item.name},${item.type},${item.text},${item.mediaId},
+      (${auditId},${item.id},${item.from},${item.name},${item.groupId},${item.type},${item.text},${item.mediaId},
        ${JSON.stringify({ message: item.message, object: fullPayload?.object || "" })}::jsonb,'received')
   `;
 
@@ -254,7 +254,7 @@ async function processMessage(item: any, fullPayload: any) {
     where id=${auditId}
   `;
 
-  await sendWhatsAppText(item.from, "Trans Salomão: " + created.summary);
+  await sendWhatsAppText(item.groupId || item.from, "Trans Salomão: " + created.summary, !!item.groupId);
   return { ok: true, status: "committed", id: auditId, created };
 }
 
@@ -499,7 +499,7 @@ function outputText(r: any) {
   return parts.join("\n").trim();
 }
 
-async function sendWhatsAppText(to: string, body: string) {
+async function sendWhatsAppText(to: string, body: string, isGroup = false) {
   const token = process.env.WHATSAPP_ACCESS_TOKEN?.trim() || "";
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || "";
   const version = process.env.WHATSAPP_GRAPH_VERSION?.trim() || "";
@@ -510,6 +510,7 @@ async function sendWhatsAppText(to: string, body: string) {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp",
+        ...(isGroup ? { recipient_type: "group" } : {}),
         to,
         type: "text",
         text: { body: body.slice(0, 1500) },
