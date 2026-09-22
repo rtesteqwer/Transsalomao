@@ -272,6 +272,12 @@ async function processMessage(item: any, fullPayload: any) {
     return { ok: true, status: "pending_review", id: auditId, parsed };
   }
 
+  const imageGroupTrip = !!item.groupId && item.type === "image" && parsed.kind === "trip";
+  if (!imageGroupTrip && !autoCommit) {
+    await markPending(auditId, "pending_review");
+    return { ok: true, status: "pending_review", id: auditId, parsed };
+  }
+
   const matchedDriver = driver;
   if (parsed.driver && norm(parsed.driver) !== norm(driver.name)) {
     const namedDriver = await findDriverByName(parsed.driver);
@@ -284,7 +290,7 @@ async function processMessage(item: any, fullPayload: any) {
 
   // Fotos de pesagem recebidas em grupo entram primeiro na Caixa.
   // Assim o peso líquido é capturado automaticamente sem adivinhar preço por tonelada.
-  if (item.groupId && item.type === "image" && parsed.kind === "trip") {
+  if (imageGroupTrip) {
     try {
       const created = await createImageReport(parsed, matchedDriver, fleet, item.id);
       return { ok: true, status: "committed", id: auditId, created };
@@ -297,11 +303,6 @@ async function processMessage(item: any, fullPayload: any) {
       `;
       return { ok: true, status: "pending_review", id: auditId, parsed, reason: msg };
     }
-  }
-
-  if (!autoCommit) {
-    await markPending(auditId, "pending_review");
-    return { ok: true, status: "pending_review", id: auditId, parsed };
   }
 
   let created: { type: string; id: string; summary: string } | null = null;
