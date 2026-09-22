@@ -43,6 +43,6 @@ Testes locais: `node --test whatsapp-v1/webhook.test.mjs` (Node 22.18+ ou 24).
 
 ## Regra de fotos de pesagem
 
-Para fotos recebidas em grupos operacionais autorizados, o sistema lê o ticket e usa **somente o peso líquido**. Peso bruto, tara e demais pesos impressos são ignorados para o lançamento. Sem aviso adicional, o modo é `ton`. Se a legenda/mensagem informar `cegonha` ou `caixinha`, o modo correspondente é usado.
+Para fotos recebidas em grupos operacionais autorizados, o sistema lê o ticket e usa **somente o peso líquido**. Peso bruto, tara e demais pesos impressos são ignorados para o lançamento.
 
-A foto cria um registro `pendente` em `reports` (Caixa), com motorista, conjunto, data e peso líquido. O preço por tonelada não é inferido da foto nem escolhido automaticamente quando houver mais de uma tarifa possível; ele continua sendo validado no fechamento da Caixa. Isso evita alterar faturamento por leitura ambígua.
+A foto cria um registro `pendente` em `reports` (Caixa), com motorista, conjunto, data e peso líquido, mas **sem modalidade de frete definida**. Na Caixa aparece como **A definir pela Gerência**. Ao fechar a viagem, a Gerência escolhe obrigatoriamente entre Por tonelada, Diária, Cegonha ou Caixinha. Só depois dessa escolha o lançamento pode virar viagem. O WhatsApp não decide a modalidade e não escolhe preço automaticamente.
