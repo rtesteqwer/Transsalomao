@@ -21,3 +21,4 @@ salomao-v53: billing error handling
 
 whatsapp-20260922: publish validated ingestion bdfcb89d6c49f41dbe99fb6adc06883a19ef853f; 12 tests and full application build passed; Meta connection and explicit auto-post activation pending.
 whatsapp-image-20260922: weigh-ticket vision, net-weight-only, group Caixa ingestion
+whatsapp-management-mode-20260922: management selects trip type in Caixa before closing
