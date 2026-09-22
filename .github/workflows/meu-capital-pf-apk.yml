@@ -43,13 +43,12 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Install Android SDK 35
+      - name: Inspect preinstalled Android SDK
         shell: bash
         run: |
-          SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager"
-          test -x "$SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls -1 "$ANDROID_HOME/platforms" | tail -20 || true
+          ls -1 "$ANDROID_HOME/build-tools" | tail -20 || true
 
       - name: Build APK
         run: gradle -p MeuCapitalPF-Android :app:assembleDebug --stacktrace
@@ -59,7 +58,8 @@ jobs:
         run: |
           cp MeuCapitalPF-Android/app/build/outputs/apk/debug/app-debug.apk Meu-Capital-PF-v1.0.0.apk
           sha256sum Meu-Capital-PF-v1.0.0.apk | tee Meu-Capital-PF-v1.0.0.apk.sha256
-          /usr/local/lib/android/sdk/build-tools/35.0.0/aapt dump badging Meu-Capital-PF-v1.0.0.apk | head -20
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          "$AAPT" dump badging Meu-Capital-PF-v1.0.0.apk | head -20
           unzip -t Meu-Capital-PF-v1.0.0.apk >/dev/null
 
       - name: Upload workflow artifact
@@ -78,4 +78,4 @@ jobs:
         shell: bash
         run: |
           gh release delete "$TAG" --cleanup-tag -y || true
-          gh release create "$TAG"             Meu-Capital-PF-v1.0.0.apk             Meu-Capital-PF-v1.0.0.apk.sha256             --target "$GITHUB_SHA"             --title "Meu Capital PF v1.0.0 APK"             --notes "APK Android instalável da primeira versão do Meu Capital PF. Os dados financeiros permanecem locais no aparelho. Package: br.com.meucapitalpf."
+          gh release create "$TAG" Meu-Capital-PF-v1.0.0.apk Meu-Capital-PF-v1.0.0.apk.sha256 --target "$GITHUB_SHA" --title "Meu Capital PF v1.0.0 APK" --notes "APK Android instalável da primeira versão do Meu Capital PF. Os dados financeiros permanecem locais no aparelho. Package: br.com.meucapitalpf."
