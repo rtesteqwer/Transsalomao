@@ -70,7 +70,13 @@ async function verifyWebhook(request: Request) {
 }
 
 async function receiveWebhook(request: Request) {
+  if (Number(request.headers.get("content-length") || 0) > 1_000_000) {
+    return response({ ok: false, code: "PAYLOAD_TOO_LARGE" }, 413);
+  }
   const raw = await request.text();
+  if (Buffer.byteLength(raw, "utf8") > 1_000_000) {
+    return response({ ok: false, code: "PAYLOAD_TOO_LARGE" }, 413);
+  }
   const secret = process.env.WHATSAPP_APP_SECRET?.trim() || "";
   if (!secret) return response({ ok: false, code: "WHATSAPP_APP_SECRET_MISSING" }, 503);
 
@@ -87,24 +93,33 @@ async function receiveWebhook(request: Request) {
     return response({ ok: false, code: "INVALID_JSON" }, 400);
   }
 
-  const messages = collectMessages(payload);
+  if (payload?.object !== "whatsapp_business_account") {
+    return response({ ok: false, code: "INVALID_OBJECT" }, 400);
+  }
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || "";
+  if (!phoneId) return response({ ok: false, code: "WHATSAPP_PHONE_NUMBER_ID_MISSING" }, 503);
+  const messages = collectMessages(payload, phoneId);
   const results: Row[] = [];
+  let failed = false;
   for (const item of messages) {
     try {
       results.push(await processMessage(item, payload));
     } catch (error: any) {
-      console.error("[whatsapp-ai] message failed", item?.id, error);
-      results.push({ ok: false, id: item?.id || "", error: String(error?.message || error) });
+      failed = true;
+      console.error("[whatsapp-ai] message failed", item?.id, error?.name || "Error");
+      results.push({ ok: false, id: item?.id || "", code: "PROCESSING_FAILED" });
     }
   }
-  return response({ ok: true, received: messages.length, results });
+  return response({ ok: !failed, received: messages.length, results }, failed ? 503 : 200);
 }
 
-function collectMessages(payload: any) {
+function collectMessages(payload: any, phoneId: string) {
   const rows: any[] = [];
   for (const entry of Array.isArray(payload?.entry) ? payload.entry : []) {
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       const value = change?.value || {};
+      if (change?.field !== "messages" || value?.messaging_product !== "whatsapp") continue;
+      if (String(value?.metadata?.phone_number_id || "") !== phoneId) continue;
       const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
       const contactByWaId = new Map(contacts.map((c: any) => [String(c?.wa_id || ""), c]));
       for (const message of Array.isArray(value?.messages) ? value.messages : []) {
@@ -121,6 +136,8 @@ function collectMessages(payload: any) {
         rows.push({
           id: String(message?.id || ""),
           from,
+          groupId: typeof message?.group_id === "string" && message.group_id.trim()
+            ? message.group_id.trim() : null,
           name: String(contact?.profile?.name || ""),
           type: String(message?.type || "unknown"),
           text: text.trim(),
@@ -131,7 +148,7 @@ function collectMessages(payload: any) {
       }
     }
   }
-  return rows.filter((x) => x.id);
+  return rows.filter((x) => x.id && x.from);
 }
 
 function digits(value: unknown) {
@@ -173,20 +190,36 @@ function todayBR() {
 
 async function processMessage(item: any, fullPayload: any) {
   const sql = await getSql();
-  const existing = await sql<Row>`
-    select id,status,created_entity_type,created_entity_id
-    from whatsapp_messages where provider_message_id=${item.id} limit 1
-  `;
-  if (existing[0]) return { ok: true, duplicate: true, ...existing[0] };
-
   const auditId = "wa_" + randomUUID().replace(/-/g, "").slice(0, 18);
-  await sql`
+  const inserted = await sql<Row>`
     insert into whatsapp_messages
       (id,provider_message_id,sender_phone,sender_name,group_id,message_type,raw_text,media_id,raw_payload,status)
     values
       (${auditId},${item.id},${item.from},${item.name},${item.groupId},${item.type},${item.text},${item.mediaId},
        ${JSON.stringify({ message: item.message, object: fullPayload?.object || "" })}::jsonb,'received')
+    on conflict (provider_message_id) do nothing
+    returning id
   `;
+  if (!inserted[0]) {
+    const existing = await sql<Row>`
+      select id,status,created_entity_type,created_entity_id
+      from whatsapp_messages where provider_message_id=${item.id} limit 1
+    `;
+    return { ok: true, duplicate: true, ...existing[0] };
+  }
+
+  const allowedGroups = (process.env.WHATSAPP_ALLOWED_GROUP_IDS || "")
+    .split(",").map((id) => id.trim()).filter(Boolean);
+  if (item.groupId && !allowedGroups.includes(item.groupId)) {
+    await markPending(auditId, "pending_group_authorization");
+    return { ok: true, status: "pending_group_authorization", id: auditId };
+  }
+
+  const driver = await findDriverByPhone(item.from);
+  if (!driver) {
+    await markPending(auditId, "pending_sender_authorization");
+    return { ok: true, status: "pending_sender_authorization", id: auditId };
+  }
 
   if (!item.text) {
     await sql`
@@ -197,7 +230,6 @@ async function processMessage(item: any, fullPayload: any) {
     return { ok: true, status: "pending_media", id: auditId };
   }
 
-  const driver = await findDriverByPhone(item.from);
   let parsed: Parsed;
   try {
     parsed = await parseWithAI(item.text, driver?.name || null);
@@ -207,7 +239,7 @@ async function processMessage(item: any, fullPayload: any) {
       set status='ai_error',error_message=${String(error?.message || error).slice(0,1000)},processed_at=now()
       where id=${auditId}
     `;
-    throw error;
+    return { ok: true, status: "ai_error", id: auditId };
   }
 
   await sql`
@@ -216,15 +248,24 @@ async function processMessage(item: any, fullPayload: any) {
     where id=${auditId}
   `;
 
-  const minConfidence = Math.max(0.5, Math.min(0.99, Number(process.env.WHATSAPP_AI_MIN_CONFIDENCE || "0.86")));
-  const autoCommit = process.env.WHATSAPP_AUTO_COMMIT !== "0";
+  const configuredConfidence = Number(process.env.WHATSAPP_AI_MIN_CONFIDENCE || "0.86");
+  const minConfidence = Number.isFinite(configuredConfidence)
+    ? Math.max(0.86, Math.min(0.99, configuredConfidence)) : 0.86;
+  const autoCommit = process.env.WHATSAPP_AUTO_COMMIT === "1";
 
   if (!autoCommit || parsed.kind === "unknown" || parsed.confidence < minConfidence) {
     await markPending(auditId, "pending_review");
     return { ok: true, status: "pending_review", id: auditId, parsed };
   }
 
-  const matchedDriver = driver || await findDriverByName(parsed.driver);
+  const matchedDriver = driver;
+  if (parsed.driver && norm(parsed.driver) !== norm(driver.name)) {
+    const namedDriver = await findDriverByName(parsed.driver);
+    if (!namedDriver || namedDriver.id !== driver.id) {
+      await markPending(auditId, "pending_review");
+      return { ok: true, status: "pending_review", id: auditId, reason: "Motorista informado difere do remetente cadastrado." };
+    }
+  }
   const fleet = await findFleet(parsed, matchedDriver?.id || null);
 
   let created: { type: string; id: string; summary: string } | null = null;
@@ -247,14 +288,9 @@ async function processMessage(item: any, fullPayload: any) {
     return { ok: true, status: "pending_review", id: auditId, parsed };
   }
 
-  await sql`
-    update whatsapp_messages
-    set status='committed',created_entity_type=${created.type},created_entity_id=${created.id},
-        processed_at=now()
-    where id=${auditId}
-  `;
-
-  await sendWhatsAppText(item.groupId || item.from, "Trans Salomão: " + created.summary, !!item.groupId);
+  if (process.env.WHATSAPP_SEND_CONFIRMATIONS === "1") {
+    await sendWhatsAppText(item.groupId || item.from, "Trans Salomão: " + created.summary, !!item.groupId);
+  }
   return { ok: true, status: "committed", id: auditId, created };
 }
 
@@ -299,6 +335,8 @@ async function findFleet(parsed: Parsed, driverId: string | null) {
       (tractor && tr === tractor) || (trailer && tl === trailer);
   });
   if (matches.length === 1) return matches[0];
+  // Uma placa informada nunca deve ser substituída silenciosamente pelo último conjunto.
+  if (fleetQ || tractor || trailer) return null;
 
   if (driverId) {
     const recent = await sql<Row>`
@@ -359,6 +397,7 @@ async function createTrip(parsed: Parsed, driver: Row | null, fleet: Row | null,
   }
 
   await sql`
+    with created as (
     insert into trips
       (id,code,date,client,origin,destination,driver_id,fleet_id,loaded_tons,gross_weight,net_weight,
        freight_mode,price_per_ton,price_per_trip,km_start,km_end,diesel_liters,diesel_price)
@@ -366,6 +405,11 @@ async function createTrip(parsed: Parsed, driver: Row | null, fleet: Row | null,
       (${id},${code},${date},${parsed.client || ""},${parsed.origin || ""},${parsed.destination || ""},
        ${driver.id},${fleet.id},${num(parsed.loaded_tons) || net},${num(parsed.gross_weight)},${net},
        ${mode},${priceTon},${mode === "ton" ? 0 : fixed},${kmStart},${kmEnd},0,0)
+    returning id
+    )
+    update whatsapp_messages
+    set status='committed',created_entity_type='trip',created_entity_id=created.id,processed_at=now()
+    from created where provider_message_id=${sourceId}
   `;
   const freight = mode === "ton" ? net * priceTon : fixed;
   return { type: "trip", id, summary: `viagem ${code} lançada para ${driver.name}, ${fleet.name}, valor R$ ${freight.toFixed(2)}.` };
@@ -380,9 +424,15 @@ async function createFueling(parsed: Parsed, driver: Row | null, fleet: Row | nu
   const id = "fuel_" + randomUUID().replace(/-/g, "").slice(0, 12);
   const date = isoDate(parsed.date) || todayBR();
   await sql`
+    with created as (
     insert into fuelings(id,date,driver_id,fleet_id,station,km,liters,price_per_liter,notes)
     values(${id},${date},${driver?.id || null},${fleet.id},${parsed.station || ""},${num(parsed.km)},
       ${liters},${price},${[parsed.notes, "WhatsApp " + sourceId].filter(Boolean).join(" | ")})
+    returning id
+    )
+    update whatsapp_messages
+    set status='committed',created_entity_type='fueling',created_entity_id=created.id,processed_at=now()
+    from created where provider_message_id=${sourceId}
   `;
   return { type: "fueling", id, summary: `abastecimento de ${liters} L registrado para ${fleet.name}.` };
 }
@@ -400,10 +450,16 @@ async function createExpense(parsed: Parsed, driver: Row | null, fleet: Row | nu
   const date = isoDate(parsed.date) || todayBR();
   const asset = parsed.asset_type === "trailer" ? "trailer" : "tractor";
   await sql`
+    with created as (
     insert into expenses(id,date,fleet_id,asset_type,driver_id,category,description,amount,notes)
     values(${id},${date},${isAdvance ? null : fleet?.id || null},${isAdvance ? null : asset},
       ${isAdvance ? driver?.id || null : null},${category},${parsed.description || "Lançamento via WhatsApp"},
       ${amount},${[parsed.notes, "WhatsApp " + sourceId].filter(Boolean).join(" | ")})
+    returning id
+    )
+    update whatsapp_messages
+    set status='committed',created_entity_type='expense',created_entity_id=created.id,processed_at=now()
+    from created where provider_message_id=${sourceId}
   `;
   return { type: "expense", id, summary: `despesa de R$ ${amount.toFixed(2)} registrada.` };
 }
@@ -468,6 +524,7 @@ Hoje em São Paulo: ${todayBR()}.`;
 
   const r = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
+    signal: AbortSignal.timeout(25_000),
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
@@ -483,7 +540,8 @@ Hoje em São Paulo: ${todayBR()}.`;
   const text = outputText(data);
   if (!text) throw new Error("OpenAI retornou resposta vazia.");
   const parsed = JSON.parse(text);
-  parsed.confidence = Math.max(0, Math.min(1, Number(parsed.confidence || 0)));
+  const confidence = Number(parsed.confidence);
+  parsed.confidence = Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0;
   return parsed as Parsed;
 }
 
@@ -507,6 +565,7 @@ async function sendWhatsAppText(to: string, body: string, isGroup = false) {
   try {
     const r = await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`, {
       method: "POST",
+      signal: AbortSignal.timeout(10_000),
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp",

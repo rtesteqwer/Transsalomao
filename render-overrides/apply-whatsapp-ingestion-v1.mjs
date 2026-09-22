@@ -7,7 +7,8 @@ const repo = process.cwd();
 
 const copies = [
   ['whatsapp-v1/api-whatsapp-webhook.ts', 'src/routes/api/whatsapp/webhook.ts'],
-  ['whatsapp-v1/0013_whatsapp_messages.sql', 'migrations/0013_whatsapp_messages.sql'],\n  ['whatsapp-v1/0014_whatsapp_group_context.sql', 'migrations/0014_whatsapp_group_context.sql'],
+  ['whatsapp-v1/0013_whatsapp_messages.sql', 'migrations/0013_whatsapp_messages.sql'],
+  ['whatsapp-v1/0014_whatsapp_group_context.sql', 'migrations/0014_whatsapp_group_context.sql'],
 ];
 
 for (const [srcRel, dstRel] of copies) {

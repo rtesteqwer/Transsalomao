@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/inspect-reconstructed-source.yml'
       - 'render-overrides/**'
+      - 'whatsapp-v1/**'
       - 'bootstrap.mjs'
   workflow_dispatch:
 
@@ -20,6 +21,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Test WhatsApp ingestion
+        run: node --test whatsapp-v1/webhook.test.mjs
       - name: Reconstruct final source
         shell: bash
         run: |
@@ -89,3 +92,4 @@ jobs:
           cd /tmp/trans-source
           npm install --ignore-scripts --no-audit --no-fund
           npm run build
+
