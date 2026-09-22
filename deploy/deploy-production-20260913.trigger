@@ -23,3 +23,4 @@ whatsapp-20260922: publish validated ingestion bdfcb89d6c49f41dbe99fb6adc06883a1
 whatsapp-image-20260922: weigh-ticket vision, net-weight-only, group Caixa ingestion
 whatsapp-management-mode-20260922: management selects trip type in Caixa before closing
 real-weight-history-20260922: show exact trip tonnage with 3 decimal places in Lancamentos history
+real-weight-history-retry-20260922: fix patch injection newline syntax
