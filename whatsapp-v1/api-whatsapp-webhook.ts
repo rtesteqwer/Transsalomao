@@ -215,13 +215,27 @@ async function processMessage(item: any, fullPayload: any) {
     return { ok: true, status: "pending_group_authorization", id: auditId };
   }
 
-  const driver = await findDriverByPhone(item.from);
+  const driver = await resolveDriverForMessage(item);
   if (!driver) {
     await markPending(auditId, "pending_sender_authorization");
     return { ok: true, status: "pending_sender_authorization", id: auditId };
   }
 
-  if (!item.text) {
+  let imageDataUrl: string | null = null;
+  if (item.type === "image" && item.mediaId) {
+    try {
+      imageDataUrl = await downloadWhatsAppImage(item.mediaId);
+    } catch (error: any) {
+      await sql`
+        update whatsapp_messages
+        set status='pending_media',error_message=${String(error?.message || error).slice(0,1000)},processed_at=now()
+        where id=${auditId}
+      `;
+      return { ok: true, status: "pending_media", id: auditId };
+    }
+  }
+
+  if (!item.text && !imageDataUrl) {
     await sql`
       update whatsapp_messages
       set status='pending_media',processed_at=now()
@@ -232,7 +246,7 @@ async function processMessage(item: any, fullPayload: any) {
 
   let parsed: Parsed;
   try {
-    parsed = await parseWithAI(item.text, driver?.name || null);
+    parsed = await parseWithAI(item.text, driver?.name || null, imageDataUrl);
   } catch (error: any) {
     await sql`
       update whatsapp_messages
@@ -253,7 +267,7 @@ async function processMessage(item: any, fullPayload: any) {
     ? Math.max(0.86, Math.min(0.99, configuredConfidence)) : 0.86;
   const autoCommit = process.env.WHATSAPP_AUTO_COMMIT === "1";
 
-  if (!autoCommit || parsed.kind === "unknown" || parsed.confidence < minConfidence) {
+  if (parsed.kind === "unknown" || parsed.confidence < minConfidence) {
     await markPending(auditId, "pending_review");
     return { ok: true, status: "pending_review", id: auditId, parsed };
   }
@@ -267,6 +281,28 @@ async function processMessage(item: any, fullPayload: any) {
     }
   }
   const fleet = await findFleet(parsed, matchedDriver?.id || null);
+
+  // Fotos de pesagem recebidas em grupo entram primeiro na Caixa.
+  // Assim o peso líquido é capturado automaticamente sem adivinhar preço por tonelada.
+  if (item.groupId && item.type === "image" && parsed.kind === "trip") {
+    try {
+      const created = await createImageReport(parsed, matchedDriver, fleet, item.id);
+      return { ok: true, status: "committed", id: auditId, created };
+    } catch (error: any) {
+      const msg = String(error?.message || error).slice(0, 1000);
+      await sql`
+        update whatsapp_messages
+        set status='pending_review',error_message=${msg},processed_at=now()
+        where id=${auditId}
+      `;
+      return { ok: true, status: "pending_review", id: auditId, parsed, reason: msg };
+    }
+  }
+
+  if (!autoCommit) {
+    await markPending(auditId, "pending_review");
+    return { ok: true, status: "pending_review", id: auditId, parsed };
+  }
 
   let created: { type: string; id: string; summary: string } | null = null;
   try {
@@ -320,6 +356,35 @@ async function findDriverByName(name: string | null) {
   return matches.length === 1 ? matches[0] : null;
 }
 
+function configuredGroupDriver(groupId: string | null) {
+  if (!groupId) return "";
+  const raw = process.env.WHATSAPP_GROUP_DRIVER_MAP?.trim() || "";
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return String(parsed[groupId] || "").trim();
+    }
+  } catch {
+    // Também aceita: groupId=Motorista;groupId2=Motorista 2
+  }
+  for (const pair of raw.split(";")) {
+    const i = pair.indexOf("=");
+    if (i <= 0) continue;
+    if (pair.slice(0, i).trim() === groupId) return pair.slice(i + 1).trim();
+  }
+  return "";
+}
+
+async function resolveDriverForMessage(item: any) {
+  const configured = configuredGroupDriver(item.groupId || null);
+  if (configured) {
+    const byName = await findDriverByName(configured);
+    if (byName) return byName;
+  }
+  return findDriverByPhone(item.from);
+}
+
 async function findFleet(parsed: Parsed, driverId: string | null) {
   const sql = await getSql();
   const rows = await sql<Row>`select * from fleets where status='ativo' order by name`;
@@ -365,6 +430,38 @@ async function globalPrice(mode: string) {
   const sql = await getSql();
   const rows = await sql<{ price: number }>`select price from freight_prices where mode=${mode} limit 1`;
   return num(rows[0]?.price);
+}
+
+async function createImageReport(parsed: Parsed, driver: Row | null, fleet: Row | null, sourceId: string) {
+  if (!driver) throw new Error("Motorista não identificado com segurança.");
+  if (!fleet) throw new Error("Conjunto não identificado com segurança.");
+
+  const mode = parsed.freight_mode === "cegonha" || parsed.freight_mode === "caixinha"
+    ? parsed.freight_mode : "ton";
+  const net = num(parsed.net_weight);
+  if (mode === "ton" && net <= 0) throw new Error("Peso líquido não identificado com segurança na foto.");
+
+  const sql = await getSql();
+  const id = "report_" + randomUUID().replace(/-/g, "").slice(0, 12);
+  const ticket = await nextTicket();
+  const date = isoDate(parsed.date) || todayBR();
+
+  await sql`
+    with created as (
+      insert into reports
+        (id,ticket,driver_id,fleet_id,km,tons,status,freight_mode,loading_date,quantity,trip_billing_type,daily_value)
+      values
+        (${id},${ticket},${driver.id},${fleet.id},${num(parsed.km)},${mode === "ton" ? net : 0},
+         'pendente',${mode},${date},1,'fixed',0)
+      returning id
+    )
+    update whatsapp_messages
+    set status='committed',created_entity_type='report',created_entity_id=created.id,processed_at=now()
+    from created where provider_message_id=${sourceId}
+  `;
+
+  const detail = mode === "ton" ? `peso líquido ${net} t` : mode;
+  return { type: "report", id, summary: `lançamento ${ticket} criado na Caixa para ${driver.name}: ${detail}.` };
 }
 
 async function createTrip(parsed: Parsed, driver: Row | null, fleet: Row | null, sourceId: string) {
@@ -464,7 +561,32 @@ async function createExpense(parsed: Parsed, driver: Row | null, fleet: Row | nu
   return { type: "expense", id, summary: `despesa de R$ ${amount.toFixed(2)} registrada.` };
 }
 
-async function parseWithAI(message: string, driverName: string | null): Promise<Parsed> {
+async function downloadWhatsAppImage(mediaId: string) {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN?.trim() || "";
+  const version = process.env.WHATSAPP_GRAPH_VERSION?.trim() || "";
+  if (!token || !version) throw new Error("Credenciais de mídia do WhatsApp não configuradas.");
+
+  const meta = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(mediaId)}`, {
+    signal: AbortSignal.timeout(10_000),
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const info: any = await meta.json().catch(() => ({}));
+  if (!meta.ok || !info?.url) throw new Error(`Falha ao obter mídia do WhatsApp (${meta.status}).`);
+
+  const mime = String(info?.mime_type || "image/jpeg").toLowerCase();
+  if (!mime.startsWith("image/")) throw new Error("A mídia recebida não é uma imagem.");
+
+  const media = await fetch(String(info.url), {
+    signal: AbortSignal.timeout(15_000),
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!media.ok) throw new Error(`Falha ao baixar imagem do WhatsApp (${media.status}).`);
+  const bytes = Buffer.from(await media.arrayBuffer());
+  if (!bytes.length || bytes.length > 12_000_000) throw new Error("Imagem vazia ou acima do limite de 12 MB.");
+  return `data:${mime};base64,${bytes.toString("base64")}`;
+}
+
+async function parseWithAI(message: string, driverName: string | null, imageDataUrl: string | null = null): Promise<Parsed> {
   const key = process.env.OPENAI_API_KEY?.trim() || "";
   if (!key) throw new Error("OPENAI_API_KEY não configurada.");
   const model =
@@ -513,7 +635,11 @@ async function parseWithAI(message: string, driverName: string | null): Promise<
   const instructions = `Você extrai lançamentos operacionais recebidos pelo WhatsApp da transportadora Trans Salomão.
 Responda somente pelo schema fornecido. Não invente dados ausentes.
 Classifique como trip, fueling, expense ou unknown.
-"por tonelada", "R$/t", peso/toneladas => freight_mode "ton".
+Quando houver FOTO DE TICKET/PESAGEM de grupo operacional: trate como trip; leia SOMENTE o PESO LÍQUIDO para net_weight e loaded_tons.
+Ignore peso bruto, tara, peso de entrada/saída e valores monetários impressos na foto para esse fluxo.
+Se a legenda/mensagem disser "cegonha", use freight_mode "cegonha"; se disser "caixinha", use "caixinha".
+Sem esses avisos, uma foto de pesagem válida deve usar freight_mode "ton".
+"por tonelada", "R$/t", peso/toneladas em mensagem de texto => freight_mode "ton".
 "diária" ou "por viagem" => freight_mode "trip"; cegonha => "cegonha"; caixinha => "caixinha".
 Para peso brasileiro como 41.860 em contexto de carga/toneladas, interprete como 41.860 toneladas, não quarenta e um mil toneladas.
 Valores monetários devem ser números em reais. Datas em YYYY-MM-DD quando conhecidas.
@@ -530,7 +656,13 @@ Hoje em São Paulo: ${todayBR()}.`;
       model,
       reasoning: { effort: "low" },
       instructions,
-      input: message.slice(0, 5000),
+      input: imageDataUrl ? [{
+        role: "user",
+        content: [
+          { type: "input_text", text: message?.trim() ? message.slice(0, 5000) : "Leia o ticket de pesagem desta imagem conforme as instruções." },
+          { type: "input_image", image_url: imageDataUrl, detail: "high" },
+        ],
+      }] : message.slice(0, 5000),
       text: { format: { type: "json_schema", name: "trans_salomao_whatsapp_event", strict: true, schema } },
       max_output_tokens: 1800,
     }),
