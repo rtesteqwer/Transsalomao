@@ -3,35 +3,45 @@ import test from 'node:test';
 import { addTripDetailsWorksheet, tripDetailRows } from './excel-trip-details.ts';
 
 const makeTrip = (overrides = {}) => ({
-  id: 'a', code: '10', date: '2026-09-01', driverName: 'Motorista exemplo',
+  id: 'a', code: '10', date: '2026-09-01', driverName: 'Motorista exemplo', fleetName: 'Conjunto 01',
   freightMode: 'ton', client: 'Empresa exemplo', origin: 'Origem', destination: 'Destino',
   netWeight: 30.123, pricePerTon: 20, pricePerTrip: 0,
   freight: 602.46, commissionPct: 0.2, commissionValue: 120.492,
   ...overrides,
 });
 
-test('exports each source record, including equal tickets and fixed freights', () => {
-  const input = [makeTrip(), makeTrip({ id: 'b' }),
-    ...['trip', 'cegonha', 'caixinha'].map((mode, i) => makeTrip({
-      id: mode, code: String(i + 1), freightMode: mode,
-      netWeight: 0, pricePerTon: 0, pricePerTrip: 500, freight: 500, commissionValue: 100,
-    }))];
+test('keeps ton and daily trips one per row and groups only cegonha/caixinha', () => {
+  const input = [
+    makeTrip({ id: 'ton-a', code: '190' }),
+    makeTrip({ id: 'ton-b', code: '191', netWeight: 32.72, freight: 654.4, commissionValue: 130.88 }),
+    makeTrip({ id: 'daily', code: '206', freightMode: 'trip', netWeight: 0, pricePerTon: 0, pricePerTrip: 500, freight: 500, commissionValue: 100 }),
+    makeTrip({ id: 'ceg-a', code: '300', freightMode: 'cegonha', netWeight: 0, pricePerTon: 0, pricePerTrip: 400, freight: 400, commissionValue: 80 }),
+    makeTrip({ id: 'ceg-b', code: '301', freightMode: 'cegonha', netWeight: 0, pricePerTon: 0, pricePerTrip: 400, freight: 400, commissionValue: 80 }),
+    makeTrip({ id: 'cx-a', code: '400', freightMode: 'caixinha', netWeight: 0, pricePerTon: 0, pricePerTrip: 250, freight: 250, commissionValue: 50 }),
+    makeTrip({ id: 'cx-b', code: '401', freightMode: 'caixinha', netWeight: 0, pricePerTon: 0, pricePerTrip: 250, freight: 250, commissionValue: 50 }),
+    makeTrip({ id: 'cx-c', code: '402', freightMode: 'caixinha', netWeight: 0, pricePerTon: 0, pricePerTrip: 250, freight: 250, commissionValue: 50 }),
+  ];
   const original = JSON.stringify(input);
   const rows = tripDetailRows(input);
+
   assert.equal(rows.length, 5);
-  assert.equal(rows.filter(row => row[1] === '10').length, 2);
-  assert.deepEqual(rows.map(row => row[3]), ['Diária', 'Cegonha', 'Caixinha', 'Por tonelada', 'Por tonelada']);
-  assert.equal(rows[0][8], null);
-  assert.equal(rows[0][9], 500);
-  assert.equal(rows[3][7], 30.123);
-  assert.equal(rows[3][8], 20);
-  assert.equal(rows[3][9], null);
-  assert.equal(rows[3][0].toISOString(), '2026-09-01T00:00:00.000Z');
-  assert.ok(Math.abs(rows.reduce((sum, row) => sum + row[10], 0) - 2704.92) < 1e-8);
+  assert.deepEqual(rows.map(row => row[4]), ['Por tonelada', 'Por tonelada', 'Diária', 'Caixinha', 'Cegonha']);
+  assert.equal(rows[0][1], '190');
+  assert.equal(rows[1][1], '191');
+  assert.equal(rows[0][8], 30.123);
+  assert.equal(rows[0][9], 20);
+
+  const caixinha = rows.find(row => row[4] === 'Caixinha');
+  const cegonha = rows.find(row => row[4] === 'Cegonha');
+  assert.equal(caixinha[1], '3 viagens agrupadas');
+  assert.equal(caixinha[11], 750);
+  assert.equal(caixinha[13], 150);
+  assert.equal(cegonha[1], '2 viagens agrupadas');
+  assert.equal(cegonha[11], 800);
+  assert.equal(cegonha[13], 160);
   assert.equal(JSON.stringify(input), original);
 });
 
-// ExcelJS surface used by the exporter, to check row addresses and cached totals.
 function workbookDouble() {
   const rows = new Map();
   const columns = new Map();
@@ -41,7 +51,7 @@ function workbookDouble() {
       this.rowCount = Math.max(this.rowCount, number);
       if (!rows.has(number)) {
         const cells = new Map();
-        rows.set(number, { number, getCell(col) {
+        rows.set(number, { number, height: undefined, getCell(col) {
           if (!cells.has(col)) cells.set(col, {});
           return cells.get(col);
         }, set values(values) { values.forEach((value, i) => { this.getCell(i + 1).value = value; }); } });
@@ -61,17 +71,21 @@ function workbookDouble() {
   return { addWorksheet() { return sheet; } };
 }
 
-test('detail formulas reference each row and totals include the last record', () => {
-  const sheet = addTripDetailsWorksheet(workbookDouble(), [makeTrip(), makeTrip({ id: 'b', code: '11' })], 'Teste');
-  assert.equal(sheet.getCell('K7').value.formula, 'IF(D7="Por tonelada",H7*I7,J7)');
-  assert.equal(sheet.getCell('M8').value.formula, 'K8*L8');
-  assert.equal(sheet.getCell('N8').value.formula, 'K8-M8');
-  assert.deepEqual(sheet.getCell('K9').value, { formula: 'SUM(K7:K8)', result: 1204.92 });
-  assert.deepEqual(sheet.autoFilter, { from: 'A6', to: 'N8' });
+test('worksheet stays compact and totals include displayed rows', () => {
+  const sheet = addTripDetailsWorksheet(workbookDouble(), [
+    makeTrip({ id: 'a', code: '190' }),
+    makeTrip({ id: 'b', code: '191', freight: 654.4, commissionValue: 130.88 }),
+  ], 'Teste');
+
+  assert.equal(sheet.getRow(7).height, 24);
+  assert.equal(sheet.getRow(8).height, 24);
+  assert.deepEqual(sheet.getCell('L9').value, { formula: 'SUM(L7:L8)', result: 1256.86 });
+  assert.deepEqual(sheet.getCell('N9').value, { formula: 'SUM(N7:N8)', result: 251.372 });
+  assert.deepEqual(sheet.autoFilter, { from: 'A6', to: 'O8' });
   assert.equal(sheet.rowCount, 9);
 });
 
 test('empty scope has zero totals without a reversed range', () => {
   const sheet = addTripDetailsWorksheet(workbookDouble(), [], 'Nenhum frete');
-  assert.deepEqual(sheet.getCell('K7').value, { formula: '0', result: 0 });
+  assert.deepEqual(sheet.getCell('L7').value, { formula: '0', result: 0 });
 });
