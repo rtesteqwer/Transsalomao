@@ -123,6 +123,13 @@ if (!original.includes("apply-lancamentos-real-weight.mjs")) {
   original = original.replace(dailyMarker, `const lancamentosRealWeight = path.join(repo, 'render-overrides', 'apply-lancamentos-real-weight.mjs');\nif (!fs.existsSync(lancamentosRealWeight)) throw new Error('Missing real-weight display patch');\nexecFileSync(process.execPath, [lancamentosRealWeight, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Peso exato no app do motorista + aba Fotos IA para leitura de tickets e lançamento na Caixa.
+const installPhotoAi = process.env.VERCEL !== '1' || String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').toLowerCase().includes('transsalomao.vercel.app');
+if (installPhotoAi && !original.includes("apply-photo-intake-ai-20260923.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção da aba Fotos IA não encontrado');
+  original = original.replace(dailyMarker, `const photoIntakeAi = path.join(repo, 'render-overrides', 'apply-photo-intake-ai-20260923.mjs');\nif (!fs.existsSync(photoIntakeAi)) throw new Error('Missing photo intake AI patch');\nexecFileSync(process.execPath, [photoIntakeAi, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 // Relatórios individuais por motorista: cada viagem por tonelada deve sair completa no Excel e PDF.
 if (!original.includes("apply-driver-tonnage-report-details-20260923.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do detalhamento por tonelada não encontrado');
