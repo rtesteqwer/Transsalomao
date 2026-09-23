@@ -123,6 +123,12 @@ if (!original.includes("apply-lancamentos-real-weight.mjs")) {
   original = original.replace(dailyMarker, `const lancamentosRealWeight = path.join(repo, 'render-overrides', 'apply-lancamentos-real-weight.mjs');\nif (!fs.existsSync(lancamentosRealWeight)) throw new Error('Missing real-weight display patch');\nexecFileSync(process.execPath, [lancamentosRealWeight, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Preserve grouped summaries and include the source trips in every Excel export.
+if (!original.includes("apply-excel-trip-details.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Excel trip details injection point not found');
+  original = original.replace(dailyMarker, `const excelTripDetails = path.join(repo, 'render-overrides', 'apply-excel-trip-details.mjs');\nexecFileSync(process.execPath, [excelTripDetails, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
