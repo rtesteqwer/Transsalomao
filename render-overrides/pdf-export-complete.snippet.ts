@@ -69,23 +69,34 @@ export async function downloadDriverReportPdf({
   };
 
   const compactTrips = (() => {
-    const fixedModes = new Set(["ton", "trip", "cegonha", "caixinha"]);
-    const modeLabelCompact = (mode) => mode === "trip" ? "Por viagem" : mode === "cegonha" ? "Cegonha" : mode === "caixinha" ? "Caixinha" : "Por tonelada";
+    // Por tonelada e Diária ficam sempre uma viagem por linha.
+    // Somente Cegonha e Caixinha são agrupadas, com a quantidade sinalizada.
+    const groupedModes = new Set(["cegonha", "caixinha"]);
+    const modeLabelCompact = (mode) => mode === "trip" ? "Diária" : mode === "cegonha" ? "Cegonha" : mode === "caixinha" ? "Caixinha" : "Por tonelada";
     const individual = [];
     const grouped = new Map();
     trips.forEach((trip) => {
       const mode = String(trip.freightMode ?? "ton");
-      if (!fixedModes.has(mode)) {
-        individual.push({ kind: "single", trip, mode, count: 1, label: "Por tonelada" });
+      if (!groupedModes.has(mode)) {
+        individual.push({
+          kind: "single",
+          trip,
+          mode,
+          label: modeLabelCompact(mode),
+          sortDate: reportDateKey(trip.date),
+        });
         return;
       }
+
       const rowDriverName = String(trip.driverName ?? "Motorista").trim() || "Motorista";
       const driverKey = String(trip.driverId ?? rowDriverName);
       const key = driverKey + "|" + mode;
+      const freight = Number(trip.freight ?? 0);
+      const commission = Number(trip.commissionValue ?? trip.commission ?? 0);
       const current = grouped.get(key) ?? {
         kind: "group", mode, label: modeLabelCompact(mode), count: 0, driverName: rowDriverName,
         firstDate: reportDateKey(trip.date), lastDate: reportDateKey(trip.date), fleets: new Set(),
-        freight: 0, commission: 0, result: 0,
+        freight: 0, commission: 0, afterCommission: 0,
       };
       current.count += 1;
       const date = reportDateKey(trip.date);
@@ -93,39 +104,51 @@ export async function downloadDriverReportPdf({
       if (date && (!current.lastDate || date > current.lastDate)) current.lastDate = date;
       const fleet = String(trip.fleetName ?? "").trim();
       if (fleet) current.fleets.add(fleet);
-      current.freight += Number(trip.freight ?? 0);
-      current.commission += Number(trip.commissionValue ?? trip.commission ?? 0);
-      current.result += Number(trip.grossResult ?? 0);
+      current.freight += freight;
+      current.commission += commission;
+      current.afterCommission += freight - commission;
       grouped.set(key, current);
     });
-    return [...individual, ...grouped.values()];
+
+    return [...individual, ...grouped.values()].sort((a, b) => {
+      const aDate = a.kind === "single" ? a.sortDate : a.firstDate;
+      const bDate = b.kind === "single" ? b.sortDate : b.firstDate;
+      return String(aDate ?? "").localeCompare(String(bDate ?? "")) ||
+        String(a.label ?? "").localeCompare(String(b.label ?? ""), "pt-BR");
+    });
   })();
 
   const rows = compactTrips.map((item: any) => {
     if (item.kind === "single") {
       const trip = item.trip;
+      const mode = String(item.mode ?? trip.freightMode ?? "ton");
+      const commission = Number(trip.commissionValue ?? trip.commission ?? 0);
+      const freight = Number(trip.freight ?? 0);
       return [
         formatDate(trip.date),
-        String(trip.code ?? "—"),
+        `${String(trip.code ?? "—")} • ${item.label}`,
         String(trip.driverName ?? driverName ?? "—"),
         String(trip.fleetName ?? "—"),
-        tons(Number(trip.netWeight ?? 0)),
-        brl(Number(trip.freight ?? 0)),
-        brl(Number(trip.commissionValue ?? trip.commission ?? 0)),
-        brl(Number(trip.grossResult ?? 0)),
+        mode === "ton" ? tons(Number(trip.netWeight ?? 0)) : "—",
+        mode === "ton" ? brl(Number(trip.pricePerTon ?? 0)) : "—",
+        brl(freight),
+        brl(commission),
+        brl(freight - commission),
       ];
     }
+
     const dateText = item.firstDate === item.lastDate ? formatDate(item.firstDate) : `${formatDate(item.firstDate)} a ${formatDate(item.lastDate)}`;
     const fleetText = item.fleets.size === 1 ? Array.from(item.fleets)[0] : item.fleets.size > 1 ? "Vários" : "—";
     return [
       dateText,
-      `${item.label} · ${item.count} viagens`,
+      `${item.label} • ${item.count} viagens`,
       item.driverName,
       fleetText,
       "—",
+      "—",
       brl(item.freight),
       brl(item.commission),
-      brl(item.result),
+      brl(item.afterCommission),
     ];
   });
 
@@ -169,7 +192,7 @@ export async function downloadDriverReportPdf({
   });
   const tripStartY = Number((doc as any).lastAutoTable?.finalY ?? 25) + 3;
   autoTable(doc, {
-    head: [["Data", "Ticket / modalidade", "Motorista", "Conjunto", "Peso", "Frete", "Comissão", "Resultado"]],
+    head: [["Data", "Ticket / modalidade", "Motorista", "Conjunto", "Peso", "Preço/t", "Frete", "Comissão", "Após comissão"]],
     body: rows,
     startY: tripStartY,
     margin: { top: 25, right: 7, bottom: 9, left: 7 },
@@ -178,15 +201,15 @@ export async function downloadDriverReportPdf({
     rowPageBreak: "avoid",
     styles: {
       font: "helvetica",
-      fontSize: 6.15,
-      cellPadding: 0.95,
+      fontSize: 6.1,
+      cellPadding: 0.65,
       textColor: black,
       fillColor: [255, 255, 255],
       lineColor: blue,
       lineWidth: 0.14,
       valign: "middle",
       overflow: "ellipsize",
-      minCellHeight: 4.1,
+      minCellHeight: 3.8,
       halign: "center",
     },
     headStyles: {
@@ -201,8 +224,8 @@ export async function downloadDriverReportPdf({
     },
     alternateRowStyles: { fillColor: [255, 255, 255] },
     columnStyles: {
-      0: { cellWidth: 22 }, 1: { cellWidth: 43 }, 2: { cellWidth: 40 }, 3: { cellWidth: 42 },
-      4: { cellWidth: 28 }, 5: { cellWidth: 36 }, 6: { cellWidth: 36 }, 7: { cellWidth: 36 },
+      0: { cellWidth: 22 }, 1: { cellWidth: 40 }, 2: { cellWidth: 35 }, 3: { cellWidth: 35 },
+      4: { cellWidth: 24 }, 5: { cellWidth: 26 }, 6: { cellWidth: 33 }, 7: { cellWidth: 33 }, 8: { cellWidth: 35 },
     },
     didDrawPage: drawHeader,
   });
