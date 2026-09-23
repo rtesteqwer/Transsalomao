@@ -1,2 +1,5 @@
-Deploy solicitado em 2026-09-23 para detalhamento completo das viagens por tonelada nos relatórios individuais PDF e Excel.
-Commit de código: a4b4d19a22d781726bcad933deba040136a99af3
+Deploy solicitado em 2026-09-23 para corrigir o Excel individual do motorista:
+- abrir primeiro no detalhamento das viagens por tonelada
+- usar "Tudo" como período padrão dos relatórios
+- manter todas as informações completas das viagens por tonelada
+Commit validado: d341d39da5dc10f03cc2ccb6a540977305217a1c
