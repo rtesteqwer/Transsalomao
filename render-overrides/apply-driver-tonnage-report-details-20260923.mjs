@@ -12,6 +12,7 @@ const write = (rel, value) => fs.writeFileSync(path.join(target, rel), value);
 {
   const rel = "src/routes/dono/totais.tsx";
   let s = read(rel);
+  s = s.replace('  const [period, setPeriod] = useState<Period>("month");', '  const [period, setPeriod] = useState<Period>("all");');
   if (!s.includes("VIAGENS POR TONELADA - DETALHAMENTO COMPLETO")) {
     const fnStart = s.indexOf("  async function exportExcelColorido(driverScope?:");
     if (fnStart < 0) throw new Error("driver-tonnage-report-details-20260923: exportExcelColorido not found");
@@ -29,6 +30,9 @@ const write = (rel, value) => fs.writeFileSync(path.join(target, rel), value);
         const tonSheet = workbook.addWorksheet("Viagens por tonelada", {
           pageSetup: { orientation: "landscape", paperSize: 8, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
         });
+        tonSheet.orderNo = 1;
+        sheet.orderNo = 2;
+        sheet.name = "Resumo";
         tonSheet.addImage(logoId, { tl: { col: 0.02, row: 0.01 }, ext: { width: 520, height: 260 } });
         tonSheet.mergeCells("D1:T2");
         tonSheet.getCell("D1").value = "VIAGENS POR TONELADA - DETALHAMENTO COMPLETO";
