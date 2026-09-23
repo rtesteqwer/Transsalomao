@@ -123,6 +123,12 @@ if (!original.includes("apply-lancamentos-real-weight.mjs")) {
   original = original.replace(dailyMarker, `const lancamentosRealWeight = path.join(repo, 'render-overrides', 'apply-lancamentos-real-weight.mjs');\nif (!fs.existsSync(lancamentosRealWeight)) throw new Error('Missing real-weight display patch');\nexecFileSync(process.execPath, [lancamentosRealWeight, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Relatórios individuais por motorista: cada viagem por tonelada deve sair completa no Excel e PDF.
+if (!original.includes("apply-driver-tonnage-report-details-20260923.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do detalhamento por tonelada não encontrado');
+  original = original.replace(dailyMarker, `const driverTonnageReports = path.join(repo, 'render-overrides', 'apply-driver-tonnage-report-details-20260923.mjs');\nif (!fs.existsSync(driverTonnageReports)) throw new Error('Missing driver tonnage report detail patch');\nexecFileSync(process.execPath, [driverTonnageReports, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
