@@ -1,7 +1,8 @@
-Deploy solicitado em 2026-09-23 para:
-- corrigir o peso/tonelagem exibido no app do motorista, sem arredondar para 1 casa decimal
-- adicionar a aba Fotos IA na Gerência
-- ler fotos de tickets com OpenAI/ChatGPT
-- criar lançamento pendente na Caixa usando o peso líquido lido
-- Gerência escolhe a modalidade depois
-Commit validado: 6370364df90a0ae5205e2fba934fbf70d258796e
+Deploy solicitado em 2026-09-23 para corrigir relatórios individuais por motorista:
+- PDF compacto: Por tonelada e Diária em uma viagem por linha
+- PDF: Por tonelada mostra peso, preço/t, frete, comissão e após comissão
+- Cegonha e Caixinha agrupadas por modalidade com quantidade de viagens
+- Excel individual em uma única planilha com todas as modalidades
+- Excel com resumo de quantidades e totais financeiros no topo
+- Aplicar o mesmo padrão para todos os motoristas
+Commit validado: f9d2efc2b8a3cc1ffa00fecdd9948dbb682ab04f
