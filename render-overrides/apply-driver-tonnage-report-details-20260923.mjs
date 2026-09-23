@@ -94,7 +94,7 @@ const write = (rel, value) => fs.writeFileSync(path.join(target, rel), value);
         const tonHeader = tonSheet.getRow(6);
         tonHeader.values = [
           "Data", "Ticket", "Cliente", "Origem", "Destino", "Motorista", "Conjunto", "Modalidade",
-          "Peso carregado (t)", "Peso bruto (t)", "Peso líquido (t)", "Preço do frete",
+          "Peso carregado (t)", "Peso bruto (t)", "Peso líquido (t)", "Preço/t ou diária",
           "Frete", "KM inicial", "KM final", "KM rodados", "Comissão (%)", "Comissão",
           "Após comissão", "Resultado bruto", "Custo diesel"
         ];
@@ -252,7 +252,7 @@ const write = (rel, value) => fs.writeFileSync(path.join(target, rel), value);
     s = s.replace('head: [["Data", "Ticket / modalidade", "Motorista", "Detalhes do frete", "Frete", "Comissão", "Após comissão"]]', 'head: [["Data", "Ticket / modalidade", "Motorista", "Peso / preço", "Frete", "Comissão", "Após comissão"]]');
     write(rel, s);
   }
-  // No relatório individual, Diária também é listada viagem por viagem.  // No relatório individual, Diária também é listada viagem por viagem.
+  // No relatório individual, Diária também é listada viagem por viagem.
   // Apenas Cegonha e Caixinha permanecem agrupadas.
   s = read(rel);
   s = s.replace(
