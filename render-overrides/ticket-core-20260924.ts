@@ -8,7 +8,7 @@ export const MAX_IMAGE_BASE64 = 3_500_000;
 const MAX_INTEGER = 2_147_483_647;
 export const freightModes = ["ton", "trip", "cegonha", "caixinha"] as const;
 export type TicketFreightMode = typeof freightModes[number];
-const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "transportadora", "operadora", "contratante", "motorista", "cliente", "destinatario", "anotacoes_manuscritas"] as const;
+const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "transportadora", "operadora", "contratante", "motorista", "cliente", "destinatario", "navio", "emissor", "operador_pesagem", "item_codigo", "anotacoes_manuscritas"] as const;
 const weightFields = ["pesagem_inicial_kg", "pesagem_final_kg", "peso_liquido_kg", "peso_origem_kg"] as const;
 export type TicketData = Record<typeof textFields[number], string | null> & Record<typeof weightFields[number], number | null> & { alertas: string[] };
 
