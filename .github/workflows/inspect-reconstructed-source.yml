@@ -39,9 +39,12 @@ jobs:
           API=/tmp/trans-source/src/lib/api.ts
           HOOK=/tmp/trans-source/src/lib/use-fleet.ts
 
-          if grep -q 'Número do ticket' "$MOTORISTA"; then echo 'Campo manual de ticket ainda existe' >&2; exit 1; fi
+          # The AI ticket reader intentionally has a review field called "Número do ticket".
+          # Only fail if the legacy manual ticket state/form is still present.
           if grep -q 'const \[ticket, setTicket\]' "$MOTORISTA"; then echo 'Estado manual de ticket ainda existe' >&2; exit 1; fi
           grep -q 'ticket: ""' "$MOTORISTA"
+          grep -q 'TicketPhotoAccess' "$MOTORISTA"
+          grep -q 'Foto do ticket de balança' "$MOTORISTA"
 
           grep -q 'updatePendingReport' "$API"
           grep -q "status = 'pendente'" "$API"
