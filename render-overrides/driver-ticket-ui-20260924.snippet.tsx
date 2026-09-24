@@ -26,6 +26,14 @@
                 ))}
               </div>
               {ticketFileName ? <p className="break-all text-xs text-muted" role="status">{ticketFileName}</p> : null}
+              {ticketFileName && !ticketData && !ticketReading ? (
+                <div className="grid gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3 text-xs text-muted">
+                  <p>A foto foi selecionada, mas a leitura não foi concluída. O sistema não enviará um ticket automático sem os dados da foto.</p>
+                  <Button type="button" variant="ghost" onClick={() => { setTicketFileName(""); setTicketConfirmed(false); }}>
+                    Remover foto e lançar manualmente
+                  </Button>
+                </div>
+              ) : null}
 
               {ticketData ? (
                 <div className="grid gap-3 rounded-xl border border-border bg-bg p-4">
