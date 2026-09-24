@@ -135,7 +135,7 @@ export const Route = createFileRoute("/api/photo-intake")({
           values
             (${id}, ${relationType}, ${relationId}, ${tripCode}, ${driverId}, ${driverName}, ${fleetId}, ${fleetName},
              ${tripDate}, ${freightMode}, ${netWeight}, ${reportStatus}, ${fileName}, ${mime}, ${image},
-             ${safeJson(body?.ticketData)}, ${textValue(body?.notes)}, ${createdBy}, ${createdBy})
+             ${JSON.stringify(safeJson(body?.ticketData))}::jsonb, ${textValue(body?.notes)}, ${createdBy}, ${createdBy})
         `;
 
         return json({ ok: true, id, message: "Foto do ticket salva e relacionada à viagem." });
@@ -167,7 +167,7 @@ export const Route = createFileRoute("/api/photo-intake")({
         const freightMode = textValue(body?.freightMode);
         const netWeight = nullableNumber(body?.netWeight);
         const notes = textValue(body?.notes);
-        const ticketData = safeJson(body?.ticketData);
+        const ticketData = JSON.stringify(safeJson(body?.ticketData));
 
         await sql`
           update trip_ticket_photos
@@ -177,7 +177,7 @@ export const Route = createFileRoute("/api/photo-intake")({
               trip_date=${tripDate},
               freight_mode=${freightMode},
               net_weight=${netWeight},
-              ticket_data=${ticketData},
+              ticket_data=${ticketData}::jsonb,
               notes=${notes},
               updated_at=now(),
               updated_by=${session.username}
