@@ -133,46 +133,40 @@ function FotosIaPage() {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <label
-            htmlFor="photo-gallery-input"
-            className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-5 py-7 text-center hover:bg-surface-2"
-          >
-            <ImagePlus className="size-8 text-accent" />
-            <strong className="mt-3 text-sm">Escolher da galeria</strong>
-            <span className="mt-1 text-xs text-muted">Selecione uma ou várias fotos já salvas no celular.</span>
-          </label>
-          <input
-            id="photo-gallery-input"
-            className="sr-only"
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(e) => {
-              setFiles(Array.from(e.currentTarget.files ?? []));
-              e.currentTarget.value = "";
-            }}
-          />
+          <div className="relative flex min-h-40 overflow-hidden flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-5 py-7 text-center hover:bg-surface-2">
+            <ImagePlus className="pointer-events-none size-8 text-accent" />
+            <strong className="pointer-events-none mt-3 text-sm">Escolher da galeria</strong>
+            <span className="pointer-events-none mt-1 text-xs text-muted">Toque aqui para selecionar uma ou várias fotos já salvas no celular.</span>
+            <input
+              aria-label="Escolher fotos da galeria"
+              className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                setFiles(Array.from(e.currentTarget.files ?? []));
+                e.currentTarget.value = "";
+              }}
+            />
+          </div>
 
-          <label
-            htmlFor="photo-camera-input"
-            className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-5 py-7 text-center hover:bg-surface-2"
-          >
-            <Camera className="size-8 text-accent" />
-            <strong className="mt-3 text-sm">Tirar foto agora</strong>
-            <span className="mt-1 text-xs text-muted">Abre a câmera traseira para fotografar o ticket.</span>
-          </label>
-          <input
-            id="photo-camera-input"
-            className="sr-only"
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => {
-              const selected = Array.from(e.currentTarget.files ?? []);
-              if (selected.length) setFiles((current) => [...current, ...selected]);
-              e.currentTarget.value = "";
-            }}
-          />
+          <div className="relative flex min-h-40 overflow-hidden flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-5 py-7 text-center hover:bg-surface-2">
+            <Camera className="pointer-events-none size-8 text-accent" />
+            <strong className="pointer-events-none mt-3 text-sm">Tirar foto agora</strong>
+            <span className="pointer-events-none mt-1 text-xs text-muted">Toque aqui para abrir a câmera traseira e fotografar o ticket.</span>
+            <input
+              aria-label="Tirar foto do ticket"
+              className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => {
+                const selected = Array.from(e.currentTarget.files ?? []);
+                if (selected.length) setFiles((current) => [...current, ...selected]);
+                e.currentTarget.value = "";
+              }}
+            />
+          </div>
         </div>
 
         {files.length > 0 ? (
