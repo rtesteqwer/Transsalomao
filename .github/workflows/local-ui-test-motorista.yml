@@ -1,0 +1,182 @@
+name: Local UI Test Motorista
+
+on:
+  push:
+    paths:
+      - 'deploy/local-ui-test.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  test-local-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Reconstruct patched application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TRANS_SOURCE_DUMP="$RUNNER_TEMP/trans-source"
+          npm run build
+          test -f "$TRANS_SOURCE_DUMP/src/routes/motorista.tsx"
+          cp "$TRANS_SOURCE_DUMP/package.json" package.generated.json
+          echo "SOURCE_DUMP=$TRANS_SOURCE_DUMP" >> "$GITHUB_ENV"
+
+      - name: Verify requested motorista changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="$SOURCE_DUMP/src/routes/motorista.tsx"
+
+          if grep -Fq 'KM da carreta' "$FILE"; then
+            echo "ERRO: campo KM da carreta ainda aparece no motorista"
+            grep -Fn 'KM da carreta' "$FILE" || true
+            exit 1
+          fi
+
+          grep -Fq 'Placa do veículo' "$FILE"
+          grep -Fq 'Placa da carreta' "$FILE"
+          grep -Fq 'Transportadora' "$FILE"
+          grep -Fq 'Operadora' "$FILE"
+          grep -Fq 'Empresa contratante' "$FILE"
+          grep -Fq 'Destinatário / recebedor' "$FILE"
+
+          grep -Fq 'maxLado = 2600' render-overrides/driver-ticket-helpers-20260924.snippet.ts
+          grep -Fq 'focusedInstruction' render-overrides/salomao-ticket-reader-20260924.server.ts
+
+          {
+            echo 'STATIC_UI_OK'
+            echo 'KM_DA_CARRETA=REMOVIDO'
+            echo 'PLACA_VEICULO=OK'
+            echo 'PLACA_CARRETA=OK'
+            echo 'TRANSPORTADORA=OK'
+            echo 'OPERADORA=OK'
+            echo 'CONTRATANTE=OK'
+            echo 'DESTINATARIO=OK'
+            echo 'IMAGE_MAX_SIDE=2600'
+            echo 'SECOND_FOCUSED_READ=OK'
+          } | tee local-test-summary.txt
+
+      - name: Install reconstructed app dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DUMP"
+          npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Build reconstructed app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DUMP"
+          npm run build
+
+      - name: Prepare browser smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DUMP"
+          node -e 'const p=require("./package.json"); console.log(JSON.stringify(p.scripts||{}));' | tee "$GITHUB_WORKSPACE/generated-scripts.json"
+
+          if node -e 'const p=require("./package.json"); process.exit(p.scripts&&p.scripts.dev?0:1)'; then
+            npm install --no-save --ignore-scripts --no-audit --no-fund playwright@1.55.0
+            npx playwright install --with-deps chromium
+
+            cat > "$RUNNER_TEMP/ui-smoke.mjs" <<'EOF'
+          import { chromium } from "playwright";
+          import fs from "node:fs";
+
+          const browser = await chromium.launch({ headless: true });
+          const page = await browser.newPage({
+            viewport: { width: 430, height: 932 },
+            deviceScaleFactor: 1
+          });
+
+          await page.route("**/api/**", async route => {
+            const url = route.request().url();
+            if (url.includes("/api/")) {
+              await route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({
+                  ok: true,
+                  drivers: [{ id: "driver-test", name: "Motorista Teste", status: "ativo" }],
+                  fleets: [{ id: "fleet-test", name: "QWS3E13 / FYW7J05", status: "ativo", plate: "QWS3E13" }],
+                  reports: [],
+                  ticket: null
+                })
+              });
+              return;
+            }
+            await route.continue();
+          });
+
+          const response = await page.goto("http://127.0.0.1:4173/motorista", {
+            waitUntil: "domcontentloaded",
+            timeout: 30000
+          });
+
+          await page.waitForTimeout(2500);
+          const body = await page.locator("body").innerText().catch(() => "");
+          fs.writeFileSync(process.env.GITHUB_WORKSPACE + "/motorista-body.txt", body);
+
+          const checks = {
+            httpStatus: response?.status() ?? null,
+            hasKmCarreta: body.includes("KM da carreta"),
+            hasPlacaVeiculo: body.includes("Placa do veículo"),
+            hasPlacaCarreta: body.includes("Placa da carreta"),
+            hasTransportadora: body.includes("Transportadora")
+          };
+          fs.writeFileSync(
+            process.env.GITHUB_WORKSPACE + "/browser-checks.json",
+            JSON.stringify(checks, null, 2)
+          );
+
+          await page.screenshot({
+            path: process.env.GITHUB_WORKSPACE + "/motorista-local-test.png",
+            fullPage: true
+          });
+          await browser.close();
+
+          if (checks.hasKmCarreta) process.exit(2);
+          EOF
+
+            nohup npm run dev -- --host 127.0.0.1 --port 4173 > "$GITHUB_WORKSPACE/dev-server.log" 2>&1 &
+            echo $! > "$RUNNER_TEMP/dev.pid"
+
+            for i in $(seq 1 45); do
+              if curl -fsS "http://127.0.0.1:4173/motorista" >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
+
+            node "$RUNNER_TEMP/ui-smoke.mjs" || {
+              echo "Browser smoke failed; preserving logs and screenshot if generated."
+              cat "$GITHUB_WORKSPACE/dev-server.log" || true
+              exit 1
+            }
+          else
+            echo "NO_DEV_SCRIPT" | tee "$GITHUB_WORKSPACE/browser-test-skipped.txt"
+          fi
+
+      - name: Upload local test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transsalomao-local-ui-test
+          path: |
+            local-test-summary.txt
+            package.generated.json
+            generated-scripts.json
+            browser-checks.json
+            motorista-body.txt
+            motorista-local-test.png
+            dev-server.log
+            browser-test-skipped.txt
+          if-no-files-found: ignore
+          retention-days: 3
