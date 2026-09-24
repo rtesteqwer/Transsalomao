@@ -73,3 +73,13 @@ Ticket reader error UI:
 - mantém foto bloqueada até leitura ou remoção manual
 Build validado com sucesso
 Commit: cd9397b7c1da1cf59c53e54665a2bc5c2cf4233b
+
+
+Salomao IA ticket reader:
+- ticket photos routed through Salomao IA shared credential engine
+- tries private assistant database credential before Vercel OPENAI_API_KEY
+- local OCR fallback with tesseract.js when advanced vision is unavailable
+- OCR text interpreted by Salomao IA deterministic ticket parser
+- keeps manual confirmation before Caixa save
+Build validated successfully
+Commit: 9190f393928c7649cf8ed27fe4fae1b07459a5fb
