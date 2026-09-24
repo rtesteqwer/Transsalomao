@@ -214,35 +214,70 @@ const write = (rel, value) => fs.writeFileSync(path.join(target, rel), value);
   }
 }
 
-// PDF por motorista: as viagens por tonelada já são individuais; aqui cada linha
-// passa a mostrar todos os dados relevantes da viagem, mantendo os demais modos compactos.
+// PDF por motorista: Por tonelada e Diária ficam uma viagem por linha.
+// Cegonha/Caixinha seguem agrupadas. A célula de informações fica em UMA linha.
 {
   const rel = "src/lib/pdf.ts";
   let s = read(rel);
-  if (!s.includes('Preço/t: ${brl(Number(trip.pricePerTon ?? 0))}/t')) {
-    const before = `    const details = mode === "ton"
-      ? \`Peso líquido: \${tons(Number(trip.netWeight ?? 0))}  •  \${brl(Number(trip.pricePerTon ?? 0))}/t\`
-      : mode === "trip"
-        ? \`Valor da diária: \${brl(Number(trip.pricePerTrip ?? trip.freight ?? 0))}\`
-        : \`\${modeLabelCompact(mode)} • 1 frete\`;`;
-    const after = `    const details = mode === "ton"
-      ? \`Peso: \${tons(Number(trip.netWeight ?? 0))} • Preço/t: \${brl(Number(trip.pricePerTon ?? 0))}/t\`
-      : mode === "trip"
-        ? \`Diária: \${brl(Number(trip.pricePerTrip ?? trip.freight ?? 0))}\`
-        : \`\${modeLabelCompact(mode)} • 1 frete\`;`;
-    if (!s.includes(before)) throw new Error("driver-tonnage-report-details-20260923: PDF compact detail block not found");
-    s = s.replace(before, after);
-    s = s.replace('head: [["Data", "Ticket / modalidade", "Motorista", "Detalhes do frete", "Frete", "Comissão", "Após comissão"]]', 'head: [["Data", "Ticket / modalidade", "Motorista", "Peso / preço", "Frete", "Comissão", "Após comissão"]]');
-    write(rel, s);
-  }
-  // No relatório individual, Diária também é listada viagem por viagem.
-  // Apenas Cegonha e Caixinha permanecem agrupadas.
-  s = read(rel);
+
+  const verbose = [
+    '    const freight = Number(trip.freight ?? 0);',
+    '    const commission = Number(trip.commissionValue ?? trip.commission ?? 0);',
+    '    const dieselCost = Number(trip.dieselCost ?? 0);',
+    '    const kmStart = Number(trip.kmStart ?? 0);',
+    '    const kmEnd = Number(trip.kmEnd ?? 0);',
+    '    const kmRun = Number(trip.kmRun ?? (kmEnd >= kmStart ? kmEnd - kmStart : 0));',
+    '    const commissionPct = freight > 0 ? commission / freight : 0;',
+    '    const details = mode === "ton"',
+    '      ? [',
+    '          `Cliente: ${String(trip.client ?? "—")}`,',
+    '          `Rota: ${String(trip.origin ?? "—")} → ${String(trip.destination ?? "—")}`,',
+    '          `Conjunto: ${String(trip.fleetName ?? "—")}`,',
+    '          `Peso carregado: ${tons(Number(trip.loadedTons ?? 0))} • Peso bruto: ${tons(Number(trip.grossWeight ?? 0))} • Peso líquido: ${tons(Number(trip.netWeight ?? 0))}`,',
+    '          `Preço/t: ${brl(Number(trip.pricePerTon ?? 0))}/t • Comissão: ${(commissionPct * 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`,',
+    '          `KM inicial: ${kmStart.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} • KM final: ${kmEnd.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} • KM rodados: ${kmRun.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}`,',
+    '          `Custo diesel: ${brl(dieselCost)} • Resultado bruto: ${brl(Number(trip.grossResult ?? (freight - dieselCost)))}`,',
+    '        ].join("\\n")',
+    '      : mode === "trip"',
+    '        ? `Valor da diária: ${brl(Number(trip.pricePerTrip ?? trip.freight ?? 0))}`',
+    '        : `${modeLabelCompact(mode)} • 1 frete`;',
+  ].join("\n");
+
+  const compact = [
+    '    const details = mode === "ton"',
+    '      ? `Peso líquido: ${tons(Number(trip.netWeight ?? 0))} • Preço/t: ${brl(Number(trip.pricePerTon ?? 0))}/t`',
+    '      : mode === "trip"',
+    '        ? `Diária: ${brl(Number(trip.pricePerTrip ?? trip.freight ?? 0))}`',
+    '        : `${modeLabelCompact(mode)} • 1 frete`;',
+  ].join("\n");
+
+  if (s.includes(verbose)) s = s.replace(verbose, compact);
+
+  const previousCompact = [
+    '    const details = mode === "ton"',
+    '      ? `Peso: ${tons(Number(trip.netWeight ?? 0))} • Preço/t: ${brl(Number(trip.pricePerTon ?? 0))}/t`',
+    '      : mode === "trip"',
+    '        ? `Diária: ${brl(Number(trip.pricePerTrip ?? trip.freight ?? 0))}`',
+    '        : `${modeLabelCompact(mode)} • 1 frete`;',
+  ].join("\n");
+  if (s.includes(previousCompact)) s = s.replace(previousCompact, compact);
+
+  const originalCompact = [
+    '    const details = mode === "ton"',
+    '      ? `Peso líquido: ${tons(Number(trip.netWeight ?? 0))}  •  ${brl(Number(trip.pricePerTon ?? 0))}/t`',
+    '      : mode === "trip"',
+    '        ? `Valor da diária: ${brl(Number(trip.pricePerTrip ?? trip.freight ?? 0))}`',
+    '        : `${modeLabelCompact(mode)} • 1 frete`;',
+  ].join("\n");
+  if (s.includes(originalCompact)) s = s.replace(originalCompact, compact);
+
   s = s.replace(
     'if (mode === "ton") { rows.push(rowForTrip(trip)); return; }',
     'if (mode === "ton" || mode === "trip") { rows.push(rowForTrip(trip)); return; }'
   );
+
+  // Mantém o título da coluna, mas elimina qualquer quebra manual que fazia a linha crescer.
+  s = s.replaceAll('wrapText: true', 'wrapText: false');
   write(rel, s);
 }
-
-console.log("[driver-tonnage-report-details-20260923] one-line tonnage/daily; cegonha/caixinha grouped; single-sheet driver Excel");
+console.log("[driver-tonnage-report-details-20260923] PDF one-line peso/preco; Excel sem KM e custo diesel; Cegonha/Caixinha agrupadas");
