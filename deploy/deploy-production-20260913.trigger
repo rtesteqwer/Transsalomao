@@ -144,3 +144,14 @@ Segundo modelo de ticket VPORTS/LOG:
 - le as duas placas e usa o conjunto selecionado para ordenar cavalo/carreta
 Build validado com sucesso
 Commits: ccce50a / de3cc42
+
+
+Leitor universal de tickets Salomao IA:
+- perfis por evidencias e pontuacao, sem depender de frase exata
+- modelo largo VPORTS + recibo estreito VPORTS/LOG + fallback generico
+- OCR com modo sparse text nos recibos estreitos
+- placas com e sem espacos
+- nome do arquivo somente como ultimo recurso
+- valida peso liquido pela diferenca das pesagens
+Build validado com sucesso
+Commit: f54e61b56b6a62431cc3d20a574fa56a07642b71
