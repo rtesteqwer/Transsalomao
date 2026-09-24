@@ -92,3 +92,12 @@ Salomao OCR parser fix:
 - campo toneladas continua editavel se peso nao for identificado
 Build validado com sucesso
 Commits: 5804cf7 / a57bb80
+
+
+Salomao IA client-side OCR fix:
+- remove second OCR parsing request to server
+- interpret local Tesseract text directly in /motorista
+- keeps filename fallback for ticket number
+- keeps manual confirmation before save
+Build validated successfully
+Commit: b0e2cdc1cef6e16f23692df49f6a834a9c57f3d1
