@@ -16,6 +16,8 @@ Extraia os dados e responda SOMENTE com um JSON, sem texto extra e sem crases, n
   "peso_origem_kg": number|null,
   "numero_nf": string|null,
   "transportadora": string|null,
+  "operadora": string|null,
+  "contratante": string|null,
   "motorista": string|null,
   "cliente": string|null,
   "destinatario": string|null,
@@ -24,7 +26,11 @@ Extraia os dados e responda SOMENTE com um JSON, sem texto extra e sem crases, n
 }
 Regras:
 - Use SEMPRE os valores impressos. Anotações escritas à mão vão só em "anotacoes_manuscritas".
+- "transportadora" é a empresa responsável pelo transporte.
+- "operadora" é o nome indicado como Operador/Operadora do terminal, porto ou operação.
+- "contratante" é a empresa contratante/tomadora/cliente do frete somente quando isso estiver explícito.
 - "destinatario" é a empresa/pessoa indicada como destinatário, recebedor ou destino comercial. "cliente" pode repetir esse valor se o documento não separar os campos.
+- Não misture transportadora, operadora, contratante e destinatário; se não houver evidência, use null.
 - Em layouts desalinhados, identifique razão social pelo texto e CNPJ pelo padrão numérico; não troque o nome da empresa por um CNPJ.
 - Se um campo estiver em branco ou ilegível, use null. Nunca invente.
 - Se algum campo estiver duvidoso (foto torta, borrada, cortada), explique em "alertas".
@@ -169,8 +175,8 @@ export async function readWithProvider(image: { base64: string; mime: string }, 
 
   const freightMode = normalizeFreightMode(requestedMode);
   const modeInstruction = freightMode === "ton"
-    ? "Modo Por tonelada: extraia também o peso líquido. Priorize número do ticket, peso líquido, placa do veículo, placa da carreta, transportadora e destinatário."
-    : "Modo não é Por tonelada: NÃO extraia nem devolva pesos ou pesagens; deixe todos os campos de peso como null. Extraia número do ticket, placas, transportadora, destinatário e demais dados não relacionados a peso.";
+    ? "Modo Por tonelada: extraia também o peso líquido. Priorize número do ticket, peso líquido, placa do veículo, placa da carreta, transportadora, operadora, contratante e destinatário. Confira o peso líquido pela diferença das pesagens quando houver entrada e saída."
+    : "Modo não é Por tonelada: NÃO extraia nem devolva pesos ou pesagens; deixe todos os campos de peso como null. Priorize número do ticket, placas, transportadora, operadora, contratante e destinatário.";
 
   let lastError: unknown = null;
   for (const provider of providers) {
