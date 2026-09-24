@@ -45,19 +45,20 @@ export function ticketProviders(): Provider[] {
   const anthropic = process.env.ANTHROPIC_API_KEY?.trim();
   const providers: Provider[] = [];
 
-  // Auto intentionally prefers the already-configured OpenAI key used by Salomão IA; Anthropic is fallback.
-  if ((chosen === "auto" || chosen === "openai") && openai) {
-    providers.push({
-      name: "openai",
-      key: openai,
-      model: process.env.TICKET_OPENAI_MODEL?.trim() || process.env.OPENAI_ASSISTANT_MODEL?.trim() || "gpt-5.6-sol",
-    });
-  }
+  // O fluxo de tickets usa Anthropic como primeira opção, conforme a integração do motorista.
+  // Em modo auto, OpenAI continua disponível como fallback se estiver configurada.
   if ((chosen === "auto" || chosen === "anthropic") && anthropic) {
     providers.push({
       name: "anthropic",
       key: anthropic,
       model: process.env.CLAUDE_MODEL?.trim() || "claude-sonnet-5",
+    });
+  }
+  if ((chosen === "auto" || chosen === "openai") && openai) {
+    providers.push({
+      name: "openai",
+      key: openai,
+      model: process.env.TICKET_OPENAI_MODEL?.trim() || process.env.OPENAI_ASSISTANT_MODEL?.trim() || "gpt-5.6-sol",
     });
   }
   return providers;
