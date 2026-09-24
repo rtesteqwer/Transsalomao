@@ -56,3 +56,4 @@ Leitor de ticket no app do motorista:
 - TICKET_TOKEN não é exposto no JavaScript do navegador
 - tabela tickets_balanca com numero_ticket único
 Build validado com sucesso no GitHub Actions
+Deploy ticket reader: session auth, configured AI fallback, atomic Caixa save and duplicate checks — 2026-09-24

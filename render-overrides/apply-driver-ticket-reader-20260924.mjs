@@ -24,6 +24,19 @@ function replaceRequired(text, before, after, label) {
 copy("render-overrides/ticket-reader-api-20260924.ts", "src/routes/api/ler-ticket.ts");
 copy("render-overrides/ticket-save-api-20260924.ts", "src/routes/api/salvar-ticket.ts");
 copy("render-overrides/0012_ticket_reader.sql", "migrations/0012_ticket_reader.sql");
+copy("render-overrides/0015_ticket_safety.sql", "migrations/0015_ticket_safety.sql");
+copy("render-overrides/ticket-core-20260924.ts", "src/lib/ticket-core.ts");
+copy("render-overrides/ticket-auth-20260924.server.ts", "src/lib/ticket-auth.server.ts");
+copy("render-overrides/ticket-provider-20260924.ts", "src/lib/ticket-provider.server.ts");
+copy("render-overrides/ticket-photo-access-20260924.tsx", "src/components/ticket-photo-access.tsx");
+
+// Use the existing private deployment secret when no dedicated management key is set.
+const authPath = "src/lib/management-auth.server.ts";
+writeTarget(authPath, replaceRequired(readTarget(authPath),
+  'return process.env.MANAGEMENT_SESSION_SECRET?.trim() || "transsalomao-test-session";',
+  'const secret = process.env.MANAGEMENT_SESSION_SECRET?.trim() || process.env.DATABASE_URL?.trim();\n  if (!secret) throw new Error("Segredo de sessão da gerência não configurado.");\n  return secret;',
+  "management session secret"));
+
 
 {
   const rel = "src/routes/motorista.tsx";
@@ -105,6 +118,21 @@ copy("render-overrides/0012_ticket_reader.sql", "migrations/0012_ticket_reader.s
     "km field",
   );
 
+  s = replaceRequired(s, 'import { useEffect, useMemo, useState } from "react";',
+    'import { useEffect, useMemo, useRef, useState } from "react";\nimport { useQueryClient } from "@tanstack/react-query";\nimport { TicketPhotoAccess, type PhotoAccess } from "@/components/ticket-photo-access";', "ticket access imports");
+  s = replaceRequired(s, 'import { useFleet, useFleetMutations }', 'import { fleetKey, useFleet, useFleetMutations }', "query key");
+  s = replaceRequired(s, '  const drivers = (data?.drivers ?? []).filter((d) => d.status === "ativo");',
+    '  const [ticketAccess, setTicketAccess] = useState<PhotoAccess | null>(null);\n  const drivers = (data?.drivers ?? []).filter((d) => d.status === "ativo" && (!ticketAccess?.driverId || d.id === ticketAccess.driverId));', "driver scope");
+  s = replaceRequired(s, '  const [kmCarreta, setKmCarreta] = useState("");',
+    '  const [kmCarreta, setKmCarreta] = useState("");\n  const [ticketConfirmed, setTicketConfirmed] = useState(false);\n  const [ticketSending, setTicketSending] = useState(false);\n  const ticketBusy = useRef(false);\n  const queryClient = useQueryClient();\n  useEffect(() => { if (ticketAccess?.driverId) setDriverId(ticketAccess.driverId); }, [ticketAccess?.driverId]);', "ticket state");
+  s = replaceRequired(s, 'onChange={(e) => setDriverId(e.target.value)}', 'onChange={(e) => { setDriverId(e.target.value); setTicketConfirmed(false); }}', "driver confirmation");
+  s = replaceRequired(s, 'onChange={(e) => setFleetId(e.target.value)}', 'onChange={(e) => { setFleetId(e.target.value); setTicketConfirmed(false); }}', "fleet confirmation");
+  s = replaceRequired(s, '                value={tons}', '                readOnly={!!ticketData}\n                value={tons}', "one weight source");
+  s = replaceRequired(s, 'disabled={report.isPending || drivers.length === 0}',
+    'disabled={report.isPending || ticketReading || ticketSending || drivers.length === 0 || (freightMode === "ton" && !!ticketData && !ticketConfirmed)}', "submit lock");
+  s = replaceRequired(s, '{report.isPending ? "Enviando…" : "Depositar no painel"}', '{report.isPending || ticketSending ? "Enviando…" : "Depositar no painel"}', "saving label");
+  s = s.replace(/(<form[^>]*onSubmit=\{onSubmit\}[^>]*>)/, '$1\n          <fieldset disabled={ticketReading || ticketSending} className="contents">');
+  s = replaceRequired(s, '        </form>', '          </fieldset>\n        </form>', "fieldset end");
   writeTarget(rel, s);
 }
 

@@ -1,3 +1,7 @@
+    if (ticketBusy.current) return;
+    if (freightMode === "ton" && ticketData && !ticketConfirmed) return toast.error("Confirme a conferência do ticket.");
+    ticketBusy.current = true;
+    setTicketSending(true);
     try {
       const count = batchMode ? tripCountN : 1;
       let firstTicket = "";
@@ -9,6 +13,7 @@
         }
         const saved = await salvarTicket({
           ...ticketData,
+          conferido: true,
           driverId,
           fleetId,
           km_carreta: Number.parseInt(kmCarreta.replace(/\D/g, ""), 10) || 0,
@@ -36,6 +41,8 @@
       setTons("");
       setDailyValue("");
       setTicketData(null);
+      setTicketConfirmed(false);
+      await queryClient.invalidateQueries({ queryKey: fleetKey });
       setTicketFileName("");
       setKmCarreta("");
       if (batchMode) setTripCount("1");
@@ -44,4 +51,7 @@
         : "Ticket " + firstTicket + " enviado ao Painel Gerência.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Não foi possível enviar.");
+    } finally {
+      ticketBusy.current = false;
+      setTicketSending(false);
     }

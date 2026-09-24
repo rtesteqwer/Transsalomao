@@ -1,5 +1,11 @@
   async function onTicketFile(file: File) {
+    if (ticketBusy.current) return;
+    if (!ticketAccess?.authenticated) return toast.error("Entre com seu login para ler a foto.");
+    ticketBusy.current = true;
     setTicketReading(true);
+    setTicketData(null);
+    setTicketConfirmed(false);
+    setTons("");
     setTicketFileName(file.name);
     try {
       const dados = await lerTicket(file);
@@ -16,6 +22,7 @@
       setTicketData(null);
       toast.error(error instanceof Error ? error.message : "Não foi possível ler o ticket.");
     } finally {
+      ticketBusy.current = false;
       setTicketReading(false);
     }
   }
