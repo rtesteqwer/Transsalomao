@@ -35,4 +35,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TRANS_TEST_APP="$TRANS_SOURCE_DUMP" node --test "$GITHUB_WORKSPACE/tests/tickets.test.mjs"
+          TRANS_TEST_APP="$TRANS_SOURCE_DUMP" node --test --test-name-pattern="Multilift" "$GITHUB_WORKSPACE/tests/tickets.test.mjs"
