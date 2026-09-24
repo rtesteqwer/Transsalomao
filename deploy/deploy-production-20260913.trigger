@@ -108,3 +108,13 @@ Ticket OCR alertas fix:
 - retorno agora usa alertas: alerts
 Build validado com sucesso
 Commit: 0adf69c3b19354e66be843a44b2d840f2f3ab0a7
+
+
+Leitor VPORTS por blocos:
+- OCR separado por numero/cabecalho/pesos/empresas/NF
+- preserva zeros iniciais do ticket
+- separa placa carreta e placa veiculo por rotulo
+- le pesagem inicial/final, peso liquido e peso origem
+- le transportadora, destinatario, produto, status e NF
+Build validado com sucesso
+Commit: dc3b80a465ec3db367cd08619536b8bcde96ef43
