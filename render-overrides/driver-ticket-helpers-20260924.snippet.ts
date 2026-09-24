@@ -47,7 +47,7 @@ async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85)
 }
 
 async function ocrTicketLocal(file: File) {
-  const { createWorker } = await import("tesseract.js");
+  const { createWorker, PSM } = await import("tesseract.js");
   const worker = await createWorker("por");
   const url = URL.createObjectURL(file);
 
@@ -92,15 +92,20 @@ async function ocrTicketLocal(file: File) {
 
       // Segundo modelo: recibo estreito VPORTS / LOG.
       // Mantemos estes recortes além do modelo largo para escolher pelo texto reconhecido.
-      ["RECEIPT_ALL", cropCanvas(0.22, 0.06, 0.58, 0.78, 1900)],
-      ["RECEIPT_TOP", cropCanvas(0.26, 0.21, 0.50, 0.19, 1600)],
-      ["RECEIPT_PEOPLE", cropCanvas(0.26, 0.36, 0.50, 0.22, 1600)],
-      ["RECEIPT_WEIGHTS", cropCanvas(0.26, 0.53, 0.50, 0.14, 1500)],
-      ["RECEIPT_PLATES", cropCanvas(0.26, 0.63, 0.50, 0.12, 1500)],
+      ["RECEIPT_ALL", cropCanvas(0.27, 0.06, 0.50, 0.79, 2200)],
+      ["RECEIPT_TOP", cropCanvas(0.29, 0.22, 0.46, 0.18, 1800)],
+      ["RECEIPT_PEOPLE", cropCanvas(0.29, 0.37, 0.46, 0.20, 1800)],
+      ["RECEIPT_WEIGHTS", cropCanvas(0.29, 0.53, 0.46, 0.14, 1800)],
+      ["RECEIPT_PLATES", cropCanvas(0.29, 0.63, 0.46, 0.12, 1800)],
     ] as const;
 
     const chunks: string[] = [];
     for (const [name, canvas] of regions) {
+      const receiptRegion = name.startsWith("RECEIPT_");
+      await worker.setParameters({
+        tessedit_pageseg_mode: receiptRegion ? PSM.SPARSE_TEXT : PSM.AUTO,
+        preserve_interword_spaces: "1",
+      });
       const result = await worker.recognize(canvas);
       chunks.push("[[" + name + "]]\n" + String(result?.data?.text || "").trim());
     }
@@ -282,12 +287,21 @@ function interpretarOcrTicketLocal(
   }
 
   function receiptPlateCandidates(value: string) {
-    const candidates = value.toUpperCase().match(/[A-Z0-9]{7}/g) || [];
+    const upper = value.toUpperCase();
     const found: string[] = [];
-    for (const raw of candidates) {
+
+    const compactCandidates = upper.match(/[A-Z0-9]{7}/g) || [];
+    for (const raw of compactCandidates) {
       const exact = normalizePlate(raw);
       if (exact && !found.includes(exact)) found.push(exact);
     }
+
+    const spaced = upper.match(/[A-Z]\s*[A-Z]\s*[A-Z]\s*[0-9]\s*[A-Z0-9]\s*[0-9]\s*[0-9]/g) || [];
+    for (const raw of spaced) {
+      const exact = normalizePlate(raw.replace(/\s+/g, ""));
+      if (exact && !found.includes(exact)) found.push(exact);
+    }
+
     return found;
   }
 
@@ -300,19 +314,30 @@ function interpretarOcrTicketLocal(
   ].filter(Boolean).join("\n");
 
   const receiptUpper = receiptText.toUpperCase();
-  const isNarrowVportsReceipt =
-    /TIQUETE\s+DE\s+PESAGEM|VPORTS/.test(receiptUpper) &&
-    /PESO\s+(ENTRADA|SAIDA|LIQUIDO)/.test(receiptUpper);
 
-  if (isNarrowVportsReceipt) {
+  // O recibo estreito é escolhido por evidências, não por uma frase exata.
+  // Isso tolera OCR parcial, fontes diferentes e fotos inclinadas.
+  const receiptSignalCount = [
+    /VPORTS/.test(receiptUpper),
+    /TIQUETE|TICKET/.test(receiptUpper),
+    /PESO\s*ENTRADA|ENTRADA/.test(receiptUpper),
+    /PESO\s*SAIDA|SAIDA/.test(receiptUpper),
+    /PESO\s*LIQUIDO|LIQUIDO/.test(receiptUpper),
+    /TRANSPORTADORA/.test(receiptUpper),
+    /MOTORISTA/.test(receiptUpper),
+    /PRODUTO/.test(receiptUpper),
+    /PLACAS?/.test(receiptUpper),
+  ].filter(Boolean).length;
+
+  if (receiptSignalCount >= 2) {
     const receiptAlerts = [
       "Modelo VPORTS/LOG reconhecido pela Salomão IA. Confira os dados antes de lançar.",
     ];
 
     let receiptTicket: string | null = null;
     const receiptTicketRaw = firstMatchIn(receiptText, [
-      /\bTIQUETE\s*[:#=\-]?\s*([0-9OQDISBL|]{4,10})\b/i,
-      /\bTICKET(?!\s*AGEND)\s*[:#=\-]?\s*([0-9OQDISBL|]{4,10})\b/i,
+      /\bTIQUETE\s*[:#=\-]?\s*([0-9OQDISBL|\s]{4,16})\b/i,
+      /\bTICKET(?!\s*AGEND)\s*[:#=\-]?\s*([0-9OQDISBL|\s]{4,16})\b/i,
     ]);
     const receiptTicketDigits = ocrDigits(receiptTicketRaw);
     if (receiptTicketDigits && receiptTicketDigits.length >= 4 && receiptTicketDigits.length <= 10) {
@@ -396,7 +421,19 @@ function interpretarOcrTicketLocal(
       receiptAlerts.push("Transportadora não foi identificada com segurança.");
     }
 
-    return {
+    const receiptScore =
+      (receiptTicket ? 3 : 0) +
+      (pesoEntrada && pesoSaida ? 4 : 0) +
+      (receiptPesoLiquido ? 3 : 0) +
+      (receiptPlates.length >= 2 ? 3 : receiptPlates.length) +
+      (receiptTransportadora ? 2 : 0) +
+      (receiptMotorista ? 1 : 0) +
+      (receiptProduto ? 1 : 0) +
+      Math.min(2, receiptSignalCount);
+
+    // Só assume o perfil estreito quando há evidência real no conteúdo.
+    // Assim o nome do arquivo nunca ganha sozinho de um ticket bem lido.
+    if (receiptScore >= 6) return {
       numero_ticket: receiptTicket,
       status: null,
       placa_veiculo: receiptPlates[0] || null,
