@@ -132,19 +132,48 @@ function FotosIaPage() {
           </Field>
         </div>
 
-        <label className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-5 py-8 text-center hover:bg-surface-2">
-          <ImagePlus className="size-8 text-accent" />
-          <strong className="mt-3 text-sm">Adicionar fotos dos tickets</strong>
-          <span className="mt-1 text-xs text-muted">Pode selecionar várias fotos de uma vez.</span>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label
+            htmlFor="photo-gallery-input"
+            className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-5 py-7 text-center hover:bg-surface-2"
+          >
+            <ImagePlus className="size-8 text-accent" />
+            <strong className="mt-3 text-sm">Escolher da galeria</strong>
+            <span className="mt-1 text-xs text-muted">Selecione uma ou várias fotos já salvas no celular.</span>
+          </label>
           <input
+            id="photo-gallery-input"
             className="sr-only"
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-            capture="environment"
+            accept="image/*"
             multiple
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+            onChange={(e) => {
+              setFiles(Array.from(e.currentTarget.files ?? []));
+              e.currentTarget.value = "";
+            }}
           />
-        </label>
+
+          <label
+            htmlFor="photo-camera-input"
+            className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg px-5 py-7 text-center hover:bg-surface-2"
+          >
+            <Camera className="size-8 text-accent" />
+            <strong className="mt-3 text-sm">Tirar foto agora</strong>
+            <span className="mt-1 text-xs text-muted">Abre a câmera traseira para fotografar o ticket.</span>
+          </label>
+          <input
+            id="photo-camera-input"
+            className="sr-only"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => {
+              const selected = Array.from(e.currentTarget.files ?? []);
+              if (selected.length) setFiles((current) => [...current, ...selected]);
+              e.currentTarget.value = "";
+            }}
+          />
+        </div>
 
         {files.length > 0 ? (
           <div className="rounded-lg border border-border bg-bg p-3 text-sm">
