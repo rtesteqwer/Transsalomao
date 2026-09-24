@@ -136,6 +136,13 @@ if (!original.includes("apply-driver-tonnage-report-details-20260923.mjs")) {
   original = original.replace(dailyMarker, `const driverTonnageReports = path.join(repo, 'render-overrides', 'apply-driver-tonnage-report-details-20260923.mjs');\nif (!fs.existsSync(driverTonnageReports)) throw new Error('Missing driver tonnage report detail patch');\nexecFileSync(process.execPath, [driverTonnageReports, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Leitura do ticket por foto no app do motorista: Anthropic -> conferência -> Neon/Caixa.
+const installDriverTicketReader = process.env.VERCEL !== '1' || String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').toLowerCase().includes('transsalomao.vercel.app');
+if (installDriverTicketReader && !original.includes("apply-driver-ticket-reader-20260924.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do leitor de ticket do motorista não encontrado');
+  original = original.replace(dailyMarker, `const driverTicketReader = path.join(repo, 'render-overrides', 'apply-driver-ticket-reader-20260924.mjs');\nif (!fs.existsSync(driverTicketReader)) throw new Error('Missing driver ticket reader patch');\nexecFileSync(process.execPath, [driverTicketReader, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
