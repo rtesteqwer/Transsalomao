@@ -6,3 +6,10 @@ Deploy solicitado em 2026-09-24 para ajuste final dos relatórios individuais po
 - Excel: removidas as colunas KM inicial, KM final, KM rodados e Custo diesel
 - Aplicar o mesmo padrão para todos os motoristas
 Commits validados: 47697b02b3a04da15bb3a54f77868424acf571d9 e 4f5d8da1ebb644de978a96a567499fc827573361
+
+
+Correção Fotos IA Android:
+- separar galeria da câmera
+- permitir selecionar uma ou várias fotos da memória do celular
+- manter botão separado para tirar foto
+Commit da correção: 6e4e9d2a28e7237fce70b213a3f64fa442813033
