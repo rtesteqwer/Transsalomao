@@ -46,6 +46,21 @@ async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85)
   } finally { URL.revokeObjectURL(url); }
 }
 
+async function ocrTicketLocal(file: File) {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker("por");
+  try {
+    const result = await worker.recognize(file);
+    const text = String(result?.data?.text || "").trim();
+    if (text.replace(/\s/g, "").length < 8) {
+      throw new Error("A Salomão IA não encontrou texto suficiente. Tire outra foto mais nítida.");
+    }
+    return text;
+  } finally {
+    await worker.terminate();
+  }
+}
+
 async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "caixinha"): Promise<TicketData> {
   const payload = await reduzirImagemTicket(file);
   const response = await fetch("/api/ler-ticket", {
@@ -53,11 +68,27 @@ async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "
     signal: AbortSignal.timeout(50_000),
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...payload, freightMode }),
+    body: JSON.stringify({ ...payload, freightMode, fileName: file.name }),
   });
   const result = await response.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
-  if (!response.ok) throw new Error(result?.erro || "Falha ao ler o ticket");
-  return result as TicketData;
+
+  if (response.ok) return result as TicketData;
+
+  if (response.status === 503 && result?.ocrFallback) {
+    const ocrText = await ocrTicketLocal(file);
+    const localResponse = await fetch("/api/ler-ticket", {
+      method: "POST",
+      signal: AbortSignal.timeout(20_000),
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ocrText, freightMode, fileName: file.name }),
+    });
+    const localResult = await localResponse.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
+    if (!localResponse.ok) throw new Error(localResult?.erro || "A Salomão IA não conseguiu interpretar o OCR.");
+    return localResult as TicketData;
+  }
+
+  throw new Error(result?.erro || "Falha ao ler o ticket");
 }
 
 async function salvarTicket(dados: TicketData & {
