@@ -1,5 +1,6 @@
   async function onTicketFile(file: File) {
     if (ticketBusy.current) return;
+    if (freightMode !== "ton") setFreightMode("ton");
     if (!ticketAccess?.authenticated) return toast.error("Entre com seu login para ler a foto.");
     ticketBusy.current = true;
     setTicketReading(true);

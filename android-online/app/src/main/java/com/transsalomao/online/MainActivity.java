@@ -18,6 +18,7 @@ import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -36,8 +37,11 @@ import java.io.OutputStream;
 public class MainActivity extends Activity {
     private static final String START_URL = "https://transsalomao.vercel.app/";
     private static final int STORAGE_REQUEST = 42;
+    private static final int FILE_CHOOSER_REQUEST = 43;
     private WebView webView;
     private ProgressBar progress;
+    private ValueCallback<Uri[]> fileChooserCallback;
+    private Uri cameraImageUri;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,7 +92,7 @@ public class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setTextZoom(100);
-        settings.setUserAgentString(settings.getUserAgentString() + " TransSalomaoApp/1.5");
+        settings.setUserAgentString(settings.getUserAgentString() + " TransSalomaoApp/1.6");
 
         // O site gera Excel/PDF colorido como blob:. O bridge entrega os bytes ao Android,
         // e o próprio sistema usa a área padrão de Downloads, sem subpasta forçada pelo app.
@@ -107,6 +111,61 @@ public class MainActivity extends Activity {
             public void onProgressChanged(WebView view, int newProgress) {
                 progress.setProgress(newProgress);
                 progress.setVisibility(newProgress >= 100 ? View.GONE : View.VISIBLE);
+            }
+
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback,
+                                             FileChooserParams fileChooserParams) {
+                if (fileChooserCallback != null) {
+                    fileChooserCallback.onReceiveValue(null);
+                }
+                fileChooserCallback = filePathCallback;
+                cameraImageUri = null;
+
+                Intent pickerIntent;
+                try {
+                    pickerIntent = fileChooserParams.createIntent();
+                } catch (Exception error) {
+                    pickerIntent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    pickerIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                    pickerIntent.setType("image/*");
+                }
+
+                // The page uses two separate inputs: capture=true for camera, capture=false for gallery.
+                if (fileChooserParams.isCaptureEnabled()) {
+                    Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                    if (cameraIntent.resolveActivity(getPackageManager()) != null) {
+                        try {
+                            ContentValues values = new ContentValues();
+                            values.put(MediaStore.Images.Media.DISPLAY_NAME,
+                                    "ticket_" + System.currentTimeMillis() + ".jpg");
+                            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                            cameraImageUri = getContentResolver().insert(
+                                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                            if (cameraImageUri != null) {
+                                cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
+                                cameraIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                                startActivityForResult(cameraIntent, FILE_CHOOSER_REQUEST);
+                                return true;
+                            }
+                        } catch (Exception ignored) {
+                            cameraImageUri = null;
+                        }
+                    }
+                }
+
+                try {
+                    startActivityForResult(pickerIntent, FILE_CHOOSER_REQUEST);
+                    return true;
+                } catch (Exception error) {
+                    fileChooserCallback.onReceiveValue(null);
+                    fileChooserCallback = null;
+                    Toast.makeText(MainActivity.this,
+                            "Não foi possível abrir a câmera ou galeria.",
+                            Toast.LENGTH_LONG).show();
+                    return false;
+                }
             }
         });
 
@@ -324,6 +383,35 @@ public class MainActivity extends Activity {
                 "new MutationObserver(function(){enforce();}).observe(document.documentElement,{childList:true,subtree:true});" +
                 "})();";
         view.evaluateJavascript(js, null);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == FILE_CHOOSER_REQUEST) {
+            Uri[] result = null;
+            if (resultCode == RESULT_OK) {
+                if (data != null && (data.getData() != null || data.getClipData() != null)) {
+                    result = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+                } else if (cameraImageUri != null) {
+                    result = new Uri[]{cameraImageUri};
+                }
+            }
+
+            if (resultCode != RESULT_OK && cameraImageUri != null) {
+                try {
+                    getContentResolver().delete(cameraImageUri, null, null);
+                } catch (Exception ignored) {
+                }
+            }
+
+            if (fileChooserCallback != null) {
+                fileChooserCallback.onReceiveValue(result);
+                fileChooserCallback = null;
+            }
+            cameraImageUri = null;
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     @Override

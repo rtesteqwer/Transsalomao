@@ -1,5 +1,4 @@
-          {freightMode === "ton" ? (
-            <section className="grid gap-4 rounded-xl border border-border bg-surface p-4">
+          <section className="grid gap-4 rounded-xl border border-border bg-surface p-4">
               <div>
                 <p className="text-sm font-semibold">Foto do ticket de balança</p>
                 <p className="mt-1 text-xs text-muted">
@@ -7,6 +6,11 @@
                 </p>
               </div>
 
+              {freightMode !== "ton" ? (
+                <p className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-muted">
+                  Ao tirar ou escolher uma foto, o modo será alterado automaticamente para Por tonelada.
+                </p>
+              ) : null}
               <TicketPhotoAccess onAccess={setTicketAccess} />
               <div className="grid grid-cols-2 gap-3">
                 {[{ label: "Tirar foto", camera: true }, { label: "Escolher da galeria", camera: false }].map(option => (
@@ -85,5 +89,4 @@
                 </div>
               ) : null}
             </section>
-          ) : null}
 
