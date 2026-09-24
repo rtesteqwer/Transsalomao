@@ -66,3 +66,10 @@ Ticket reader provider order:
 - Anthropic first when ANTHROPIC_API_KEY is configured
 - OpenAI remains fallback in TICKET_AI_PROVIDER=auto
 Commit: ded7c67aa462309c06fdb2b70834f603cd193643
+
+
+Ticket reader error UI:
+- mostra no celular o motivo real da falha de leitura
+- mantém foto bloqueada até leitura ou remoção manual
+Build validado com sucesso
+Commit: cd9397b7c1da1cf59c53e54665a2bc5c2cf4233b
