@@ -185,19 +185,23 @@ jobs:
           const body = await page.locator("body").innerText().catch(() => "");
           fs.writeFileSync(process.env.GITHUB_WORKSPACE + "/motorista-body.txt", body);
 
+          const bodyFold = body.toLocaleLowerCase("pt-BR");
+          const ticketInput = await page.getByLabel("Número do ticket").inputValue();
+          const weightInput = await page.getByLabel("Peso líquido (kg)").inputValue();
+
           const checks = {
             httpStatus: response?.status() ?? null,
-            hasKmCarreta: body.includes("KM da carreta"),
-            hasNumeroTicket: body.includes("Número do ticket"),
-            hasPesoLiquido: body.includes("Peso líquido (kg)"),
-            hasPlacaVeiculo: body.includes("Placa do veículo"),
-            hasPlacaCarreta: body.includes("Placa da carreta"),
-            hasTransportadora: body.includes("Transportadora"),
-            hasOperadora: body.includes("Operadora"),
-            hasContratante: body.includes("Empresa contratante"),
-            hasDestinatario: body.includes("Destinatário / recebedor"),
-            hasMockTicket72416: body.includes("72416"),
-            hasMockWeight38470: body.includes("38470")
+            hasKmCarreta: bodyFold.includes("km da carreta"),
+            hasNumeroTicket: bodyFold.includes("número do ticket"),
+            hasPesoLiquido: bodyFold.includes("peso líquido (kg)"),
+            hasPlacaVeiculo: bodyFold.includes("placa do veículo"),
+            hasPlacaCarreta: bodyFold.includes("placa da carreta"),
+            hasTransportadora: bodyFold.includes("transportadora"),
+            hasOperadora: bodyFold.includes("operadora"),
+            hasContratante: bodyFold.includes("empresa contratante"),
+            hasDestinatario: bodyFold.includes("destinatário / recebedor"),
+            hasMockTicket72416: ticketInput === "72416",
+            hasMockWeight38470: weightInput === "38470"
           };
           fs.writeFileSync(
             process.env.GITHUB_WORKSPACE + "/browser-checks.json",
