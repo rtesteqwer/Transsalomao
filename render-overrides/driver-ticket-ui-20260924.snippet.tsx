@@ -28,8 +28,10 @@
               {ticketFileName ? <p className="break-all text-xs text-muted" role="status">{ticketFileName}</p> : null}
               {ticketFileName && !ticketData && !ticketReading ? (
                 <div className="grid gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3 text-xs text-muted">
-                  <p>A foto foi selecionada, mas a leitura não foi concluída. O sistema não enviará um ticket automático sem os dados da foto.</p>
-                  <Button type="button" variant="ghost" onClick={() => { setTicketFileName(""); setTicketConfirmed(false); }}>
+                  <p className="font-medium text-fg">A foto foi selecionada, mas a leitura não foi concluída.</p>
+                  {ticketReadError ? <p role="alert" className="text-danger">{ticketReadError}</p> : null}
+                  <p>O sistema não enviará um ticket automático sem os dados da foto.</p>
+                  <Button type="button" variant="ghost" onClick={() => { setTicketFileName(""); setTicketReadError(""); setTicketConfirmed(false); }}>
                     Remover foto e lançar manualmente
                   </Button>
                 </div>
@@ -99,7 +101,7 @@
                       ? "Conferi o número, o peso líquido, as placas e os dados do ticket."
                       : "Conferi o número, as placas, a transportadora e o destinatário. Nenhum peso será gravado neste modo."}
                   </label>
-                  <Button type="button" variant="ghost" onClick={() => { setTicketData(null); setTicketFileName(""); setTicketConfirmed(false); setTons(""); }}>
+                  <Button type="button" variant="ghost" onClick={() => { setTicketData(null); setTicketFileName(""); setTicketReadError(""); setTicketConfirmed(false); setTons(""); }}>
                     Descartar leitura
                   </Button>
                 </div>
