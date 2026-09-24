@@ -83,3 +83,12 @@ Salomao IA ticket reader:
 - keeps manual confirmation before Caixa save
 Build validated successfully
 Commit: 9190f393928c7649cf8ed27fe4fae1b07459a5fb
+
+
+Salomao OCR parser fix:
+- remove ReferenceError do interpretador OCR local
+- parser isolado para ticket, placas, peso, transportadora e destinatario
+- usa nome do arquivo como fallback para numero do ticket
+- campo toneladas continua editavel se peso nao for identificado
+Build validado com sucesso
+Commits: 5804cf7 / a57bb80
