@@ -1,0 +1,49 @@
+name: Test Ticket Endpoints
+
+on:
+  push:
+    paths:
+      - 'deploy/test-ticket-endpoints.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production ticket APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          BASE='https://transsalomao.vercel.app'
+
+          curl -sS -o results/ler-empty.json -w '%{http_code}' \
+            -X POST "$BASE/api/ler-ticket" \
+            -H 'Origin: https://transsalomao.vercel.app' \
+            -H 'Content-Type: application/json' \
+            --data '{}' > results/ler-empty.status
+
+          curl -sS -o results/salvar-empty.json -w '%{http_code}' \
+            -X POST "$BASE/api/salvar-ticket" \
+            -H 'Origin: https://transsalomao.vercel.app' \
+            -H 'Content-Type: application/json' \
+            --data '{}' > results/salvar-empty.status
+
+          # PNG 1x1 transparente: serve apenas para verificar se a chave Anthropic está configurada.
+          curl -sS -o results/ler-keycheck.json -w '%{http_code}' \
+            -X POST "$BASE/api/ler-ticket" \
+            -H 'Origin: https://transsalomao.vercel.app' \
+            -H 'Content-Type: application/json' \
+            --data '{"imagem":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=","tipo":"image/png"}' > results/ler-keycheck.status
+
+          echo "ler-empty=$(cat results/ler-empty.status) $(cat results/ler-empty.json)"
+          echo "salvar-empty=$(cat results/salvar-empty.status) $(cat results/salvar-empty.json)"
+          echo "ler-keycheck=$(cat results/ler-keycheck.status) $(cat results/ler-keycheck.json)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticket-endpoint-results
+          path: results/
+          retention-days: 1
