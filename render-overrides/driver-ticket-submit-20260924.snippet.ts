@@ -21,7 +21,7 @@
           fleetId,
           freightMode,
           dailyValue: freightMode === "trip" ? (dailyValueN ?? 0) : 0,
-          km_carreta: Number.parseInt(kmCarreta.replace(/\D/g, ""), 10) || 0,
+          km_carreta: 0,
         });
         firstTicket = saved.ticket;
         sentCount = 1;
@@ -50,7 +50,6 @@
       setTicketConfirmed(false);
       await queryClient.invalidateQueries({ queryKey: fleetKey });
       setTicketFileName("");
-      setKmCarreta("");
       if (batchMode) setTripCount("1");
       toast.success(sentCount > 1
         ? sentCount + " viagens enviadas ao Caixa da Gerência."
