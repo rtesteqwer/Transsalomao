@@ -38,3 +38,12 @@ Fotos IA Authorization fix:
 - corrigido "heaers" para "headers"
 - chamada OpenAI agora envia Authorization corretamente
 Commit: 5dd6b939d4dba8af4aeaceffbbcc1c223dfd1cd4
+
+
+Fotos dos Tickets - arquivo da Gerência:
+- remove leitura por IA/OpenAI
+- seleciona viagem ou lançamento da Caixa
+- salva foto do ticket relacionada ao registro
+- histórico com visualizar e excluir foto
+- acesso somente pela Gerência
+Commits: 1a83f6df / b337d6b9 / f0db197e
