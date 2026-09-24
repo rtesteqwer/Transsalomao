@@ -118,3 +118,11 @@ Leitor VPORTS por blocos:
 - le transportadora, destinatario, produto, status e NF
 Build validado com sucesso
 Commit: dc3b80a465ec3db367cd08619536b8bcde96ef43
+
+
+VPORTS OCR refinado:
+- recortes dedicados para numero do ticket
+- recortes dedicados para placa carreta e placa veiculo
+- preserva zeros iniciais e reduz troca entre placas
+Build validado com sucesso
+Commit: 50924f97a97d9b14348b67e2149394c199190b87
