@@ -96,6 +96,10 @@ jobs:
             deviceScaleFactor: 1
           });
 
+          await page.addInitScript(() => {
+            localStorage.setItem("transsalomao.freightMode", "ton");
+          });
+
           await page.route("**/api/**", async route => {
             const request = route.request();
             const url = request.url();
@@ -162,9 +166,7 @@ jobs:
             timeout: 30000
           });
 
-          await page.waitForTimeout(1200);
-
-          await page.getByText("Por tonelada", { exact: true }).click();
+          await page.getByText("Acesso: teste-local", { exact: true }).waitFor({ timeout: 15000 });
           await page.waitForTimeout(500);
 
           const png1x1 = Buffer.from(
