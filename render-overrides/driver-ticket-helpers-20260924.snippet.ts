@@ -17,6 +17,10 @@ type TicketData = {
   motorista: string | null;
   cliente: string | null;
   destinatario: string | null;
+  navio: string | null;
+  emissor: string | null;
+  operador_pesagem: string | null;
+  item_codigo: string | null;
   anotacoes_manuscritas: string | null;
   alertas: string[];
 };
