@@ -5,6 +5,7 @@
     ticketBusy.current = true;
     setTicketReading(true);
     setTicketData(null);
+    setTicketReadError("");
     setTicketConfirmed(false);
     if (freightMode !== "ton") setTons("");
     setTicketFileName(file.name);
@@ -23,7 +24,9 @@
       else toast.success("Ticket lido. Confira os dados antes de lançar.");
     } catch (error) {
       setTicketData(null);
-      toast.error(error instanceof Error ? error.message : "Não foi possível ler o ticket.");
+      const message = error instanceof Error ? error.message : "Não foi possível ler o ticket.";
+      setTicketReadError(message);
+      toast.error(message);
     } finally {
       ticketBusy.current = false;
       setTicketReading(false);
