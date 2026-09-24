@@ -181,6 +181,8 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
   placaVeiculo: string | null;
   placaCarreta: string | null;
   transportadora: string | null;
+  operadora: string | null;
+  contratante: string | null;
   destinatario: string | null;
   pesoLiquidoKg: number | null;
   freightMode: string | null;
@@ -211,6 +213,8 @@ function TicketMetadata({ reportId, mode }: { reportId: string; mode?: string | 
         <span>Veículo: <b className="text-fg">{ticket.placaVeiculo || "—"}</b></span>
         <span>Carreta: <b className="text-fg">{ticket.placaCarreta || "—"}</b></span>
         <span>Transportadora: <b className="text-fg">{ticket.transportadora || "—"}</b></span>
+        <span>Operadora: <b className="text-fg">{ticket.operadora || "—"}</b></span>
+        <span>Contratante: <b className="text-fg">{ticket.contratante || "—"}</b></span>
         <span>Destinatário: <b className="text-fg">{ticket.destinatario || "—"}</b></span>
         {mode === "ton" && ticket.pesoLiquidoKg ? (
           <span>Peso líquido: <b className="text-fg">{new Intl.NumberFormat("pt-BR").format(ticket.pesoLiquidoKg)} kg</b></span>
