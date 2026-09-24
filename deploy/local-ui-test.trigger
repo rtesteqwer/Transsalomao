@@ -12,3 +12,5 @@ Final green local UI smoke test 2026-09-24T17:23Z
 Build check after ADUBOS REAL parser support 2026-09-24T17:31Z
 
 Build private photos + quick PDF fix 2026-09-24
+
+Retry build after quick PDF patch interpolation fix
