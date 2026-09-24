@@ -57,3 +57,4 @@ Leitor de ticket no app do motorista:
 - tabela tickets_balanca com numero_ticket único
 Build validado com sucesso no GitHub Actions
 Deploy ticket reader: session auth, configured AI fallback, atomic Caixa save and duplicate checks — 2026-09-24
+Publish camera/gallery picker + always-visible ticket photo UI — 2026-09-24
