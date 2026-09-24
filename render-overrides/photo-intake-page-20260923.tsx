@@ -79,6 +79,10 @@ function PhotoPrivateEditor({ photo, onSaved }: { photo: SavedPhoto; onSaved: ()
   const [operadora, setOperadora] = useState(String(original.operadora ?? ""));
   const [contratante, setContratante] = useState(String(original.contratante ?? ""));
   const [destinatario, setDestinatario] = useState(String(original.destinatario ?? ""));
+  const [navio, setNavio] = useState(String(original.navio ?? ""));
+  const [emissor, setEmissor] = useState(String(original.emissor ?? ""));
+  const [operadorPesagem, setOperadorPesagem] = useState(String(original.operador_pesagem ?? ""));
+  const [itemCodigo, setItemCodigo] = useState(String(original.item_codigo ?? ""));
   const [notes, setNotes] = useState(photo.notes || "");
 
   async function save() {
@@ -93,6 +97,10 @@ function PhotoPrivateEditor({ photo, onSaved }: { photo: SavedPhoto; onSaved: ()
         operadora: operadora.trim() || null,
         contratante: contratante.trim() || null,
         destinatario: destinatario.trim() || null,
+        navio: navio.trim() || null,
+        emissor: emissor.trim() || null,
+        operador_pesagem: operadorPesagem.trim() || null,
+        item_codigo: itemCodigo.trim() || null,
         peso_liquido_kg: netWeight ? Number(netWeight.replace(/[^0-9]/g, "")) : null,
       };
       const response = await fetch("/api/photo-intake", {
@@ -141,6 +149,10 @@ function PhotoPrivateEditor({ photo, onSaved }: { photo: SavedPhoto; onSaved: ()
       <Field label="Operadora"><Input value={operadora} onChange={(e) => setOperadora(e.target.value)} /></Field>
       <Field label="Empresa contratante"><Input value={contratante} onChange={(e) => setContratante(e.target.value)} /></Field>
       <Field label="Destinatário / recebedor"><Input value={destinatario} onChange={(e) => setDestinatario(e.target.value)} /></Field>
+      <Field label="Navio"><Input value={navio} onChange={(e) => setNavio(e.target.value)} /></Field>
+      <Field label="Emissor"><Input value={emissor} onChange={(e) => setEmissor(e.target.value)} /></Field>
+      <Field label="Operador da pesagem"><Input value={operadorPesagem} onChange={(e) => setOperadorPesagem(e.target.value)} /></Field>
+      <Field label="Código do item"><Input value={itemCodigo} onChange={(e) => setItemCodigo(e.target.value)} /></Field>
       <Field label="Motorista"><Input value={driverName} onChange={(e) => setDriverName(e.target.value)} /></Field>
       <Field label="Conjunto"><Input value={fleetName} onChange={(e) => setFleetName(e.target.value)} /></Field>
       <Field label="Data"><Input type="date" value={tripDate} onChange={(e) => setTripDate(e.target.value)} /></Field>
