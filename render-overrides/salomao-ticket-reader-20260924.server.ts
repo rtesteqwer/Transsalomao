@@ -219,16 +219,25 @@ export function readTicketFromSalomaoOcr(text: string, requestedMode: TicketFrei
   }
 
   function afterLabel(labels: string[]) {
-    for (const originalLine of lines) {
+    const knownLabels = /^(?:TICKET|TIQUETE|NUMERO|STATUS|VEICULO|CAVALO|CARRETA|REBOQUE|PLACA|PLACAS|PRODUTO|MERCADORIA|CARGA|PESO|PESAGEM|BRUTO|TARA|LIQUIDO|NOTA|NFE|NF|TRANSPORTADORA|TRANSP\.?|OPERADOR|OPERADORA|CONTRATANTE|TOMADOR|TOMADORA|MOTORISTA|CLIENTE|DESTINATARIO|RECEBEDOR|DESTINO|CNPJ)\b/i;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const originalLine = lines[lineIndex];
       const lineUpper = originalLine.toUpperCase();
       for (const label of labels) {
         const idx = lineUpper.indexOf(label);
         if (idx < 0) continue;
-        const value = originalLine
+        const inlineValue = originalLine
           .slice(idx + label.length)
           .replace(/^\s*[:#=\-]?\s*/, "")
           .trim();
-        if (value) return value.slice(0, 200);
+        if (inlineValue) return inlineValue.slice(0, 200);
+
+        // Muitos tickets imprimem o rótulo em uma linha e o valor logo abaixo.
+        for (let offset = 1; offset <= 2; offset++) {
+          const candidate = String(lines[lineIndex + offset] || "").trim();
+          if (!candidate || knownLabels.test(candidate)) continue;
+          return candidate.slice(0, 200);
+        }
       }
     }
     return null;
@@ -269,9 +278,39 @@ export function readTicketFromSalomaoOcr(text: string, requestedMode: TicketFrei
     alerts.push("O número do ticket foi obtido do nome do arquivo; confira no documento.");
   }
 
+  function normalizePlateCandidate(value: string) {
+    const plate = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(plate) ? plate : null;
+  }
+
+  const plateMatches = [
+    ...(upper.match(/\b[A-Z]{3}[\s.-]*[0-9][\s.-]*[A-Z0-9][\s.-]*[0-9]{2}\b/g) || []),
+    ...(upper.match(/[A-Z]\s*[A-Z]\s*[A-Z]\s*[0-9]\s*[A-Z0-9]\s*[0-9]\s*[0-9]/g) || []),
+  ];
   const plates = Array.from(new Set(
-    upper.match(/\b[A-Z]{3}[0-9][A-Z0-9][0-9]{2}\b|\b[A-Z]{3}[0-9]{4}\b/g) || [],
+    plateMatches.map(normalizePlateCandidate).filter((value): value is string => Boolean(value)),
   ));
+
+  function plateNearLabel(labels: string[]) {
+    for (const label of labels) {
+      const idx = upper.indexOf(label);
+      if (idx < 0) continue;
+      const nearby = upper.slice(idx, idx + 180);
+      const matches = [
+        ...(nearby.match(/\b[A-Z]{3}[\s.-]*[0-9][\s.-]*[A-Z0-9][\s.-]*[0-9]{2}\b/g) || []),
+        ...(nearby.match(/[A-Z]\s*[A-Z]\s*[A-Z]\s*[0-9]\s*[A-Z0-9]\s*[0-9]\s*[0-9]/g) || []),
+      ];
+      for (const match of matches) {
+        const normalized = normalizePlateCandidate(match);
+        if (normalized) return normalized;
+      }
+    }
+    return null;
+  }
+
+  const placaVeiculo = plateNearLabel(["PLACA VEICULO", "VEICULO", "CAVALO", "TRATOR"]) || plates[0] || null;
+  const placaCarreta = plateNearLabel(["PLACA CARRETA", "CARRETA", "REBOQUE", "SEMI"]) ||
+    plates.find((plate) => plate !== placaVeiculo) || null;
 
   let pesoLiquido = parseWeight([
     /PESO\s*LIQUIDO\s*[:=\-]?\s*([0-9][0-9.,\s]{1,18})\s*(KG|KGS|T|TON|TONELADAS?)?/i,
@@ -295,8 +334,8 @@ export function readTicketFromSalomaoOcr(text: string, requestedMode: TicketFrei
   const result: TicketData = {
     numero_ticket: numeroTicket,
     status: afterLabel(["STATUS"]),
-    placa_veiculo: plates[0] || null,
-    placa_carreta: plates[1] || null,
+    placa_veiculo: placaVeiculo,
+    placa_carreta: placaCarreta,
     produto: afterLabel(["PRODUTO", "MERCADORIA", "CARGA"]),
     pesagem_inicial_kg: mode === "ton" ? bruto : null,
     pesagem_inicial_data: null,
