@@ -52,51 +52,132 @@ export async function readTicketWithSalomaoIA(
     ? "Modo Por tonelada: priorize número do ticket, peso líquido, placa do veículo, placa da carreta, transportadora, operadora, contratante e destinatário. Se houver peso de entrada e saída, use a diferença para conferir o peso líquido."
     : "Modo sem peso: priorize número do ticket, placas, transportadora, operadora, contratante e destinatário; deixe todos os pesos como null.";
 
+  const focusedInstruction = `
+SEGUNDA LEITURA DE CONFERÊNCIA. A primeira leitura encontrou apenas parte do documento.
+Examine a imagem inteira de novo com foco nos textos pequenos.
+Procure especificamente:
+1. placa do cavalo/veículo;
+2. placa da carreta/reboque;
+3. transportadora;
+4. operador/operadora do terminal, porto ou operação;
+5. empresa contratante/tomadora/cliente do frete;
+6. destinatário/recebedor da carga.
+As placas podem estar com hífen, espaço ou em uma linha chamada PLACAS. Normalize para 7 caracteres sem hífen.
+O nome da empresa pode estar NA LINHA DE BAIXO do rótulo, ao lado do CNPJ ou em fonte menor.
+Não descarte um campo só porque o rótulo exato não aparece: use a posição e o contexto do documento, mas NUNCA invente.
+Se um papel tiver somente transportadora e destinatário, deixe operadora/contratante null.
+Mantenha também ticket e peso se estiverem visíveis.
+`;
+
+  function outputText(data: any) {
+    return Array.isArray(data?.output)
+      ? data.output.flatMap((item: any) => Array.isArray(item?.content) ? item.content : [])
+          .filter((part: any) => part?.type === "output_text")
+          .map((part: any) => String(part.text || ""))
+          .join("")
+      : "";
+  }
+
+  async function requestVision(key: string, userInstruction: string, timeoutMs: number) {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: salomaoModel(),
+        store: false,
+        reasoning: { effort: "low" },
+        instructions: TICKET_PROMPT,
+        input: [{
+          role: "user",
+          content: [
+            { type: "input_text", text: userInstruction + " Responda somente com o JSON solicitado." },
+            { type: "input_image", image_url: `data:${image.mime};base64,${image.base64}`, detail: "high" },
+          ],
+        }],
+        max_output_tokens: 2200,
+      }),
+    });
+    const data: any = await response.json().catch(() => null);
+    return { response, data };
+  }
+
+  function parseVision(data: any) {
+    const text = outputText(data);
+    if (!text.trim()) throw new TicketError(502, "A Salomão IA retornou uma leitura vazia.");
+    const parsed = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/gi, "").trim());
+    return ticketForMode(normalizeTicket(parsed), mode);
+  }
+
+  function missingPriorityCount(ticket: TicketData) {
+    let missing = 0;
+    if (!ticket.placa_veiculo) missing++;
+    if (!ticket.placa_carreta) missing++;
+    if (!ticket.transportadora) missing++;
+    if (!ticket.destinatario && !ticket.cliente && !ticket.operadora && !ticket.contratante) missing++;
+    if (mode === "ton" && !ticket.peso_liquido_kg) missing++;
+    return missing;
+  }
+
+  function mergeReadings(primary: TicketData, focused: TicketData) {
+    const merged: TicketData = { ...primary, alertas: [...(primary.alertas || [])] };
+    const fields: Array<keyof TicketData> = [
+      "numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto",
+      "pesagem_inicial_kg", "pesagem_inicial_data", "pesagem_final_kg", "pesagem_final_data",
+      "peso_liquido_kg", "peso_origem_kg", "numero_nf", "transportadora", "operadora",
+      "contratante", "motorista", "cliente", "destinatario", "anotacoes_manuscritas",
+    ];
+    for (const field of fields) {
+      if ((merged as any)[field] == null && (focused as any)[field] != null) {
+        (merged as any)[field] = (focused as any)[field];
+      }
+    }
+    const focusedAlerts = Array.isArray(focused.alertas) ? focused.alertas : [];
+    merged.alertas = Array.from(new Set([
+      ...merged.alertas,
+      ...focusedAlerts,
+      "Leitura parcial detectada: a Salomão IA fez uma segunda conferência automática dos campos prioritários.",
+    ]));
+    return ticketForMode(merged, mode);
+  }
+
   let lastStatus = 0;
   for (const key of keys) {
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        signal: AbortSignal.timeout(40_000),
-        headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: salomaoModel(),
-          store: false,
-          reasoning: { effort: "low" },
-          instructions: TICKET_PROMPT,
-          input: [{
-            role: "user",
-            content: [
-              { type: "input_text", text: instruction + " Responda somente com o JSON solicitado." },
-              { type: "input_image", image_url: `data:${image.mime};base64,${image.base64}`, detail: "high" },
-            ],
-          }],
-          max_output_tokens: 2200,
-        }),
-      });
-      lastStatus = response.status;
-      const data: any = await response.json().catch(() => null);
-      if (!response.ok) {
-        const code = String(data?.error?.code || data?.error?.type || "");
+      const first = await requestVision(key, instruction, 40_000);
+      lastStatus = first.response.status;
+      if (!first.response.ok) {
+        const code = String(first.data?.error?.code || first.data?.error?.type || "");
         console.warn("[salomao-ticket] advanced vision unavailable", {
-          status: response.status,
+          status: first.response.status,
           code: code.slice(0, 80),
           model: salomaoModel(),
         });
-        if ([401, 403, 404, 429].includes(response.status)) continue;
+        if ([401, 403, 404, 429].includes(first.response.status)) continue;
         throw new TicketError(502, "A Salomão IA não conseguiu concluir a leitura desta foto.");
       }
 
-      const text = Array.isArray(data?.output)
-        ? data.output.flatMap((item: any) => Array.isArray(item?.content) ? item.content : [])
-            .filter((part: any) => part?.type === "output_text")
-            .map((part: any) => String(part.text || ""))
-            .join("")
-        : "";
-      if (!text.trim()) throw new TicketError(502, "A Salomão IA retornou uma leitura vazia.");
+      const primary = parseVision(first.data);
 
-      const parsed = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/gi, "").trim());
-      return ticketForMode(normalizeTicket(parsed), mode);
+      // Ticket + peso, mas placas/empresas vazios, não conta mais como sucesso.
+      // Faz uma segunda passagem dedicada aos textos pequenos e mescla apenas
+      // os campos que estavam ausentes na primeira leitura.
+      if (missingPriorityCount(primary) >= 2) {
+        try {
+          const second = await requestVision(key, instruction + "\n" + focusedInstruction, 30_000);
+          if (second.response.ok) {
+            const focused = parseVision(second.data);
+            return mergeReadings(primary, focused);
+          }
+          console.warn("[salomao-ticket] focused retry unavailable", { status: second.response.status });
+        } catch (focusedError) {
+          console.warn("[salomao-ticket] focused retry failed", {
+            name: focusedError instanceof Error ? focusedError.name : "unknown",
+          });
+        }
+      }
+
+      return primary;
     } catch (error) {
       if (error instanceof TicketError && error.status === 502) throw error;
       if (error instanceof SyntaxError) throw new TicketError(502, "A Salomão IA não conseguiu estruturar os dados. Tente outra foto.");
