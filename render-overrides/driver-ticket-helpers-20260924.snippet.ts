@@ -14,6 +14,7 @@ type TicketData = {
   transportadora: string | null;
   motorista: string | null;
   cliente: string | null;
+  destinatario: string | null;
   anotacoes_manuscritas: string | null;
   alertas: string[];
 };
@@ -22,7 +23,6 @@ async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85)
   if (!file.type.startsWith("image/")) throw new Error("Selecione uma foto válida.");
   if (file.size > 15_000_000) throw new Error("A foto é grande demais.");
 
-  // Image also works on older Android WebViews; always release the object URL.
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -46,21 +46,28 @@ async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85)
   } finally { URL.revokeObjectURL(url); }
 }
 
-async function lerTicket(file: File): Promise<TicketData> {
+async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "caixinha"): Promise<TicketData> {
   const payload = await reduzirImagemTicket(file);
   const response = await fetch("/api/ler-ticket", {
     method: "POST",
     signal: AbortSignal.timeout(50_000),
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, freightMode }),
   });
   const result = await response.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
   if (!response.ok) throw new Error(result?.erro || "Falha ao ler o ticket");
   return result as TicketData;
 }
 
-async function salvarTicket(dados: TicketData & { driverId: string; fleetId: string; km_carreta: number; conferido: true }) {
+async function salvarTicket(dados: TicketData & {
+  driverId: string;
+  fleetId: string;
+  km_carreta: number;
+  conferido: true;
+  freightMode: "ton" | "trip" | "cegonha" | "caixinha";
+  dailyValue: number;
+}) {
   const response = await fetch("/api/salvar-ticket", {
     method: "POST",
     signal: AbortSignal.timeout(50_000),
@@ -70,5 +77,5 @@ async function salvarTicket(dados: TicketData & { driverId: string; fleetId: str
   });
   const result = await response.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
   if (!response.ok) throw new Error(result?.erro || "Falha ao salvar o ticket");
-  return result as { ok: true; id: number; reportId: string; ticket: string; tons: number };
+  return result as { ok: true; id: number; reportId: string; ticket: string; tons: number; freightMode: string };
 }

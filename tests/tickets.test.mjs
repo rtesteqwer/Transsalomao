@@ -34,8 +34,9 @@ insert into drivers values ('d1','Motorista teste','ativo'),('inactive','Inativo
 insert into fleets values ('f1','ativo');`);
 await pg.exec(readFileSync(path.join(source, 'migrations/0012_ticket_reader.sql'), 'utf8'));
 await pg.exec(readFileSync(path.join(source, 'migrations/0015_ticket_safety.sql'), 'utf8'));
+await pg.exec(readFileSync(path.join(source, 'migrations/0016_ticket_modes_metadata.sql'), 'utf8'));
 const sql = async (strings, ...values) => (await pg.query(strings.reduce((text, part, i) => text + (i ? '$' + i : '') + part, ''), values)).rows;
-const input = (ticket, other = {}) => ({ numero_ticket: ticket, peso_liquido_kg: 35810, pesagem_inicial_kg: 57810, pesagem_final_kg: 22000, driverId:'d1', fleetId:'f1', km_carreta:123456, conferido:true, ...other });
+const input = (ticket, other = {}) => ({ numero_ticket: ticket, peso_liquido_kg: 35810, pesagem_inicial_kg: 57810, pesagem_final_kg: 22000, transportadora:'Trans Salomão', destinatario:'Cliente destino', driverId:'d1', fleetId:'f1', km_carreta:123456, conferido:true, freightMode:'ton', dailyValue:0, ...other });
 const expectStatus = status => error => error instanceof TicketError && error.status === status;
 
 after(async () => { await pg.close(); rmSync(tmp, { recursive:true, force:true }); });
@@ -86,10 +87,21 @@ test('concurrent duplicate submissions create exactly one ticket and report', as
  assert.equal(Number((await pg.query("select count(*) from reports where ticket='T-101'")).rows[0].count),1);
 });
 
-test('checks legacy tickets in Caixa and trips; refuses inactive drivers', async () => {
- await pg.exec("insert into trips values ('legacy','T-102'); insert into reports(id,ticket,status) values ('rep-old',' t-103 ','pendente')");
- for (const code of ['T-102','T-103']) await assert.rejects(()=>saveTicket(sql,validateSave(input(code))),expectStatus(409));
+test('does not confuse internal trip/report codes with a physical ticket; refuses inactive drivers', async () => {
+ await pg.exec("insert into trips values ('legacy','265'); insert into reports(id,ticket,status) values ('rep-old','266','pendente')");
+ assert.equal((await saveTicket(sql,validateSave(input('265')))).ticket,'265');
+ assert.equal((await saveTicket(sql,validateSave(input('266')))).ticket,'266');
  await assert.rejects(()=>saveTicket(sql,validateSave(input('T-104',{driverId:'inactive'}))),expectStatus(400));
+});
+
+test('non-ton modes keep ticket metadata but never persist weight', async () => {
+ const data=validateSave(input('CX-1',{freightMode:'caixinha',peso_liquido_kg:35810,pesagem_inicial_kg:57810,pesagem_final_kg:22000}));
+ assert.equal(data.tons,0); assert.equal(data.ticket.peso_liquido_kg,null);
+ const result=await saveTicket(sql,data);
+ const report=(await pg.query("select tons,freight_mode,status from reports where id=$1",[result.reportId])).rows[0];
+ assert.equal(Number(report.tons),0); assert.equal(report.freight_mode,'caixinha'); assert.equal(report.status,'pendente');
+ const ticket=(await pg.query("select peso_liquido_kg,transportadora,destinatario,freight_mode from tickets_balanca where report_id=$1",[result.reportId])).rows[0];
+ assert.equal(ticket.peso_liquido_kg,null); assert.equal(ticket.transportadora,'Trans Salomão'); assert.equal(ticket.destinatario,'Cliente destino'); assert.equal(ticket.freight_mode,'caixinha');
 });
 
 test('a report insert failure rolls back the ticket automatically', async () => {
@@ -113,11 +125,13 @@ test('uses OpenAI when Anthropic is absent; does not expose provider secrets on 
  try {
   process.env.OPENAI_API_KEY='test-key'; delete process.env.ANTHROPIC_API_KEY; delete process.env.TICKET_AI_PROVIDER;
   globalThis.fetch=async (url,options)=>{assert.equal(url,'https://api.openai.com/v1/chat/completions'); const b=JSON.parse(options.body); assert.equal(b.store,false); assert.equal(options.headers.Authorization,'Bearer test-key'); return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(input('OCR-1'))}}]})};
-  assert.equal((await readWithProvider({mime:'image/jpeg',base64:'test'})).peso_liquido_kg,35810);
+  assert.equal((await readWithProvider({mime:'image/jpeg',base64:'test'},'ton')).peso_liquido_kg,35810);
+  const noWeight=await readWithProvider({mime:'image/jpeg',base64:'test'},'cegonha');
+  assert.equal(noWeight.peso_liquido_kg,null);
   process.env.ANTHROPIC_API_KEY='test-claude';
   globalThis.fetch=async (url,options)=>{assert.equal(url,'https://api.anthropic.com/v1/messages');assert.equal(options.headers['x-api-key'],'test-claude');return Response.json({stop_reason:'end_turn',content:[{type:'text',text:JSON.stringify(input('OCR-2'))}]})};
-  assert.equal((await readWithProvider({mime:'image/jpeg',base64:'test'})).numero_ticket,'OCR-2');
+  assert.equal((await readWithProvider({mime:'image/jpeg',base64:'test'},'ton')).numero_ticket,'OCR-2');
   globalThis.fetch=async()=>Response.json({error:{message:'secret=test-claude'}},{status:401});
-  await assert.rejects(()=>readWithProvider({mime:'image/jpeg',base64:'test'}), e=>e.status===503 && !e.message.includes('test-claude'));
+  await assert.rejects(()=>readWithProvider({mime:'image/jpeg',base64:'test'},'ton'), e=>e.status===503 && !e.message.includes('test-claude'));
  } finally {globalThis.fetch=fetchBefore; for(const [key,value] of Object.entries(before)) {if(value===undefined) delete process.env[key];else process.env[key]=value;}}
 });

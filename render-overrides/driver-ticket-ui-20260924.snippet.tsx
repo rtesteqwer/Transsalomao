@@ -1,14 +1,16 @@
           <section className="grid gap-4 rounded-xl border border-border bg-surface p-4">
               <div>
-                <p className="text-sm font-semibold">Foto do ticket de balança</p>
+                <p className="text-sm font-semibold">Foto do ticket / documento da viagem</p>
                 <p className="mt-1 text-xs text-muted">
-                  Fotografe ou escolha a foto enviada. A leitura preenche o peso e o número do ticket para você conferir.
+                  {freightMode === "ton"
+                    ? "A IA lê número do ticket, peso líquido, placas, transportadora e destinatário."
+                    : "Neste modo a IA guarda número do ticket, placas, transportadora e destinatário; pesos e pesagens são ignorados."}
                 </p>
               </div>
 
-              {freightMode !== "ton" ? (
-                <p className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-muted">
-                  Ao tirar ou escolher uma foto, o modo será alterado automaticamente para Por tonelada.
+              {!freightMode ? (
+                <p className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-muted">
+                  Escolha o modo da viagem antes de enviar a foto.
                 </p>
               ) : null}
               <TicketPhotoAccess onAccess={setTicketAccess} />
@@ -18,7 +20,7 @@
                     {ticketReading ? <LoaderCircle className="size-6 animate-spin text-accent" /> : <Camera className="size-6 text-accent" />}
                     <strong className="mt-2 text-sm">{ticketReading ? "Lendo ticket…" : option.label}</strong>
                     <input className="absolute inset-0 h-full w-full cursor-pointer opacity-0" type="file" aria-label={option.label} accept="image/*" capture={option.camera ? "environment" : undefined}
-                      disabled={ticketReading || ticketSending || !ticketAccess?.authenticated || !ticketAccess.available}
+                      disabled={ticketReading || ticketSending || !freightMode || !ticketAccess?.authenticated || !ticketAccess.available}
                       onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void onTicketFile(file); }} />
                   </label>
                 ))}
@@ -36,29 +38,33 @@
                     />
                   </Field>
 
-                  <Field label="Peso líquido (kg)" hint="Confira com o valor impresso">
-                    <Input
-                      value={ticketData.peso_liquido_kg ?? ""}
-                      inputMode="numeric"
-                      onChange={(event) => {
-                        setTicketConfirmed(false);
-                        const raw = event.target.value.replace(/\D/g, "");
-                        const kg = raw ? Number(raw) : null;
-                        setTicketData({ ...ticketData, peso_liquido_kg: kg });
-                        if (kg != null && kg > 0) {
-                          setTons(new Intl.NumberFormat("pt-BR", {
-                            minimumFractionDigits: 3,
-                            maximumFractionDigits: 3,
-                          }).format(kg / 1000));
-                        } else { setTons(""); }
-                      }}
-                      className="h-12 font-display text-xl"
-                    />
-                  </Field>
+                  {freightMode === "ton" ? (
+                    <Field label="Peso líquido (kg)" hint="Usado somente no modo Por tonelada">
+                      <Input
+                        value={ticketData.peso_liquido_kg ?? ""}
+                        inputMode="numeric"
+                        onChange={(event) => {
+                          setTicketConfirmed(false);
+                          const raw = event.target.value.replace(/\D/g, "");
+                          const kg = raw ? Number(raw) : null;
+                          setTicketData({ ...ticketData, peso_liquido_kg: kg });
+                          if (kg != null && kg > 0) {
+                            setTons(new Intl.NumberFormat("pt-BR", {
+                              minimumFractionDigits: 3,
+                              maximumFractionDigits: 3,
+                            }).format(kg / 1000));
+                          } else { setTons(""); }
+                        }}
+                        className="h-12 font-display text-xl"
+                      />
+                    </Field>
+                  ) : null}
 
-                  <div className="grid grid-cols-2 gap-2 text-xs text-muted">
-                    <span>Placa cavalo: <b className="text-fg">{ticketData.placa_veiculo || "—"}</b></span>
+                  <div className="grid grid-cols-1 gap-2 text-xs text-muted sm:grid-cols-2">
+                    <span>Placa veículo: <b className="text-fg">{ticketData.placa_veiculo || "—"}</b></span>
                     <span>Placa carreta: <b className="text-fg">{ticketData.placa_carreta || "—"}</b></span>
+                    <span>Transportadora: <b className="text-fg">{ticketData.transportadora || "—"}</b></span>
+                    <span>Destinatário: <b className="text-fg">{ticketData.destinatario || ticketData.cliente || "—"}</b></span>
                     <span>Produto: <b className="text-fg">{ticketData.produto || "—"}</b></span>
                     <span>NF: <b className="text-fg">{ticketData.numero_nf || "—"}</b></span>
                   </div>
@@ -81,7 +87,9 @@
                   {fleet && ((ticketData.placa_veiculo && ticketData.placa_veiculo !== fleet.tractorPlate.replace(/[^a-z0-9]/gi, "").toUpperCase()) || (ticketData.placa_carreta && ticketData.placa_carreta !== fleet.trailerPlate.replace(/[^a-z0-9]/gi, "").toUpperCase())) ? <p role="alert" className="text-sm text-warn">A placa lida difere do conjunto selecionado. Confira a foto e o conjunto.</p> : null}
                   <label className="flex items-start gap-3 text-sm">
                     <input type="checkbox" className="mt-1 size-5" checked={ticketConfirmed} onChange={event => setTicketConfirmed(event.target.checked)} />
-                    Conferi o número, o peso líquido e o conjunto na foto.
+                    {freightMode === "ton"
+                      ? "Conferi o número, o peso líquido, as placas e os dados do ticket."
+                      : "Conferi o número, as placas, a transportadora e o destinatário. Nenhum peso será gravado neste modo."}
                   </label>
                   <Button type="button" variant="ghost" onClick={() => { setTicketData(null); setTicketFileName(""); setTicketConfirmed(false); setTons(""); }}>
                     Descartar leitura

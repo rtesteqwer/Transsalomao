@@ -6,7 +6,9 @@ export class TicketError extends Error {
 
 export const MAX_IMAGE_BASE64 = 3_500_000;
 const MAX_INTEGER = 2_147_483_647;
-const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "transportadora", "motorista", "cliente", "anotacoes_manuscritas"] as const;
+export const freightModes = ["ton", "trip", "cegonha", "caixinha"] as const;
+export type TicketFreightMode = typeof freightModes[number];
+const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "transportadora", "motorista", "cliente", "destinatario", "anotacoes_manuscritas"] as const;
 const weightFields = ["pesagem_inicial_kg", "pesagem_final_kg", "peso_liquido_kg", "peso_origem_kg"] as const;
 export type TicketData = Record<typeof textFields[number], string | null> & Record<typeof weightFields[number], number | null> & { alertas: string[] };
 
@@ -16,7 +18,6 @@ export function json(value: unknown, status = 200) {
 
 export function ticketErrorResponse(error: unknown) {
   if (error instanceof TicketError) return json({ erro: error.message }, error.status);
-  // Do not return provider responses, connection strings, SQL or stack traces.
   console.error("[ticket] operation failed", error instanceof Error ? error.name : "unknown");
   return json({ erro: "Não foi possível concluir. Tente novamente; o ticket não será duplicado." }, 503);
 }
@@ -67,11 +68,17 @@ export function kilograms(value: unknown) {
   return Number.isSafeInteger(number) && number >= 0 && number <= MAX_INTEGER ? number : null;
 }
 
+export function normalizeFreightMode(value: unknown): TicketFreightMode {
+  return freightModes.includes(value as TicketFreightMode) ? value as TicketFreightMode : "ton";
+}
+
 export function normalizeTicket(value: unknown): TicketData {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new TicketError(502, "A leitura não retornou dados válidos. Tente outra foto.");
   const source = value as Record<string, unknown>;
   const result = {} as TicketData;
   for (const key of textFields) result[key] = nullableText(source[key]);
+  if (!result.destinatario && result.cliente) result.destinatario = result.cliente;
+  if (!result.cliente && result.destinatario) result.cliente = result.destinatario;
   for (const key of ["placa_veiculo", "placa_carreta"] as const) result[key] = result[key]?.toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
   for (const key of weightFields) result[key] = kilograms(source[key]);
   result.alertas = Array.isArray(source.alertas) ? source.alertas.filter((x): x is string => typeof x === "string").slice(0, 20).map(x => x.slice(0, 500)) : [];
@@ -82,28 +89,51 @@ export function normalizeTicket(value: unknown): TicketData {
   return result;
 }
 
-export function parseTicketResponse(text: string) {
-  try { return normalizeTicket(JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/gi, "").trim())); }
+export function ticketForMode(ticket: TicketData, mode: TicketFreightMode): TicketData {
+  if (mode === "ton") return ticket;
+  return {
+    ...ticket,
+    pesagem_inicial_kg: null,
+    pesagem_final_kg: null,
+    peso_liquido_kg: null,
+    peso_origem_kg: null,
+    alertas: ticket.alertas.filter((alerta) => !/peso|pesagem/i.test(alerta)),
+  };
+}
+
+export function parseTicketResponse(text: string, mode: TicketFreightMode = "ton") {
+  try { return ticketForMode(normalizeTicket(JSON.parse(text.replace(/^\`\`\`(?:json)?\s*|\s*\`\`\`$/gi, "").trim())), mode); }
   catch (error) { if (error instanceof TicketError) throw error; throw new TicketError(502, "A leitura ficou incompleta. Tente outra foto."); }
 }
 
 export function validateSave(body: Record<string, unknown>) {
   if (body.conferido !== true) throw new TicketError(400, "Confirme a conferência do ticket antes de lançar.");
-  const ticket = normalizeTicket(body);
+  const freightMode = normalizeFreightMode(body.freightMode);
+  const normalized = normalizeTicket(body);
+  const ticket = ticketForMode(normalized, freightMode);
   const numero = ticket.numero_ticket?.trim().toUpperCase();
   if (!numero || numero.length > 80 || /[\x00-\x1f]/.test(numero)) throw new TicketError(400, "Confira o número do ticket (até 80 caracteres).");
-  // API writes use numeric kg only. Never silently round or infer units.
-  if (typeof body.peso_liquido_kg !== "number" || !Number.isSafeInteger(body.peso_liquido_kg) || body.peso_liquido_kg <= 0 || body.peso_liquido_kg > MAX_INTEGER) throw new TicketError(400, "Informe o peso líquido em kg inteiros, maior que zero.");
+
+  let tons = 0;
+  if (freightMode === "ton") {
+    if (typeof body.peso_liquido_kg !== "number" || !Number.isSafeInteger(body.peso_liquido_kg) || body.peso_liquido_kg <= 0 || body.peso_liquido_kg > MAX_INTEGER) {
+      throw new TicketError(400, "Informe o peso líquido em kg inteiros, maior que zero.");
+    }
+    tons = body.peso_liquido_kg / 1000;
+  }
+
   const driverId = typeof body.driverId === "string" ? body.driverId.trim() : "";
   const fleetId = typeof body.fleetId === "string" ? body.fleetId.trim() : "";
   if (!driverId || !fleetId || driverId.length > 100 || fleetId.length > 100) throw new TicketError(400, "Escolha motorista e conjunto.");
   const km = body.km_carreta ?? 0;
   if (typeof km !== "number" || !Number.isSafeInteger(km) || km < 0 || km > MAX_INTEGER) throw new TicketError(400, "Informe uma quilometragem válida.");
-  return { ticket: { ...ticket, numero_ticket: numero }, driverId, fleetId, km, tons: body.peso_liquido_kg / 1000 };
+  const dailyValueRaw = freightMode === "trip" ? Number(body.dailyValue ?? 0) : 0;
+  if (!Number.isFinite(dailyValueRaw) || dailyValueRaw < 0 || dailyValueRaw > 100_000_000) throw new TicketError(400, "Informe um valor de diária válido.");
+  return { ticket: { ...ticket, numero_ticket: numero }, driverId, fleetId, km, tons, dailyValue: dailyValueRaw, freightMode };
 }
 
 export async function saveTicket(sql: Sql, data: ReturnType<typeof validateSave>) {
-  const { ticket: d, driverId, fleetId, km, tons } = data;
+  const { ticket: d, driverId, fleetId, km, tons, dailyValue, freightMode } = data;
   const [drivers, fleets] = await Promise.all([
     sql<{ name: string; status: string }>`select name,status from drivers where id=${driverId} limit 1`,
     sql<{ status: string }>`select status from fleets where id=${fleetId} limit 1`,
@@ -111,27 +141,26 @@ export async function saveTicket(sql: Sql, data: ReturnType<typeof validateSave>
   if (drivers[0]?.status !== "ativo") throw new TicketError(400, "Motorista inválido ou inativo.");
   if (fleets[0]?.status !== "ativo") throw new TicketError(400, "Conjunto inválido ou inativo.");
   const reportId = `rep_${crypto.randomUUID().replace(/-/g, "")}`;
-  // One PostgreSQL statement: ticket + Caixa either both commit or both roll back.
-  // The unique ticket constraint also serializes concurrent retries.
+
   const rows = await sql<{ id: number; report_id: string }>`
     with saved_ticket as (
       insert into tickets_balanca (numero_ticket, placa_veiculo, placa_carreta, produto,
         pesagem_inicial_kg, pesagem_final_kg, peso_liquido_kg, data_pesagem,
-        numero_nf, transportadora, motorista, km_carreta, driver_id, fleet_id, report_id, ticket_data)
+        numero_nf, transportadora, destinatario, motorista, km_carreta, driver_id, fleet_id,
+        report_id, ticket_data, freight_mode)
       select ${d.numero_ticket}, ${d.placa_veiculo}, ${d.placa_carreta}, ${d.produto},
         ${d.pesagem_inicial_kg}, ${d.pesagem_final_kg}, ${d.peso_liquido_kg}, ${d.pesagem_final_data || d.pesagem_inicial_data},
-        ${d.numero_nf}, ${d.transportadora}, ${drivers[0].name}, ${km}, ${driverId}, ${fleetId}, ${reportId}, ${JSON.stringify(d)}::jsonb
+        ${d.numero_nf}, ${d.transportadora}, ${d.destinatario}, ${drivers[0].name}, ${km}, ${driverId}, ${fleetId},
+        ${reportId}, ${JSON.stringify(d)}::jsonb, ${freightMode}
       where not exists (select 1 from tickets_balanca where upper(btrim(numero_ticket)) = ${d.numero_ticket})
-        and not exists (select 1 from reports where upper(btrim(ticket)) = ${d.numero_ticket} and status <> 'recusado')
-        and not exists (select 1 from trips where upper(btrim(code)) = ${d.numero_ticket})
       on conflict (numero_ticket) do nothing returning id, report_id
     ), saved_report as (
       insert into reports (id, ticket, driver_id, fleet_id, km, tons, daily_value, freight_mode, status)
-      select report_id, ${d.numero_ticket}, ${driverId}, ${fleetId}, ${km}, ${tons}, 0, 'ton', 'pendente'
+      select report_id, ${d.numero_ticket}, ${driverId}, ${fleetId}, ${km}, ${tons}, ${dailyValue}, ${freightMode}, 'pendente'
       from saved_ticket returning id
     )
     select t.id, t.report_id from saved_ticket t join saved_report r on r.id=t.report_id
   `;
   if (!rows[0]) throw new TicketError(409, `Ticket ${d.numero_ticket} já foi lançado.`);
-  return { ok: true, id: rows[0].id, reportId: rows[0].report_id, ticket: d.numero_ticket, tons };
+  return { ok: true, id: rows[0].id, reportId: rows[0].report_id, ticket: d.numero_ticket, tons, freightMode };
 }

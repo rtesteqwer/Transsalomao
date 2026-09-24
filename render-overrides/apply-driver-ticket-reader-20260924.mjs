@@ -25,10 +25,12 @@ copy("render-overrides/ticket-reader-api-20260924.ts", "src/routes/api/ler-ticke
 copy("render-overrides/ticket-save-api-20260924.ts", "src/routes/api/salvar-ticket.ts");
 copy("render-overrides/0012_ticket_reader.sql", "migrations/0012_ticket_reader.sql");
 copy("render-overrides/0015_ticket_safety.sql", "migrations/0015_ticket_safety.sql");
+copy("render-overrides/0016_ticket_modes_metadata.sql", "migrations/0016_ticket_modes_metadata.sql");
 copy("render-overrides/ticket-core-20260924.ts", "src/lib/ticket-core.ts");
 copy("render-overrides/ticket-auth-20260924.server.ts", "src/lib/ticket-auth.server.ts");
 copy("render-overrides/ticket-provider-20260924.ts", "src/lib/ticket-provider.server.ts");
 copy("render-overrides/ticket-photo-access-20260924.tsx", "src/components/ticket-photo-access.tsx");
+copy("render-overrides/ticket-meta-api-20260924.ts", "src/routes/api/ticket-meta.ts");
 
 // Use the existing private deployment secret when no dedicated management key is set.
 const authPath = "src/lib/management-auth.server.ts";
@@ -93,7 +95,7 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
   s = replaceRequired(
     s,
     '            <Field label="Toneladas" hint="Opcional">',
-    '            <Field label="Toneladas" hint={ticketData ? "Preenchido pela leitura do ticket — confira" : "Opcional"}>',
+    '            <Field label="Toneladas" hint={ticketData && freightMode === "ton" ? "Preenchido pela leitura do ticket — confira" : "Opcional"}>',
     "tons hint",
   );
 
@@ -103,7 +105,7 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
     '                onChange={(e) => {\n' +
       '                  setTons(e.target.value);\n' +
       '                  const parsed = parseLocaleNumber(e.target.value);\n' +
-      '                  if (ticketData && parsed != null) {\n' +
+      '                  if (ticketData && freightMode === "ton" && parsed != null) {\n' +
       '                    setTicketData({ ...ticketData, peso_liquido_kg: Math.round(parsed * 1000) });\n' +
       '                  }\n' +
       '                }}\n',
@@ -127,13 +129,89 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
     '  const [kmCarreta, setKmCarreta] = useState("");\n  const [ticketConfirmed, setTicketConfirmed] = useState(false);\n  const [ticketSending, setTicketSending] = useState(false);\n  const ticketBusy = useRef(false);\n  const queryClient = useQueryClient();\n  useEffect(() => { if (ticketAccess?.driverId) setDriverId(ticketAccess.driverId); }, [ticketAccess?.driverId]);', "ticket state");
   s = replaceRequired(s, 'onChange={(e) => setDriverId(e.target.value)}', 'onChange={(e) => { setDriverId(e.target.value); setTicketConfirmed(false); }}', "driver confirmation");
   s = replaceRequired(s, 'onChange={(e) => setFleetId(e.target.value)}', 'onChange={(e) => { setFleetId(e.target.value); setTicketConfirmed(false); }}', "fleet confirmation");
-  s = replaceRequired(s, '                value={tons}', '                readOnly={!!ticketData}\n                value={tons}', "one weight source");
+  s = replaceRequired(s, '                value={tons}', '                readOnly={!!ticketData && freightMode === "ton"}\n                value={tons}', "one weight source");
   s = replaceRequired(s, 'disabled={report.isPending || drivers.length === 0}',
-    'disabled={report.isPending || ticketReading || ticketSending || drivers.length === 0 || (freightMode === "ton" && !!ticketData && !ticketConfirmed)}', "submit lock");
+    'disabled={report.isPending || ticketReading || ticketSending || drivers.length === 0 || (!!ticketData && !ticketConfirmed)}', "submit lock");
   s = replaceRequired(s, '{report.isPending ? "Enviando…" : "Depositar no painel"}', '{report.isPending || ticketSending ? "Enviando…" : "Depositar no painel"}', "saving label");
   s = s.replace(/(<form[^>]*onSubmit=\{onSubmit\}[^>]*>)/, '$1\n          <fieldset disabled={ticketReading || ticketSending} className="contents">');
   s = replaceRequired(s, '        </form>', '          </fieldset>\n        </form>', "fieldset end");
   writeTarget(rel, s);
 }
 
-console.log("[driver-ticket-reader] ticket photo read + confirmation + duplicate-safe save applied");
+// Preserve physical ticket numbers in pending Caixa items created from photo tickets.
+{
+  const rel = "src/lib/api.ts";
+  let s = readTarget(rel);
+  const oldNormalize = "      await sql\`with ordered as (select id, row_number() over (order by created_at asc, created_at asc nulls first, id asc) as rn from reports where status = 'pendente') update reports r set ticket = (\${offset} + ordered.rn)::text from ordered where r.id = ordered.id\`;";
+  const actualNormalize = "      await sql\`with ordered as (select id, row_number() over (order by created_at asc nulls first, id asc) as rn from reports where status = 'pendente') update reports r set ticket = (\${offset} + ordered.rn)::text from ordered where r.id = ordered.id\`;";
+  const fixedNormalize = "      await sql\`with ordered as (select r0.id, row_number() over (order by r0.created_at asc nulls first, r0.id asc) as rn from reports r0 where r0.status = 'pendente' and not exists (select 1 from tickets_balanca tb where tb.report_id = r0.id)) update reports r set ticket = (\${offset} + ordered.rn)::text from ordered where r.id = ordered.id\`;\n      await sql\`update reports r set ticket = tb.numero_ticket from tickets_balanca tb where tb.report_id = r.id and r.status = 'pendente' and r.ticket is distinct from tb.numero_ticket\`;";
+  if (s.includes(actualNormalize)) s = s.replace(actualNormalize, fixedNormalize);
+  else if (s.includes(oldNormalize)) s = s.replace(oldNormalize, fixedNormalize);
+  else throw new Error("driver-ticket-reader: pending ticket normalization pattern not found");
+  writeTarget(rel, s);
+}
+
+// Show ticket metadata captured by the photo reader inside management Caixa cards.
+{
+  const rel = "src/routes/dono/lancamentos.tsx";
+  let s = readTarget(rel);
+  if (s.includes('import { useState } from "react";')) {
+    s = s.replace('import { useState } from "react";', 'import { useEffect, useState } from "react";');
+  } else if (!s.includes("useEffect")) {
+    throw new Error("driver-ticket-reader: React state import not found in Caixa");
+  }
+
+  const cardActions = '                <div className="mt-4 flex flex-wrap gap-2">';
+  s = replaceRequired(s, cardActions, '                <TicketMetadata reportId={r.id} mode={r.freightMode} />\n' + cardActions, "Caixa ticket metadata card");
+
+  const editorMarker = "type PendingReportEditPayload = {";
+  const metadataComponent = `type PendingTicketMetadata = {
+  numeroTicket: string | null;
+  placaVeiculo: string | null;
+  placaCarreta: string | null;
+  transportadora: string | null;
+  destinatario: string | null;
+  pesoLiquidoKg: number | null;
+  freightMode: string | null;
+};
+
+function TicketMetadata({ reportId, mode }: { reportId: string; mode?: string | null }) {
+  const [ticket, setTicket] = useState<PendingTicketMetadata | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/ticket-meta?reportId=" + encodeURIComponent(reportId), {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => { if (!controller.signal.aborted) setTicket(result?.ticket ?? null); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [reportId]);
+
+  if (!ticket) return null;
+  return (
+    <div className="mt-4 rounded-lg border border-border bg-bg p-3 text-xs">
+      <p className="font-semibold text-fg">Dados captados da foto</p>
+      <div className="mt-2 grid gap-1 text-muted sm:grid-cols-2">
+        <span>Ticket: <b className="text-fg">{ticket.numeroTicket || "—"}</b></span>
+        <span>Veículo: <b className="text-fg">{ticket.placaVeiculo || "—"}</b></span>
+        <span>Carreta: <b className="text-fg">{ticket.placaCarreta || "—"}</b></span>
+        <span>Transportadora: <b className="text-fg">{ticket.transportadora || "—"}</b></span>
+        <span>Destinatário: <b className="text-fg">{ticket.destinatario || "—"}</b></span>
+        {mode === "ton" && ticket.pesoLiquidoKg ? (
+          <span>Peso líquido: <b className="text-fg">{new Intl.NumberFormat("pt-BR").format(ticket.pesoLiquidoKg)} kg</b></span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+`;
+  s = replaceRequired(s, editorMarker, metadataComponent + editorMarker, "Caixa metadata component");
+  writeTarget(rel, s);
+}
+
+console.log("[driver-ticket-reader] all freight modes + photo metadata + Caixa visibility applied");
