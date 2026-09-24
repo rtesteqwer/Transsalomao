@@ -43,7 +43,7 @@ function write(rel, value) {
     setQuickPdfBusy(kind);
     try {
       const today = new Date();
-      const isoToday = \`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}\`;
+      const isoToday = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
 
       const matchesPeriod = (date: string) => {
         if (kind === "day") return String(date).slice(0, 10) === isoToday;
@@ -98,10 +98,10 @@ function write(rel, value) {
         expenses: expenseRows,
         periodLabel: label,
         sourceLabel: "Relatórios rápidos",
-        reportTitle: \`Relatório ${label} da Gerência\`,
+        reportTitle: "Relatório " + label + " da Gerência",
       });
 
-      toast.success(\`PDF ${label} gerado com sucesso.\`);
+      toast.success("PDF " + label + " gerado com sucesso.");
     } catch (error) {
       console.error("[quick-pdf] generation failed", error);
       toast.error(error instanceof Error ? error.message : "Não foi possível gerar o PDF.");
