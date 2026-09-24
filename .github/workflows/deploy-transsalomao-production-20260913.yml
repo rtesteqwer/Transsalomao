@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           mkdir -p .vercel
           printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
-          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+          npx --yes vercel@59.26.0 pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
 
       - name: Deploy production
         env:
@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          URL="$(npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
+          URL="$(npx --yes vercel@59.26.0 deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
           echo "DEPLOYMENT_URL=$URL" >> "$GITHUB_ENV"
           echo "Published: $URL"
 
