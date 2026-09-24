@@ -94,6 +94,9 @@ async function ocrTicketLocal(file: File) {
     }
 
     const regions = [
+      // Página inteira para layouts desconhecidos. Os recortes abaixo continuam
+      // ajudando nos modelos já conhecidos, mas o OCR não depende mais só deles.
+      ["FULL_PAGE", cropCanvas(0, 0, 1, 1, 2400)],
       ["TICKET", cropCanvas(0.03, 0.055, 0.47, 0.10, 1350)],
       ["TICKET_NUM", cropCanvas(0.17, 0.060, 0.30, 0.060, 1200)],
       ["CARRETA_VAL", cropCanvas(0.035, 0.135, 0.20, 0.070, 1200)],
@@ -144,6 +147,7 @@ function interpretarOcrTicketLocal(
     return (match?.[1] || "").trim();
   }
 
+  const fullPageText = section("FULL_PAGE");
   const ticketText = section("TICKET");
   const ticketNumberText = section("TICKET_NUM");
   const trailerValueText = section("CARRETA_VAL");
@@ -158,6 +162,7 @@ function interpretarOcrTicketLocal(
   const receiptWeightsText = section("RECEIPT_WEIGHTS");
   const receiptPlatesText = section("RECEIPT_PLATES");
   const allText = [
+    fullPageText,
     ticketText,
     ticketNumberText,
     trailerValueText,
@@ -535,8 +540,14 @@ function interpretarOcrTicketLocal(
 
   const placaCarreta = plateFromValueCrop(trailerValueText) || plateAfterLabel("CARRETA");
   const placaVeiculo = plateFromValueCrop(tractorValueText) || plateAfterLabel("VEICULO");
+  const fallbackPlateMatches = [
+    ...(allUpper.match(/\b[A-Z]{3}[\s.-]*[0-9][\s.-]*[A-Z0-9][\s.-]*[0-9]{2}\b/g) || []),
+    ...(allUpper.match(/[A-Z]\s*[A-Z]\s*[A-Z]\s*[0-9]\s*[A-Z0-9]\s*[0-9]\s*[0-9]/g) || []),
+  ];
   const fallbackPlates = Array.from(new Set(
-    allUpper.match(/\b[A-Z]{3}[0-9][A-Z0-9][0-9]{2}\b|\b[A-Z]{3}[0-9]{4}\b/g) || [],
+    fallbackPlateMatches
+      .map((value) => normalizePlate(value.replace(/\s+/g, "")))
+      .filter((value): value is string => Boolean(value)),
   ));
 
   const pesoInicial = parseWeightFrom(weightText, ["PESAGEM INICIAL", "PESO INICIAL", "BRUTO"]);
@@ -590,10 +601,10 @@ function interpretarOcrTicketLocal(
 
   const transportBlock = blockBetween(companyText, "TRANSPORTADORA", "DESTINATARIO");
   const destBlock = blockBetween(companyText, "DESTINATARIO", "REMETENTE");
-  const operadora = firstMatchIn(headerText + "\n" + companyText, [
+  const operadora = firstMatchIn(headerText + "\n" + companyText + "\n" + fullPageText, [
     /OPERADOR(?:A)?\s*[:\-]?\s*([^\n]{2,120})/i,
   ])?.replace(/\s+(?:TICKET|DATA|BERCO|TRANSPORTADORA|MOTORISTA|PRODUTO).*$/i, "").trim() || null;
-  const contratante = firstMatchIn(headerText + "\n" + companyText, [
+  const contratante = firstMatchIn(headerText + "\n" + companyText + "\n" + fullPageText, [
     /EMPRESA\s+CONTRATANTE\s*[:\-]?\s*([^\n]{2,160})/i,
     /CONTRATANTE\s*[:\-]?\s*([^\n]{2,160})/i,
     /TOMADOR(?:A)?\s*[:\-]?\s*([^\n]{2,160})/i,
@@ -645,12 +656,18 @@ function interpretarOcrTicketLocal(
     peso_liquido_kg: freightMode === "ton" ? pesoLiquido : null,
     peso_origem_kg: freightMode === "ton" ? pesoOrigem : null,
     numero_nf: numeroNf || null,
-    transportadora: companyName(transportBlock),
+    transportadora: companyName(transportBlock) || companyName(
+      textBetweenLabels(fullPageText, "TRANSPORTADORA", ["DESTINATARIO", "RECEBEDOR", "MOTORISTA", "PRODUTO", "PESO"]) || "",
+    ),
     operadora,
     contratante,
     motorista: firstMatchIn(headerText, [/MOTORISTA\s*[:\-]?\s*([^\n]{2,100})/i])?.replace(/^[-.]\s*$/, "") || null,
     cliente: firstMatchIn(headerText, [/CLIENTE\s*[:\-]?\s*([^\n]{1,100})/i])?.replace(/^[-.]\s*$/, "") || null,
-    destinatario: companyName(destBlock),
+    destinatario: companyName(destBlock) || companyName(
+      textBetweenLabels(fullPageText, "DESTINATARIO", ["REMETENTE", "MOTORISTA", "PRODUTO", "PESO", "NOTA"]) ||
+      textBetweenLabels(fullPageText, "RECEBEDOR", ["MOTORISTA", "PRODUTO", "PESO", "NOTA"]) ||
+      "",
+    ),
     anotacoes_manuscritas: null,
     alertas: alerts,
   };
