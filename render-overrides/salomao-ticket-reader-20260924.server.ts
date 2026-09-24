@@ -384,7 +384,7 @@ export function readTicketFromSalomaoOcr(text: string, requestedMode: TicketFrei
     })() : null,
     item_codigo: isMultilift ? firstMatch([/\bITEM\s+([0-9]{1,20})\b/i]) : null,
     anotacoes_manuscritas: null,
-    alertas,
+    alertas: alerts,
   };
 
   if (!result.destinatario && result.cliente) result.destinatario = result.cliente;
