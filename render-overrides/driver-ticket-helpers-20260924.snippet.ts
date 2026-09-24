@@ -89,6 +89,14 @@ async function ocrTicketLocal(file: File) {
       ["PESOS", cropCanvas(0.53, 0.105, 0.45, 0.29, 1500)],
       ["EMPRESAS", cropCanvas(0.03, 0.255, 0.94, 0.17, 1800)],
       ["NF", cropCanvas(0.03, 0.395, 0.94, 0.09, 1800)],
+
+      // Segundo modelo: recibo estreito VPORTS / LOG.
+      // Mantemos estes recortes além do modelo largo para escolher pelo texto reconhecido.
+      ["RECEIPT_ALL", cropCanvas(0.22, 0.06, 0.58, 0.78, 1900)],
+      ["RECEIPT_TOP", cropCanvas(0.26, 0.21, 0.50, 0.19, 1600)],
+      ["RECEIPT_PEOPLE", cropCanvas(0.26, 0.36, 0.50, 0.22, 1600)],
+      ["RECEIPT_WEIGHTS", cropCanvas(0.26, 0.53, 0.50, 0.14, 1500)],
+      ["RECEIPT_PLATES", cropCanvas(0.26, 0.63, 0.50, 0.12, 1500)],
     ] as const;
 
     const chunks: string[] = [];
@@ -126,7 +134,26 @@ function interpretarOcrTicketLocal(
   const weightText = section("PESOS");
   const companyText = section("EMPRESAS");
   const nfText = section("NF");
-  const allText = [ticketText, ticketNumberText, trailerValueText, tractorValueText, headerText, weightText, companyText, nfText].filter(Boolean).join("\n");
+  const receiptAllText = section("RECEIPT_ALL");
+  const receiptTopText = section("RECEIPT_TOP");
+  const receiptPeopleText = section("RECEIPT_PEOPLE");
+  const receiptWeightsText = section("RECEIPT_WEIGHTS");
+  const receiptPlatesText = section("RECEIPT_PLATES");
+  const allText = [
+    ticketText,
+    ticketNumberText,
+    trailerValueText,
+    tractorValueText,
+    headerText,
+    weightText,
+    companyText,
+    nfText,
+    receiptAllText,
+    receiptTopText,
+    receiptPeopleText,
+    receiptWeightsText,
+    receiptPlatesText,
+  ].filter(Boolean).join("\n");
   const allUpper = allText.toUpperCase();
 
   const alerts: string[] = [
@@ -234,6 +261,161 @@ function interpretarOcrTicketLocal(
       .map(part => part.replace(/^(CNPJ|RAZAO\s+SOCIAL)\s*[:\-]?\s*/i, "").trim())
       .filter(part => /[A-Z]{3}/i.test(part) && !/^\d{8,}$/.test(part.replace(/\D/g, "")));
     return candidates[0]?.slice(0, 200) || null;
+  }
+
+  function textBetweenLabels(value: string, startLabel: string, endLabels: string[]) {
+    const upper = value.toUpperCase();
+    const start = upper.indexOf(startLabel);
+    if (start < 0) return null;
+    const contentStart = start + startLabel.length;
+    let end = value.length;
+    for (const label of endLabels) {
+      const idx = upper.indexOf(label, contentStart);
+      if (idx >= 0 && idx < end) end = idx;
+    }
+    const result = value
+      .slice(contentStart, end)
+      .replace(/^[\s:;,.\-]+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return result || null;
+  }
+
+  function receiptPlateCandidates(value: string) {
+    const candidates = value.toUpperCase().match(/[A-Z0-9]{7}/g) || [];
+    const found: string[] = [];
+    for (const raw of candidates) {
+      const exact = normalizePlate(raw);
+      if (exact && !found.includes(exact)) found.push(exact);
+    }
+    return found;
+  }
+
+  const receiptText = [
+    receiptTopText,
+    receiptPeopleText,
+    receiptWeightsText,
+    receiptPlatesText,
+    receiptAllText,
+  ].filter(Boolean).join("\n");
+
+  const receiptUpper = receiptText.toUpperCase();
+  const isNarrowVportsReceipt =
+    /TIQUETE\s+DE\s+PESAGEM|VPORTS/.test(receiptUpper) &&
+    /PESO\s+(ENTRADA|SAIDA|LIQUIDO)/.test(receiptUpper);
+
+  if (isNarrowVportsReceipt) {
+    const receiptAlerts = [
+      "Modelo VPORTS/LOG reconhecido pela Salomão IA. Confira os dados antes de lançar.",
+    ];
+
+    let receiptTicket: string | null = null;
+    const receiptTicketRaw = firstMatchIn(receiptText, [
+      /\bTIQUETE\s*[:#=\-]?\s*([0-9OQDISBL|]{4,10})\b/i,
+      /\bTICKET(?!\s*AGEND)\s*[:#=\-]?\s*([0-9OQDISBL|]{4,10})\b/i,
+    ]);
+    const receiptTicketDigits = ocrDigits(receiptTicketRaw);
+    if (receiptTicketDigits && receiptTicketDigits.length >= 4 && receiptTicketDigits.length <= 10) {
+      receiptTicket = receiptTicketDigits;
+    }
+
+    if (!receiptTicket && /^\d{3,14}$/.test(stem)) {
+      receiptTicket = stem;
+      receiptAlerts.push("O número do ticket foi obtido do nome do arquivo; confira no documento.");
+    }
+
+    const receiptWeightSource = receiptWeightsText || receiptAllText || receiptText;
+    const pesoEntrada = parseWeightFrom(receiptWeightSource, ["PESO ENTRADA", "ENTRADA"]);
+    const pesoSaida = parseWeightFrom(receiptWeightSource, ["PESO SAIDA", "SAIDA"]);
+    const pesoLiquidoLido = parseWeightFrom(receiptWeightSource, ["PESO LIQUIDO", "LIQUIDO"]);
+
+    const pesoCalculado =
+      freightMode === "ton" &&
+      pesoEntrada != null &&
+      pesoSaida != null &&
+      pesoEntrada >= 1_000 &&
+      pesoSaida >= 1_000
+        ? Math.abs(pesoSaida - pesoEntrada)
+        : null;
+
+    let receiptPesoLiquido = pesoLiquidoLido;
+    if (pesoCalculado != null && pesoCalculado >= 1_000 && pesoCalculado <= 100_000) {
+      if (
+        receiptPesoLiquido == null ||
+        receiptPesoLiquido < 1_000 ||
+        Math.abs(receiptPesoLiquido - pesoCalculado) > 100
+      ) {
+        receiptPesoLiquido = pesoCalculado;
+        receiptAlerts.push(
+          "Peso líquido validado pela diferença entre Peso Saída e Peso Entrada: " +
+            pesoCalculado +
+            " kg.",
+        );
+      }
+    }
+
+    const receiptPlates = receiptPlateCandidates(receiptPlatesText + "\n" + receiptAllText);
+
+    const receiptTransportadora =
+      textBetweenLabels(
+        receiptPeopleText || receiptAllText,
+        "TRANSPORTADORA",
+        ["MOTORISTA", "PRODUTO", "PESO ENTRADA"],
+      );
+
+    const receiptMotorista =
+      textBetweenLabels(
+        receiptPeopleText || receiptAllText,
+        "MOTORISTA",
+        ["PRODUTO", "PESO ENTRADA"],
+      );
+
+    let receiptProduto =
+      textBetweenLabels(
+        receiptPeopleText || receiptAllText,
+        "PRODUTO",
+        ["PESO ENTRADA", "PESO SAIDA", "PESO LIQUIDO"],
+      );
+    if (receiptProduto) receiptProduto = receiptProduto.replace(/\s+/g, " ").trim();
+
+    const dataEntrada =
+      parseDateAfter(receiptTopText || receiptAllText, "DATA/HORA ENTRADA") ||
+      parseDateAfter(receiptTopText || receiptAllText, "DATA HORA ENTRADA");
+    const dataSaida =
+      parseDateAfter(receiptTopText || receiptAllText, "DATA/HORA SAIDA") ||
+      parseDateAfter(receiptTopText || receiptAllText, "DATA HORA SAIDA");
+
+    if (!receiptTicket) receiptAlerts.push("Número do tiquete não foi identificado com segurança.");
+    if (freightMode === "ton" && !receiptPesoLiquido) {
+      receiptAlerts.push("Peso líquido não foi identificado com segurança.");
+    }
+    if (receiptPlates.length < 2) {
+      receiptAlerts.push("As duas placas não foram identificadas com segurança.");
+    }
+    if (!receiptTransportadora) {
+      receiptAlerts.push("Transportadora não foi identificada com segurança.");
+    }
+
+    return {
+      numero_ticket: receiptTicket,
+      status: null,
+      placa_veiculo: receiptPlates[0] || null,
+      placa_carreta: receiptPlates[1] || null,
+      produto: receiptProduto || null,
+      pesagem_inicial_kg: freightMode === "ton" ? pesoEntrada : null,
+      pesagem_inicial_data: freightMode === "ton" ? dataEntrada : null,
+      pesagem_final_kg: freightMode === "ton" ? pesoSaida : null,
+      pesagem_final_data: freightMode === "ton" ? dataSaida : null,
+      peso_liquido_kg: freightMode === "ton" ? receiptPesoLiquido : null,
+      peso_origem_kg: null,
+      numero_nf: null,
+      transportadora: receiptTransportadora || null,
+      motorista: receiptMotorista || null,
+      cliente: null,
+      destinatario: null,
+      anotacoes_manuscritas: null,
+      alertas: receiptAlerts,
+    };
   }
 
   let numeroTicket: string | null = null;
