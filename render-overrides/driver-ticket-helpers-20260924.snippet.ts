@@ -267,8 +267,52 @@ function interpretarOcrTicketLocal(
 
   const pesoInicial = parseWeightFrom(weightText, ["PESAGEM INICIAL", "PESO INICIAL", "BRUTO"]);
   const pesoFinal = parseWeightFrom(weightText, ["PESAGEM FINAL", "PESO FINAL", "TARA"]);
-  const pesoLiquido = parseWeightFrom(weightText, ["PESO LIQUIDO", "LIQUIDO"]);
+  const pesoLiquidoLido = parseWeightFrom(weightText, ["PESO LIQUIDO", "LIQUIDO"]);
   const pesoOrigem = parseWeightFrom(weightText, ["PESO ORIGEM", "ORIGEM"]);
+
+  const pesoCalculado =
+    freightMode === "ton" &&
+    pesoInicial != null &&
+    pesoFinal != null &&
+    pesoInicial >= 1_000 &&
+    pesoFinal >= 1_000
+      ? Math.abs(pesoInicial - pesoFinal)
+      : null;
+
+  let pesoLiquido = pesoLiquidoLido;
+
+  // Em tickets de balança, o peso líquido deve bater com a diferença entre
+  // pesagem inicial e final. Isso evita leituras OCR absurdas como 51 kg.
+  if (
+    freightMode === "ton" &&
+    pesoCalculado != null &&
+    pesoCalculado >= 1_000 &&
+    pesoCalculado <= 100_000
+  ) {
+    const lidoInvalido =
+      pesoLiquidoLido == null ||
+      pesoLiquidoLido < 1_000 ||
+      Math.abs(pesoLiquidoLido - pesoCalculado) > 100;
+
+    if (lidoInvalido) {
+      pesoLiquido = pesoCalculado;
+      if (pesoLiquidoLido != null) {
+        alerts.push(
+          "Peso líquido lido pelo OCR (" +
+            pesoLiquidoLido +
+            " kg) não bateu com a diferença das pesagens. Foi corrigido automaticamente para " +
+            pesoCalculado +
+            " kg.",
+        );
+      } else {
+        alerts.push(
+          "Peso líquido calculado automaticamente pela diferença entre pesagem inicial e final: " +
+            pesoCalculado +
+            " kg.",
+        );
+      }
+    }
+  }
 
   const transportBlock = blockBetween(companyText, "TRANSPORTADORA", "DESTINATARIO");
   const destBlock = blockBetween(companyText, "DESTINATARIO", "REMETENTE");
