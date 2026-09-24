@@ -155,3 +155,12 @@ Leitor universal de tickets Salomao IA:
 - valida peso liquido pela diferenca das pesagens
 Build validado com sucesso
 Commit: f54e61b56b6a62431cc3d20a574fa56a07642b71
+
+
+Correção campos prioritários Salomão IA / Caixa:
+- peso líquido validado pela diferença das pesagens quando necessário
+- placas, transportadora, operadora, contratante e destinatário separados e conferíveis
+- campos prioritários editáveis antes do envio pelo motorista
+- operadora e contratante preservadas no ticket_data e exibidas no Caixa da Gerência
+Build: validação via Vercel após merge do PR #17
+Commit funcional: c84875be90da25481d35ba31b26aa5304884c413
