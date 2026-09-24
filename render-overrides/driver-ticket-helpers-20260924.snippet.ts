@@ -21,7 +21,7 @@ type TicketData = {
   alertas: string[];
 };
 
-async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85) {
+async function reduzirImagemTicket(file: File, maxLado = 2600, qualidade = 0.90) {
   if (!file.type.startsWith("image/")) throw new Error("Selecione uma foto válida.");
   if (file.size > 15_000_000) throw new Error("A foto é grande demais.");
 
@@ -33,18 +33,29 @@ async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85)
       image.onerror = () => reject(new Error("Não foi possível abrir esta foto. Use JPG ou PNG."));
       image.src = url;
     });
-    const escala = Math.min(1, maxLado / Math.max(img.naturalWidth, img.naturalHeight));
+
+    let escala = Math.min(1, maxLado / Math.max(img.naturalWidth, img.naturalHeight));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
-    canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Não foi possível preparar a foto.");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    let imagem = canvas.toDataURL("image/jpeg", qualidade).split(",")[1] || "";
-    if (imagem.length > 3_500_000) imagem = canvas.toDataURL("image/jpeg", 0.65).split(",")[1] || "";
-    if (!imagem || imagem.length > 3_500_000) throw new Error("A foto é grande demais. Escolha outra imagem.");
-    return { imagem, tipo: "image/jpeg" };
+
+    // Preserva letras pequenas de placas e razão social. Só reduz mais se for
+    // necessário para ficar dentro do limite seguro do request da Vercel.
+    for (let tentativa = 0; tentativa < 5; tentativa++) {
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      for (const q of [qualidade, 0.82, 0.74, 0.66, 0.58]) {
+        const imagem = canvas.toDataURL("image/jpeg", q).split(",")[1] || "";
+        if (imagem && imagem.length <= 3_500_000) return { imagem, tipo: "image/jpeg" };
+      }
+      escala *= 0.86;
+    }
+
+    throw new Error("A foto é grande demais. Escolha outra imagem.");
   } finally { URL.revokeObjectURL(url); }
 }
 
@@ -649,7 +660,7 @@ async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "
   const payload = await reduzirImagemTicket(file);
   const response = await fetch("/api/ler-ticket", {
     method: "POST",
-    signal: AbortSignal.timeout(50_000),
+    signal: AbortSignal.timeout(80_000),
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...payload, freightMode, fileName: file.name }),
