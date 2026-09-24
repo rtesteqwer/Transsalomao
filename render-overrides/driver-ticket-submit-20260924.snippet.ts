@@ -1,4 +1,5 @@
     if (ticketBusy.current) return;
+    if (ticketFileName && !ticketData) return toast.error("A foto foi selecionada, mas não foi lida. Tente ler novamente ou remova a foto para lançar manualmente.");
     if (ticketData && !ticketConfirmed) return toast.error("Confirme a conferência dos dados do ticket.");
     ticketBusy.current = true;
     setTicketSending(true);
