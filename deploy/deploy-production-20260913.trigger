@@ -26,3 +26,9 @@ Fotos IA error handling:
 - retornar mensagem clara quando OpenAI responder 401
 - evitar HTTPError genérico no celular
 Commit: 4d1784507f7d11c923d6ed82cadd1bd60f78c8bc
+
+
+Fotos IA API econômica:
+- modelo exclusivo OPENAI_PHOTO_MODEL
+- padrão gpt-5.6-luna com entrada de imagem
+Commit: 438e0896fbe0656efb487fa051e896240debf2f2
