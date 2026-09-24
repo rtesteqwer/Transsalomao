@@ -119,19 +119,45 @@ test('rate limit is shared through the database and resets after one minute', as
  await allowTicketRead(sql,'driver:test');
 });
 
-test('uses OpenAI when Anthropic is absent; does not expose provider secrets on failure', async () => {
+test('prefers configured OpenAI Responses vision and falls back to Anthropic in auto mode', async () => {
  const fetchBefore=globalThis.fetch;
- const before={OPENAI_API_KEY:process.env.OPENAI_API_KEY,ANTHROPIC_API_KEY:process.env.ANTHROPIC_API_KEY,TICKET_AI_PROVIDER:process.env.TICKET_AI_PROVIDER};
+ const before={OPENAI_API_KEY:process.env.OPENAI_API_KEY,ANTHROPIC_API_KEY:process.env.ANTHROPIC_API_KEY,TICKET_AI_PROVIDER:process.env.TICKET_AI_PROVIDER,TICKET_OPENAI_MODEL:process.env.TICKET_OPENAI_MODEL,OPENAI_ASSISTANT_MODEL:process.env.OPENAI_ASSISTANT_MODEL};
  try {
-  process.env.OPENAI_API_KEY='test-key'; delete process.env.ANTHROPIC_API_KEY; delete process.env.TICKET_AI_PROVIDER;
-  globalThis.fetch=async (url,options)=>{assert.equal(url,'https://api.openai.com/v1/chat/completions'); const b=JSON.parse(options.body); assert.equal(b.store,false); assert.equal(options.headers.Authorization,'Bearer test-key'); return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(input('OCR-1'))}}]})};
-  assert.equal((await readWithProvider({mime:'image/jpeg',base64:'test'},'ton')).peso_liquido_kg,35810);
-  const noWeight=await readWithProvider({mime:'image/jpeg',base64:'test'},'cegonha');
-  assert.equal(noWeight.peso_liquido_kg,null);
+  process.env.OPENAI_API_KEY='test-openai';
   process.env.ANTHROPIC_API_KEY='test-claude';
-  globalThis.fetch=async (url,options)=>{assert.equal(url,'https://api.anthropic.com/v1/messages');assert.equal(options.headers['x-api-key'],'test-claude');return Response.json({stop_reason:'end_turn',content:[{type:'text',text:JSON.stringify(input('OCR-2'))}]})};
-  assert.equal((await readWithProvider({mime:'image/jpeg',base64:'test'},'ton')).numero_ticket,'OCR-2');
-  globalThis.fetch=async()=>Response.json({error:{message:'secret=test-claude'}},{status:401});
-  await assert.rejects(()=>readWithProvider({mime:'image/jpeg',base64:'test'},'ton'), e=>e.status===503 && !e.message.includes('test-claude'));
- } finally {globalThis.fetch=fetchBefore; for(const [key,value] of Object.entries(before)) {if(value===undefined) delete process.env[key];else process.env[key]=value;}}
+  delete process.env.TICKET_AI_PROVIDER;
+  process.env.TICKET_OPENAI_MODEL='gpt-5.6-sol';
+  let calls=0;
+  globalThis.fetch=async (url,options)=>{
+    calls++;
+    assert.equal(url,'https://api.openai.com/v1/responses');
+    const b=JSON.parse(options.body);
+    assert.equal(b.store,false);
+    assert.equal(b.model,'gpt-5.6-sol');
+    assert.equal(options.headers.Authorization,'Bearer test-openai');
+    return Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(input('0024090',{placa_veiculo:'QWS3E13',placa_carreta:'FYWRJ05',transportadora:'RAS TRANSPORTES E SERVICOS LTDA',destinatario:'VPORTS AUTORIDADE PORTUARIA'}))}]}]});
+  };
+  const read=await readWithProvider({mime:'image/jpeg',base64:'test'},'ton');
+  assert.equal(read.numero_ticket,'0024090');
+  assert.equal(read.peso_liquido_kg,35810);
+  assert.equal(read.placa_veiculo,'QWS3E13');
+  assert.equal(calls,1);
+
+  globalThis.fetch=async (url,options)=>{
+    if(url==='https://api.openai.com/v1/responses') return Response.json({error:{code:'insufficient_quota',message:'billing'}},{status:429});
+    assert.equal(url,'https://api.anthropic.com/v1/messages');
+    assert.equal(options.headers['x-api-key'],'test-claude');
+    return Response.json({stop_reason:'end_turn',content:[{type:'text',text:JSON.stringify(input('OCR-FALLBACK'))}]});
+  };
+  assert.equal((await readWithProvider({mime:'image/jpeg',base64:'test'},'ton')).numero_ticket,'OCR-FALLBACK');
+
+  globalThis.fetch=async (url)=>{
+    if(url==='https://api.openai.com/v1/responses') return Response.json({error:{message:'secret=test-openai'}},{status:401});
+    return Response.json({error:{message:'secret=test-claude'}},{status:401});
+  };
+  await assert.rejects(()=>readWithProvider({mime:'image/jpeg',base64:'test'},'ton'), e=>e.status===503 && !e.message.includes('test-openai') && !e.message.includes('test-claude'));
+ } finally {
+  globalThis.fetch=fetchBefore;
+  for(const [key,value] of Object.entries(before)) { if(value===undefined) delete process.env[key]; else process.env[key]=value; }
+ }
 });
