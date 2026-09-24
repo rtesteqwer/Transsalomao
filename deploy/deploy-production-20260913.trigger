@@ -134,3 +134,13 @@ Peso liquido por diferenca das pesagens:
 - neste ticket 54270 - 18460 = 35810 kg
 Build validado com sucesso
 Commit: a14daaa569ba61d82f6891110425997e1956ab0e
+
+
+Segundo modelo de ticket VPORTS/LOG:
+- reconhece recibo estreito "VPORTS - Tiquete de Pesagem"
+- le Tiquete, datas, transportadora, motorista, produto
+- le Peso Entrada, Peso Saida e Peso Liquido
+- valida peso liquido pela diferenca das pesagens
+- le as duas placas e usa o conjunto selecionado para ordenar cavalo/carreta
+Build validado com sucesso
+Commits: ccce50a / de3cc42
