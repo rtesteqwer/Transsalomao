@@ -75,7 +75,6 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
     '  const [ticketData, setTicketData] = useState<TicketData | null>(null);\n' +
     '  const [ticketReading, setTicketReading] = useState(false);\n' +
     '  const [ticketFileName, setTicketFileName] = useState("");\n' +
-    '  const [kmCarreta, setKmCarreta] = useState("");\n' +
     '  const [ticketReadError, setTicketReadError] = useState("");\n';
   s = replaceRequired(s, stateMarker, states, "states");
 
@@ -123,21 +122,13 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
     "tons sync",
   );
 
-  const submitButtonMarker = '\n\n          <Button\n            type="submit"';
-  s = replaceRequired(
-    s,
-    submitButtonMarker,
-    "\n\n" + readSource("render-overrides/driver-ticket-km-20260924.snippet.tsx") + '          <Button\n            type="submit"',
-    "km field",
-  );
-
   s = replaceRequired(s, 'import { useEffect, useMemo, useState } from "react";',
     'import { useEffect, useMemo, useRef, useState } from "react";\nimport { useQueryClient } from "@tanstack/react-query";\nimport { TicketPhotoAccess, type PhotoAccess } from "@/components/ticket-photo-access";', "ticket access imports");
   s = replaceRequired(s, 'import { useFleet, useFleetMutations }', 'import { fleetKey, useFleet, useFleetMutations }', "query key");
   s = replaceRequired(s, '  const drivers = (data?.drivers ?? []).filter((d) => d.status === "ativo");',
     '  const [ticketAccess, setTicketAccess] = useState<PhotoAccess | null>(null);\n  const drivers = (data?.drivers ?? []).filter((d) => d.status === "ativo" && (!ticketAccess?.driverId || d.id === ticketAccess.driverId));', "driver scope");
-  s = replaceRequired(s, '  const [kmCarreta, setKmCarreta] = useState("");',
-    '  const [kmCarreta, setKmCarreta] = useState("");\n  const [ticketConfirmed, setTicketConfirmed] = useState(false);\n  const [ticketSending, setTicketSending] = useState(false);\n  const ticketBusy = useRef(false);\n  const queryClient = useQueryClient();\n  useEffect(() => { if (ticketAccess?.driverId) setDriverId(ticketAccess.driverId); }, [ticketAccess?.driverId]);', "ticket state");
+  s = replaceRequired(s, '  const [ticketReadError, setTicketReadError] = useState("");',
+    '  const [ticketReadError, setTicketReadError] = useState("");\n  const [ticketConfirmed, setTicketConfirmed] = useState(false);\n  const [ticketSending, setTicketSending] = useState(false);\n  const ticketBusy = useRef(false);\n  const queryClient = useQueryClient();\n  useEffect(() => { if (ticketAccess?.driverId) setDriverId(ticketAccess.driverId); }, [ticketAccess?.driverId]);', "ticket state");
   s = replaceRequired(s, 'onChange={(e) => setDriverId(e.target.value)}', 'onChange={(e) => { setDriverId(e.target.value); setTicketConfirmed(false); }}', "driver confirmation");
   s = replaceRequired(s, 'onChange={(e) => setFleetId(e.target.value)}', 'onChange={(e) => { setFleetId(e.target.value); setTicketConfirmed(false); }}', "fleet confirmation");
   s = replaceRequired(s, '                value={tons}', '                readOnly={!!ticketData && freightMode === "ton" && !!ticketData.peso_liquido_kg}\n                value={tons}', "one weight source");
