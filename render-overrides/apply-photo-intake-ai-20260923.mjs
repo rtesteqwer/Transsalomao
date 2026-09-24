@@ -36,7 +36,21 @@ copy("render-overrides/photo-intake-page-20260923.tsx", "src/routes/dono/fotos.t
   const payload = fs.readFileSync(path.join(repo, "render-overrides", "photo-intake-api-20260923.b64"), "utf8").trim();
   const dst = path.join(target, "src/routes/api/photo-intake.ts");
   fs.mkdirSync(path.dirname(dst), { recursive: true });
-  fs.writeFileSync(dst, Buffer.from(payload, "base64").toString("utf8"));
+  let apiSource = Buffer.from(payload, "base64").toString("utf8");
+  apiSource = apiSource.replace(
+    "        const parsed = await readTicketWithAI(image);",
+    `        let parsed: any;
+        try {
+          parsed = await readTicketWithAI(image);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Falha ao acessar a IA.";
+          if (message.includes("(401)")) {
+            return json({ ok: false, message: "A IA do Fotos IA não está autorizada. A chave OpenAI da produção precisa ser renovada." }, 503);
+          }
+          return json({ ok: false, message: "Não foi possível ler a foto com IA. " + message }, 502);
+        }`,
+  );
+  fs.writeFileSync(dst, apiSource);
 }
 
 // 4) Acrescenta a aba Fotos IA à navegação da Gerência.
