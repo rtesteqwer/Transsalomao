@@ -519,9 +519,10 @@ function interpretarOcrTicketLocal(
   const ticketCandidates = [
     firstMatchIn(ticketNumberText, [/\b([0-9OQDISBL|]{5,12})\b/]),
     firstMatchIn(ticketText, [/\b([0-9OQDISBL|]{5,12})\b/]),
-    firstMatchIn(headerText, [
+    firstMatchIn(headerText + "\n" + fullPageText, [
+      /NUMERO\s*(?:DO\s+)?TICKET\s*[:#=\-]?\s*([0-9OQDISBL|]{5,12})/i,
+      /TICKET\s*(?:N(?:UMERO|[Oº°])?\s*)?[:#=\-]?\s*([0-9OQDISBL|]{5,12})/i,
       /NUMERO\s*[:#=\-]?\s*([0-9OQDISBL|]{5,12})/i,
-      /TICKET\s*[:#=\-]?\s*([0-9OQDISBL|]{5,12})/i,
     ]),
   ].filter(Boolean) as string[];
 
@@ -550,10 +551,11 @@ function interpretarOcrTicketLocal(
       .filter((value): value is string => Boolean(value)),
   ));
 
-  const pesoInicial = parseWeightFrom(weightText, ["PESAGEM INICIAL", "PESO INICIAL", "BRUTO"]);
-  const pesoFinal = parseWeightFrom(weightText, ["PESAGEM FINAL", "PESO FINAL", "TARA"]);
-  const pesoLiquidoLido = parseWeightFrom(weightText, ["PESO LIQUIDO", "LIQUIDO"]);
-  const pesoOrigem = parseWeightFrom(weightText, ["PESO ORIGEM", "ORIGEM"]);
+  const genericWeightText = [weightText, fullPageText].filter(Boolean).join("\n");
+  const pesoInicial = parseWeightFrom(genericWeightText, ["PESAGEM INICIAL", "PESO INICIAL", "BRUTO"]);
+  const pesoFinal = parseWeightFrom(genericWeightText, ["PESAGEM FINAL", "PESO FINAL", "TARA"]);
+  const pesoLiquidoLido = parseWeightFrom(genericWeightText, ["PESO LIQUIDO", "LIQUIDO"]);
+  const pesoOrigem = parseWeightFrom(genericWeightText, ["PESO ORIGEM", "ORIGEM"]);
 
   const pesoCalculado =
     freightMode === "ton" &&
@@ -601,6 +603,7 @@ function interpretarOcrTicketLocal(
 
   const transportBlock = blockBetween(companyText, "TRANSPORTADORA", "DESTINATARIO");
   const destBlock = blockBetween(companyText, "DESTINATARIO", "REMETENTE");
+  const isAdubosReal = /ADUBOS\s+REAL\s+S\.?A\.?/i.test(allText);
   const operadora = firstMatchIn(headerText + "\n" + companyText + "\n" + fullPageText, [
     /OPERADOR(?:A)?\s*[:\-]?\s*([^\n]{2,120})/i,
   ])?.replace(/\s+(?:TICKET|DATA|BERCO|TRANSPORTADORA|MOTORISTA|PRODUTO).*$/i, "").trim() || null;
@@ -640,8 +643,11 @@ function interpretarOcrTicketLocal(
     alerts.push("Peso líquido não identificado automaticamente. Informe e confira antes de lançar.");
   }
   if (!placaCarreta) alerts.push("Placa da carreta não foi identificada com segurança.");
-  if (!companyName(transportBlock)) alerts.push("Transportadora não foi identificada com segurança.");
-  if (!companyName(destBlock)) alerts.push("Destinatário não foi identificado com segurança.");
+  if (!companyName(transportBlock) && !isAdubosReal) alerts.push("Transportadora não foi identificada com segurança.");
+  if (!companyName(destBlock) && !isAdubosReal) alerts.push("Destinatário não foi identificado com segurança.");
+  if (isAdubosReal) {
+    alerts.push("Modelo ADUBOS REAL/SERRAES reconhecido. Este modelo pode trazer somente a placa do veículo; não invente placa da carreta.");
+  }
 
   return {
     numero_ticket: numeroTicket,
@@ -667,7 +673,7 @@ function interpretarOcrTicketLocal(
       textBetweenLabels(fullPageText, "DESTINATARIO", ["REMETENTE", "MOTORISTA", "PRODUTO", "PESO", "NOTA"]) ||
       textBetweenLabels(fullPageText, "RECEBEDOR", ["MOTORISTA", "PRODUTO", "PESO", "NOTA"]) ||
       "",
-    ),
+    ) || (isAdubosReal ? "ADUBOS REAL S.A." : null),
     anotacoes_manuscritas: null,
     alertas: alerts,
   };
