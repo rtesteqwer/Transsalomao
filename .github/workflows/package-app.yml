@@ -1,0 +1,67 @@
+name: Package Trans Salomao App
+
+on:
+  push:
+    paths:
+      - 'deploy/package-app.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout current app
+        uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compile production app
+        env:
+          VERCEL: '1'
+          VERCEL_PROJECT_PRODUCTION_URL: 'transsalomao.vercel.app'
+        run: npm run build
+
+      - name: Restore source file changed by build bootstrap
+        run: git checkout -- bootstrap.original.mjs || true
+
+      - name: Assemble full package
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf package
+          mkdir -p package/source package/compiled
+          rsync -a ./ package/source/ \
+            --exclude='.git/' \
+            --exclude='.vercel/' \
+            --exclude='node_modules/' \
+            --exclude='package/' \
+            --exclude='.env' \
+            --exclude='.env.*'
+          cp -a .vercel/output package/compiled/vercel-output
+          {
+            echo "Trans Salomao - pacote completo"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Gerado em UTC: $(date -u +'%Y-%m-%d %H:%M:%S')"
+            echo
+            echo "source/ = codigo-fonte completo do repositorio"
+            echo "compiled/vercel-output/ = Build Output API pronto para Vercel"
+            echo
+            echo "Segredos, tokens e arquivos .env nao foram incluidos."
+          } > package/BUILD_INFO.txt
+          (cd package && zip -qr ../Trans_Salomao_App_Completo.zip .)
+          ls -lh Trans_Salomao_App_Completo.zip
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: trans-salomao-app-zip
+          path: Trans_Salomao_App_Completo.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
