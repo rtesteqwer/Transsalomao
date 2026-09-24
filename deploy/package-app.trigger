@@ -13,3 +13,5 @@ validate-client-side-salomao-ocr-parser
 validate-alertas-variable-fix
 
 validate-layout-aware-vports-ocr
+
+validate-dedicated-ticket-plate-crops
