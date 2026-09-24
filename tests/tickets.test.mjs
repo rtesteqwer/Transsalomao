@@ -20,11 +20,14 @@ function compile(name, imports = {}) {
 }
 compile('ticket-core');
 compile('ticket-provider.server', { '@/lib/ticket-core': './ticket-core.mjs' });
+writeFileSync(path.join(tmp, 'salomao-ai.mjs'), 'export const getSalomaoOpenAIKeys = async () => []; export const salomaoModel = () => "test-model";');
+compile('salomao-ticket-reader.server', { '@/lib/ticket-core': './ticket-core.mjs', '@/lib/salomao-ai.server': './salomao-ai.mjs', '@/lib/db': './db-stub.mjs' });
 writeFileSync(path.join(tmp, 'sessions.mjs'), 'export const managementSession = () => null; export const klebersomSession = () => null;');
 compile('ticket-auth.server', { '@/lib/ticket-core': './ticket-core.mjs', '@/lib/management-auth.server': './sessions.mjs', '@/lib/klebersom-access.server': './sessions.mjs' });
 const { normalizeTicket, validateSave, validateImage, saveTicket, TicketError } = await import(pathToFileURL(path.join(tmp, 'ticket-core.mjs')));
 const { ticketAccess, allowTicketRead } = await import(pathToFileURL(path.join(tmp, 'ticket-auth.server.mjs')));
 const { readWithProvider } = await import(pathToFileURL(path.join(tmp, 'ticket-provider.server.mjs')));
+const { readTicketFromSalomaoOcr } = await import(pathToFileURL(path.join(tmp, 'salomao-ticket-reader.server.mjs')));
 const pg = new PGlite();
 await pg.exec(`create table drivers(id text primary key, name text, status text);
 create table fleets(id text primary key, status text);
@@ -46,6 +49,42 @@ test('preserves kg, handles Brazilian thousands, keeps handwritten/origin values
  assert.equal(d.peso_liquido_kg,35810); assert.equal(d.placa_veiculo,'QWE1A23'); assert.equal(d.alertas.length,0);
  assert.equal(normalizeTicket({ peso_origem_kg:40000 }).peso_liquido_kg,null);
  assert(normalizeTicket({ peso_liquido_kg:35810, pesagem_inicial_kg:57000, pesagem_final_kg:22000 }).alertas.some(x=>x.includes('diferente')));
+});
+
+test('reads Multilift ticket layout and keeps operator person separate from operadora', () => {
+ const ocr = [
+  'MULTILIFT LOGISTICA LTDA',
+  'TICKET DE PESAGEM 0534063 - Encerrado',
+  'Carreta MQP-5D98 Veic/Cavalo OVH-4J13',
+  'NAVIO PACIFIC VIRTUE',
+  'Transportadora 130 - Multilift Logistica Ltda',
+  'Emissor 77 - CX-M20',
+  'Item 138 - Saida de Espudomenio (LOW GRADE)',
+  'Pesagem Inicial',
+  'Peso: 20.580 kg',
+  'Pesagem Final',
+  'Data / Hora: 11/09/2026 23:13:26',
+  'Operador: Maycon Richard Nascimento Lima',
+  'Peso: 44.090 kg',
+  'Peso Liquido 23.510 kg',
+  'Dados Motorista',
+  'NOME: Clovis Salomao Garcia'
+ ].join('\n');
+ const d = readTicketFromSalomaoOcr(ocr, 'ton', '46260.jpg');
+ assert.equal(d.numero_ticket,'0534063');
+ assert.equal(d.placa_carreta,'MQP5D98');
+ assert.equal(d.placa_veiculo,'OVH4J13');
+ assert.equal(d.pesagem_inicial_kg,20580);
+ assert.equal(d.pesagem_final_kg,44090);
+ assert.equal(d.peso_liquido_kg,23510);
+ assert.equal(d.transportadora,'Multilift Logistica Ltda');
+ assert.equal(d.motorista,'Clovis Salomao Garcia');
+ assert.equal(d.navio,'PACIFIC VIRTUE');
+ assert.equal(d.emissor,'CX-M20');
+ assert.equal(d.item_codigo,'138');
+ assert.equal(d.operador_pesagem,'Maycon Richard Nascimento Lima');
+ assert.equal(d.operadora,null);
+ assert.match(d.produto,/Espudomenio/i);
 });
 
 test('requires explicit review and rejects malformed/non-integer/negative weights', () => {
