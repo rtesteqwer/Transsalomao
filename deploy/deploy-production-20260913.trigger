@@ -126,3 +126,11 @@ VPORTS OCR refinado:
 - preserva zeros iniciais e reduz troca entre placas
 Build validado com sucesso
 Commit: 50924f97a97d9b14348b67e2149394c199190b87
+
+
+Peso liquido por diferenca das pesagens:
+- valida peso liquido contra pesagem inicial - final
+- corrige automaticamente leituras OCR absurdas como 51 kg
+- neste ticket 54270 - 18460 = 35810 kg
+Build validado com sucesso
+Commit: a14daaa569ba61d82f6891110425997e1956ab0e
