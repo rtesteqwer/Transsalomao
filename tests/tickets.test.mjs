@@ -36,7 +36,7 @@ await pg.exec(readFileSync(path.join(source, 'migrations/0012_ticket_reader.sql'
 await pg.exec(readFileSync(path.join(source, 'migrations/0015_ticket_safety.sql'), 'utf8'));
 await pg.exec(readFileSync(path.join(source, 'migrations/0016_ticket_modes_metadata.sql'), 'utf8'));
 const sql = async (strings, ...values) => (await pg.query(strings.reduce((text, part, i) => text + (i ? '$' + i : '') + part, ''), values)).rows;
-const input = (ticket, other = {}) => ({ numero_ticket: ticket, peso_liquido_kg: 35810, pesagem_inicial_kg: 57810, pesagem_final_kg: 22000, transportadora:'Trans Salomão', destinatario:'Cliente destino', driverId:'d1', fleetId:'f1', km_carreta:123456, conferido:true, freightMode:'ton', dailyValue:0, ...other });
+const input = (ticket, other = {}) => ({ numero_ticket: ticket, peso_liquido_kg: 35810, pesagem_inicial_kg: 57810, pesagem_final_kg: 22000, transportadora:'Trans Salomão', operadora:'LOG CONSULTING', contratante:'Empresa contratante', destinatario:'Cliente destino', driverId:'d1', fleetId:'f1', km_carreta:123456, conferido:true, freightMode:'ton', dailyValue:0, ...other });
 const expectStatus = status => error => error instanceof TicketError && error.status === status;
 
 after(async () => { await pg.close(); rmSync(tmp, { recursive:true, force:true }); });
@@ -100,8 +100,9 @@ test('non-ton modes keep ticket metadata but never persist weight', async () => 
  const result=await saveTicket(sql,data);
  const report=(await pg.query("select tons,freight_mode,status from reports where id=$1",[result.reportId])).rows[0];
  assert.equal(Number(report.tons),0); assert.equal(report.freight_mode,'caixinha'); assert.equal(report.status,'pendente');
- const ticket=(await pg.query("select peso_liquido_kg,transportadora,destinatario,freight_mode from tickets_balanca where report_id=$1",[result.reportId])).rows[0];
+ const ticket=(await pg.query("select peso_liquido_kg,transportadora,destinatario,freight_mode,ticket_data from tickets_balanca where report_id=$1",[result.reportId])).rows[0];
  assert.equal(ticket.peso_liquido_kg,null); assert.equal(ticket.transportadora,'Trans Salomão'); assert.equal(ticket.destinatario,'Cliente destino'); assert.equal(ticket.freight_mode,'caixinha');
+ assert.equal(ticket.ticket_data.operadora,'LOG CONSULTING'); assert.equal(ticket.ticket_data.contratante,'Empresa contratante');
 });
 
 test('a report insert failure rolls back the ticket automatically', async () => {
