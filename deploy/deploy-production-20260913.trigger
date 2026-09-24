@@ -32,3 +32,9 @@ Fotos IA API econômica:
 - modelo exclusivo OPENAI_PHOTO_MODEL
 - padrão gpt-5.6-luna com entrada de imagem
 Commit: 438e0896fbe0656efb487fa051e896240debf2f2
+
+
+Fotos IA Authorization fix:
+- corrigido "heaers" para "headers"
+- chamada OpenAI agora envia Authorization corretamente
+Commit: 5dd6b939d4dba8af4aeaceffbbcc1c223dfd1cd4
