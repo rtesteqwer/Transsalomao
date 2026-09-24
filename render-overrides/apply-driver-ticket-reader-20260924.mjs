@@ -65,7 +65,8 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
     '  const [ticketData, setTicketData] = useState<TicketData | null>(null);\n' +
     '  const [ticketReading, setTicketReading] = useState(false);\n' +
     '  const [ticketFileName, setTicketFileName] = useState("");\n' +
-    '  const [kmCarreta, setKmCarreta] = useState("");\n';
+    '  const [kmCarreta, setKmCarreta] = useState("");\n' +
+    '  const [ticketReadError, setTicketReadError] = useState("");\n';
   s = replaceRequired(s, stateMarker, states, "states");
 
   const submitFnMarker = "  async function onSubmit(e: React.FormEvent) {\n";
