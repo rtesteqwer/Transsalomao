@@ -70,13 +70,35 @@
                     </Field>
                   ) : null}
 
-                  <div className="grid grid-cols-1 gap-2 text-xs text-muted sm:grid-cols-2">
-                    <span>Placa veículo: <b className="text-fg">{ticketData.placa_veiculo || "—"}</b></span>
-                    <span>Placa carreta: <b className="text-fg">{ticketData.placa_carreta || "—"}</b></span>
-                    <span>Transportadora: <b className="text-fg">{ticketData.transportadora || "—"}</b></span>
-                    <span>Destinatário: <b className="text-fg">{ticketData.destinatario || ticketData.cliente || "—"}</b></span>
-                    <span>Produto: <b className="text-fg">{ticketData.produto || "—"}</b></span>
-                    <span>NF: <b className="text-fg">{ticketData.numero_nf || "—"}</b></span>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Placa do veículo" hint="Prioritário">
+                      <Input
+                        value={ticketData.placa_veiculo ?? ""}
+                        onChange={(event) => { setTicketConfirmed(false); setTicketData({ ...ticketData, placa_veiculo: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") || null }); }}
+                        autoCapitalize="characters"
+                      />
+                    </Field>
+                    <Field label="Placa da carreta" hint="Prioritário">
+                      <Input
+                        value={ticketData.placa_carreta ?? ""}
+                        onChange={(event) => { setTicketConfirmed(false); setTicketData({ ...ticketData, placa_carreta: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") || null }); }}
+                        autoCapitalize="characters"
+                      />
+                    </Field>
+                    <Field label="Transportadora" hint="Empresa que transporta">
+                      <Input value={ticketData.transportadora ?? ""} onChange={(event) => { setTicketConfirmed(false); setTicketData({ ...ticketData, transportadora: event.target.value || null }); }} />
+                    </Field>
+                    <Field label="Operadora" hint="Terminal / porto / operação">
+                      <Input value={ticketData.operadora ?? ""} onChange={(event) => { setTicketConfirmed(false); setTicketData({ ...ticketData, operadora: event.target.value || null }); }} />
+                    </Field>
+                    <Field label="Empresa contratante" hint="Contratante / tomadora">
+                      <Input value={ticketData.contratante ?? ""} onChange={(event) => { setTicketConfirmed(false); setTicketData({ ...ticketData, contratante: event.target.value || null }); }} />
+                    </Field>
+                    <Field label="Destinatário / recebedor" hint="Quem receberá a carga">
+                      <Input value={ticketData.destinatario ?? ticketData.cliente ?? ""} onChange={(event) => { setTicketConfirmed(false); setTicketData({ ...ticketData, destinatario: event.target.value || null }); }} />
+                    </Field>
+                    <div className="text-xs text-muted">Produto: <b className="text-fg">{ticketData.produto || "—"}</b></div>
+                    <div className="text-xs text-muted">NF: <b className="text-fg">{ticketData.numero_nf || "—"}</b></div>
                   </div>
 
                   {ticketData.alertas?.length ? (
@@ -98,8 +120,8 @@
                   <label className="flex items-start gap-3 text-sm">
                     <input type="checkbox" className="mt-1 size-5" checked={ticketConfirmed} onChange={event => setTicketConfirmed(event.target.checked)} />
                     {freightMode === "ton"
-                      ? "Conferi o número, o peso líquido, as placas e os dados do ticket."
-                      : "Conferi o número, as placas, a transportadora e o destinatário. Nenhum peso será gravado neste modo."}
+                      ? "Conferi o número, o peso líquido, as placas, a transportadora, a operadora/contratante e o destinatário."
+                      : "Conferi o número, as placas, a transportadora, a operadora/contratante e o destinatário. Nenhum peso será gravado neste modo."}
                   </label>
                   <Button type="button" variant="ghost" onClick={() => { setTicketData(null); setTicketFileName(""); setTicketReadError(""); setTicketConfirmed(false); setTons(""); }}>
                     Descartar leitura
