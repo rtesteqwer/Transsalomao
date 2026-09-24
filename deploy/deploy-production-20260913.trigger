@@ -101,3 +101,10 @@ Salomao IA client-side OCR fix:
 - keeps manual confirmation before save
 Build validated successfully
 Commit: b0e2cdc1cef6e16f23692df49f6a834a9c57f3d1
+
+
+Ticket OCR alertas fix:
+- corrige ReferenceError "alertas is not defined"
+- retorno agora usa alertas: alerts
+Build validado com sucesso
+Commit: 0adf69c3b19354e66be843a44b2d840f2f3ab0a7
