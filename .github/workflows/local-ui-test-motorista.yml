@@ -86,7 +86,7 @@ jobs:
             npm install --no-save --ignore-scripts --no-audit --no-fund playwright@1.55.0
             npx playwright install --with-deps chromium
 
-            cat > "$RUNNER_TEMP/ui-smoke.mjs" <<'EOF'
+            cat > "$SOURCE_DUMP/ui-smoke.mjs" <<'EOF'
           import { chromium } from "playwright";
           import fs from "node:fs";
 
@@ -155,7 +155,7 @@ jobs:
               sleep 2
             done
 
-            node "$RUNNER_TEMP/ui-smoke.mjs" || {
+            node "$SOURCE_DUMP/ui-smoke.mjs" || {
               echo "Browser smoke failed; preserving logs and screenshot if generated."
               cat "$GITHUB_WORKSPACE/dev-server.log" || true
               exit 1
