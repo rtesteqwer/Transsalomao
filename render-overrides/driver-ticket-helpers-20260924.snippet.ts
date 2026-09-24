@@ -163,7 +163,7 @@ function interpretarOcrTicketLocal(
     cliente: afterLabel(["CLIENTE"]),
     destinatario: afterLabel(["DESTINATARIO", "RECEBEDOR", "DESTINO"]) || afterLabel(["CLIENTE"]),
     anotacoes_manuscritas: null,
-    alertas,
+    alertas: alerts,
   };
 }
 
