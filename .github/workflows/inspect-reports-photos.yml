@@ -1,0 +1,49 @@
+name: Inspect Current Reports and Photos
+
+on:
+  push:
+    paths:
+      - 'deploy/inspect-reports-photos.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct current source
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TRANS_SOURCE_DUMP="$RUNNER_TEMP/trans-source"
+          npm run build
+          echo "SOURCE_DUMP=$TRANS_SOURCE_DUMP" >> "$GITHUB_ENV"
+
+      - name: Collect relevant source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p inspect/routes inspect/lib inspect/api
+
+          find "$SOURCE_DUMP/src/routes/dono" -maxdepth 3 -type f -print | sort > inspect/dono-files.txt
+          grep -RniE 'Relatórios rápidos|Relatorios rapidos|PDF|pdf|photo-intake|Foto|Fotos|ticket' "$SOURCE_DUMP/src/routes/dono" > inspect/grep-dono.txt || true
+          grep -RniE 'managementSession|username|role|Felipe|admin' "$SOURCE_DUMP/src" > inspect/grep-auth.txt || true
+
+          for f in             "$SOURCE_DUMP/src/routes/dono/index.tsx"             "$SOURCE_DUMP/src/routes/dono/totais.tsx"             "$SOURCE_DUMP/src/routes/dono/viagens.tsx"             "$SOURCE_DUMP/src/routes/dono/fotos.tsx"             "$SOURCE_DUMP/src/routes/dono/photo-intake.tsx"             "$SOURCE_DUMP/src/lib/management-auth.ts"             "$SOURCE_DUMP/src/lib/management-auth.server.ts"             "$SOURCE_DUMP/src/lib/pdf.ts"             "$SOURCE_DUMP/src/routes/api/photo-intake.ts"             "$SOURCE_DUMP/src/routes/api/ler-ticket.ts"             "$SOURCE_DUMP/src/routes/api/salvar-ticket.ts"
+          do
+            if [ -f "$f" ]; then
+              cp "$f" "inspect/$(basename "$f").$(echo "$f" | sha256sum | cut -c1-8).txt"
+            fi
+          done
+
+          find "$SOURCE_DUMP/src/routes/api" -maxdepth 1 -type f -print | sort > inspect/api-files.txt || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reports-photos-current-source
+          path: inspect/
+          retention-days: 3
