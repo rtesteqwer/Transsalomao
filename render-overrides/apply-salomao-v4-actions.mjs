@@ -8,6 +8,7 @@ const repo = process.cwd();
 const copies = [
   ['assistant-v4/management-auth.server.ts', 'src/lib/management-auth.server.ts'],
   ['assistant-v4/assistant-auth.server.ts', 'src/lib/assistant-auth.server.ts'],
+  ['assistant-v4/salomao-ai.server.ts', 'src/lib/salomao-ai.server.ts'],
   ['assistant-v4/api-assistant-auth.ts', 'src/routes/api/assistant/auth.ts'],
   ['assistant-v4/api-assistant.ts', 'src/routes/api/assistant.ts'],
   ['assistant-v4/api-assistant-status.ts', 'src/routes/api/assistant/status.ts'],
