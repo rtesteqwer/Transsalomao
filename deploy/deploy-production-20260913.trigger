@@ -1,8 +1,8 @@
-Deploy solicitado em 2026-09-23 para corrigir relatórios individuais por motorista:
-- PDF compacto: Por tonelada e Diária em uma viagem por linha
-- PDF: Por tonelada mostra peso, preço/t, frete, comissão e após comissão
-- Cegonha e Caixinha agrupadas por modalidade com quantidade de viagens
-- Excel individual em uma única planilha com todas as modalidades
-- Excel com resumo de quantidades e totais financeiros no topo
+Deploy solicitado em 2026-09-24 para ajuste final dos relatórios individuais por motorista:
+- PDF compacto: a coluna Informações completas da viagem mostra somente peso líquido e preço por tonelada
+- PDF: Por tonelada e Diária seguem uma viagem por linha
+- Cegonha e Caixinha permanecem agrupadas por modalidade com quantidade
+- Excel individual continua em uma única planilha com todas as modalidades
+- Excel: removidas as colunas KM inicial, KM final, KM rodados e Custo diesel
 - Aplicar o mesmo padrão para todos os motoristas
-Commit validado: f9d2efc2b8a3cc1ffa00fecdd9948dbb682ab04f
+Commits validados: 47697b02b3a04da15bb3a54f77868424acf571d9 e 4f5d8da1ebb644de978a96a567499fc827573361
