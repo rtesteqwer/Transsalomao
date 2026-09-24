@@ -140,7 +140,7 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
     '  const [kmCarreta, setKmCarreta] = useState("");\n  const [ticketConfirmed, setTicketConfirmed] = useState(false);\n  const [ticketSending, setTicketSending] = useState(false);\n  const ticketBusy = useRef(false);\n  const queryClient = useQueryClient();\n  useEffect(() => { if (ticketAccess?.driverId) setDriverId(ticketAccess.driverId); }, [ticketAccess?.driverId]);', "ticket state");
   s = replaceRequired(s, 'onChange={(e) => setDriverId(e.target.value)}', 'onChange={(e) => { setDriverId(e.target.value); setTicketConfirmed(false); }}', "driver confirmation");
   s = replaceRequired(s, 'onChange={(e) => setFleetId(e.target.value)}', 'onChange={(e) => { setFleetId(e.target.value); setTicketConfirmed(false); }}', "fleet confirmation");
-  s = replaceRequired(s, '                value={tons}', '                readOnly={!!ticketData && freightMode === "ton"}\n                value={tons}', "one weight source");
+  s = replaceRequired(s, '                value={tons}', '                readOnly={!!ticketData && freightMode === "ton" && !!ticketData.peso_liquido_kg}\n                value={tons}', "one weight source");
   s = replaceRequired(s, 'disabled={report.isPending || drivers.length === 0}',
     'disabled={report.isPending || ticketReading || ticketSending || drivers.length === 0 || (!!ticketData && !ticketConfirmed)}', "submit lock");
   s = replaceRequired(s, '{report.isPending ? "Enviando…" : "Depositar no painel"}', '{report.isPending || ticketSending ? "Enviando…" : "Depositar no painel"}', "saving label");
