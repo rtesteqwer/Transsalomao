@@ -6,7 +6,11 @@ import { json } from "@/lib/ticket-core";
 export const Route = createFileRoute("/api/ticket-meta")({
   server: { handlers: {
     GET: async ({ request }) => {
-      if (!managementSession()) return json({ erro: "Não autorizado" }, 401);
+      const session = managementSession();
+      if (!session) return json({ erro: "Não autorizado" }, 401);
+      if (String(session.username || "").trim().toLocaleLowerCase("pt-BR") !== "felipe") {
+        return json({ erro: "Dados privados da foto disponíveis somente para Felipe." }, 403);
+      }
       const reportId = new URL(request.url).searchParams.get("reportId")?.trim() || "";
       if (!reportId) return json({ erro: "Lançamento não informado" }, 400);
       const sql = await getSql();

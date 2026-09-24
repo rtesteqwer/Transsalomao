@@ -7,10 +7,11 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useFleet } from "@/lib/use-fleet";
+import { getManagementSession } from "@/lib/management-auth";
 
 export const Route = createFileRoute("/dono/fotos")({ component: FotosTicketsPage });
 
-type RelationKind = "trip" | "report";
+type RelationKind = "trip" | "report" | "reading";
 
 type SourceItem = {
   key: string;
@@ -38,8 +39,13 @@ type SavedPhoto = {
   freightMode: string | null;
   netWeight: number | null;
   fileName: string;
+  reportStatus?: string | null;
+  ticketData?: Record<string, any> | null;
+  notes?: string | null;
   createdAt: string;
   createdBy: string | null;
+  updatedAt?: string | null;
+  updatedBy?: string | null;
 };
 
 function tons(value: number | null | undefined) {
@@ -56,6 +62,98 @@ function shortDate(value: string | null | undefined) {
 
 function modeLabel(value: string | null | undefined) {
   return value === "ton" ? "Por tonelada" : value === "trip" ? "Diária" : value === "cegonha" ? "Cegonha" : value === "caixinha" ? "Caixinha" : "A definir";
+}
+
+function PhotoPrivateEditor({ photo, onSaved }: { photo: SavedPhoto; onSaved: () => Promise<void> }) {
+  const original = photo.ticketData ?? {};
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [tripCode, setTripCode] = useState(photo.tripCode || "");
+  const [driverName, setDriverName] = useState(photo.driverName || "");
+  const [fleetName, setFleetName] = useState(photo.fleetName || "");
+  const [tripDate, setTripDate] = useState(String(photo.tripDate || "").slice(0, 10));
+  const [netWeight, setNetWeight] = useState(photo.netWeight == null ? "" : String(photo.netWeight));
+  const [placaVeiculo, setPlacaVeiculo] = useState(String(original.placa_veiculo ?? ""));
+  const [placaCarreta, setPlacaCarreta] = useState(String(original.placa_carreta ?? ""));
+  const [transportadora, setTransportadora] = useState(String(original.transportadora ?? ""));
+  const [operadora, setOperadora] = useState(String(original.operadora ?? ""));
+  const [contratante, setContratante] = useState(String(original.contratante ?? ""));
+  const [destinatario, setDestinatario] = useState(String(original.destinatario ?? ""));
+  const [notes, setNotes] = useState(photo.notes || "");
+
+  async function save() {
+    setSaving(true);
+    try {
+      const ticketData = {
+        ...original,
+        numero_ticket: tripCode || null,
+        placa_veiculo: placaVeiculo.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || null,
+        placa_carreta: placaCarreta.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || null,
+        transportadora: transportadora.trim() || null,
+        operadora: operadora.trim() || null,
+        contratante: contratante.trim() || null,
+        destinatario: destinatario.trim() || null,
+        peso_liquido_kg: netWeight ? Number(netWeight.replace(/[^0-9]/g, "")) : null,
+      };
+      const response = await fetch("/api/photo-intake", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: photo.id,
+          tripCode,
+          driverName,
+          fleetName,
+          tripDate,
+          freightMode: photo.freightMode,
+          netWeight: ticketData.peso_liquido_kg,
+          ticketData,
+          notes,
+        }),
+      });
+      const result = await response.json().catch(() => ({ message: "Resposta inválida do servidor." }));
+      if (!response.ok) throw new Error(result?.message || "Não foi possível atualizar os dados.");
+      toast.success("Dados privados da foto atualizados.");
+      setOpen(false);
+      await onSaved();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar os dados.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button type="button" size="sm" variant="secondary" onClick={() => setOpen(true)}>
+        Editar dados
+      </Button>
+    );
+  }
+
+  return (
+    <div className="mt-4 grid gap-3 rounded-xl border border-accent/30 bg-bg p-4 sm:grid-cols-2">
+      <Field label="Número do ticket"><Input value={tripCode} onChange={(e) => setTripCode(e.target.value)} /></Field>
+      <Field label="Peso líquido (kg)"><Input inputMode="numeric" value={netWeight} onChange={(e) => setNetWeight(e.target.value)} /></Field>
+      <Field label="Placa do veículo"><Input value={placaVeiculo} onChange={(e) => setPlacaVeiculo(e.target.value)} /></Field>
+      <Field label="Placa da carreta"><Input value={placaCarreta} onChange={(e) => setPlacaCarreta(e.target.value)} /></Field>
+      <Field label="Transportadora"><Input value={transportadora} onChange={(e) => setTransportadora(e.target.value)} /></Field>
+      <Field label="Operadora"><Input value={operadora} onChange={(e) => setOperadora(e.target.value)} /></Field>
+      <Field label="Empresa contratante"><Input value={contratante} onChange={(e) => setContratante(e.target.value)} /></Field>
+      <Field label="Destinatário / recebedor"><Input value={destinatario} onChange={(e) => setDestinatario(e.target.value)} /></Field>
+      <Field label="Motorista"><Input value={driverName} onChange={(e) => setDriverName(e.target.value)} /></Field>
+      <Field label="Conjunto"><Input value={fleetName} onChange={(e) => setFleetName(e.target.value)} /></Field>
+      <Field label="Data"><Input type="date" value={tripDate} onChange={(e) => setTripDate(e.target.value)} /></Field>
+      <label className="grid gap-1 text-sm sm:col-span-2">
+        <span className="font-medium">Observações privadas do Felipe</span>
+        <textarea className="min-h-24 rounded-md border border-border bg-surface px-3 py-2 text-sm" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+      <div className="flex gap-2 sm:col-span-2">
+        <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? "Salvando…" : "Salvar alterações"}</Button>
+        <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+      </div>
+    </div>
+  );
 }
 
 async function imageToDataUrl(file: File) {
@@ -100,6 +198,7 @@ function FotosTicketsPage() {
   const [busy, setBusy] = useState(false);
   const [loadingSaved, setLoadingSaved] = useState(true);
   const [savedPhotos, setSavedPhotos] = useState<SavedPhoto[]>([]);
+  const [felipeAccess, setFelipeAccess] = useState<boolean | null>(null);
 
   const sources = useMemo<SourceItem[]>(() => {
     if (!data) return [];
@@ -167,7 +266,19 @@ function FotosTicketsPage() {
   }
 
   useEffect(() => {
-    void loadSaved();
+    let active = true;
+    void getManagementSession()
+      .then((session) => {
+        if (!active) return;
+        const allowed = !!session.authenticated && String(session.username || "").trim().toLocaleLowerCase("pt-BR") === "felipe";
+        setFelipeAccess(allowed);
+        if (allowed) void loadSaved();
+        else setLoadingSaved(false);
+      })
+      .catch(() => {
+        if (active) { setFelipeAccess(false); setLoadingSaved(false); }
+      });
+    return () => { active = false; };
   }, []);
 
   async function savePhotos() {
@@ -230,15 +341,28 @@ function FotosTicketsPage() {
     }
   }
 
+  if (felipeAccess === null) {
+    return <div className="rounded-xl border border-border bg-surface p-5 text-sm text-muted"><LoaderCircle className="mr-2 inline size-4 animate-spin" /> Verificando acesso privado…</div>;
+  }
+
+  if (!felipeAccess) {
+    return (
+      <div className="rounded-xl border border-border bg-surface p-6">
+        <h1 className="font-display text-2xl font-semibold">Arquivo privado de fotos</h1>
+        <p className="mt-2 text-sm text-muted">As fotos e os dados extras dos tickets são exclusivos do administrador Felipe.</p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-start gap-3">
         <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-surface-2 text-accent"><Camera className="size-6" /></span>
         <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-muted">Arquivo de tickets da Gerência</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-muted">Arquivo privado do Felipe</p>
           <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">Fotos dos Tickets</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted">
-            Salve a foto enviada pelo motorista e relacione manualmente à viagem correta. Esta área é somente da Gerência e não usa IA.
+            Todas as fotos enviadas ao leitor ficam arquivadas aqui. Somente Felipe pode visualizar, corrigir os dados e excluir arquivos.
           </p>
         </div>
       </div>
@@ -344,7 +468,7 @@ function FotosTicketsPage() {
       <section className="mt-7">
         <div className="flex items-baseline justify-between gap-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Arquivo da Gerência</p>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Arquivo privado do Felipe</p>
             <h2 className="mt-1 font-display text-2xl font-semibold">Tickets salvos</h2>
           </div>
           <Button type="button" size="sm" variant="ghost" disabled={loadingSaved} onClick={() => void loadSaved()}>
@@ -369,7 +493,7 @@ function FotosTicketsPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <strong className="font-display text-xl">Ticket/viagem {photo.tripCode}</strong>
                       <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">
-                        {photo.relationType === "trip" ? "Viagem fechada" : "Caixa"}
+                        {photo.relationType === "trip" ? "Viagem fechada" : photo.relationType === "report" ? "Caixa" : "Leitura automática"}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-muted">
@@ -388,6 +512,7 @@ function FotosTicketsPage() {
                     >
                       <ExternalLink className="size-4" /> Ver foto
                     </Button>
+                    <PhotoPrivateEditor photo={photo} onSaved={loadSaved} />
                     <Button type="button" size="sm" variant="ghost" className="text-danger" onClick={() => void deletePhoto(photo)}>
                       <Trash2 className="size-4" /> Excluir
                     </Button>
