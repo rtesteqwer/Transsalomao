@@ -1,0 +1,29 @@
+name: Dump Current App Source
+on:
+  push:
+    paths:
+      - 'deploy/dump-source.trigger'
+permissions:
+  contents: read
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reconstruct patched source
+        env:
+          TRANS_SOURCE_DUMP: current-source
+          VERCEL: '1'
+          VERCEL_PROJECT_PRODUCTION_URL: 'transsalomao.vercel.app'
+        run: npm run build
+      - name: Package relevant source
+        run: |
+          zip -qr current-source.zip current-source/src current-source/package.json current-source/vite.config.* current-source/tsconfig*.json 2>/dev/null || zip -qr current-source.zip current-source/src current-source/package.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: current-source-dump
+          path: current-source.zip
+          retention-days: 1
