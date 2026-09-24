@@ -60,3 +60,9 @@ Deploy ticket reader: session auth, configured AI fallback, atomic Caixa save an
 Publish camera/gallery picker + always-visible ticket photo UI — 2026-09-24
 Deploy all-mode photo metadata + preserve physical ticket number in Caixa — 2026-09-24
 Deploy OpenAI-first ticket reader + block silent manual fallback — 2026-09-24
+
+
+Ticket reader provider order:
+- Anthropic first when ANTHROPIC_API_KEY is configured
+- OpenAI remains fallback in TICKET_AI_PROVIDER=auto
+Commit: ded7c67aa462309c06fdb2b70834f603cd193643
