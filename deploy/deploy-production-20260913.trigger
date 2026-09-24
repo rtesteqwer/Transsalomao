@@ -164,3 +164,6 @@ Correção campos prioritários Salomão IA / Caixa:
 - operadora e contratante preservadas no ticket_data e exibidas no Caixa da Gerência
 Build: validação via Vercel após merge do PR #17
 Commit funcional: c84875be90da25481d35ba31b26aa5304884c413
+
+Retry production after pinning Vercel CLI 59.26.0
+Workflow fix commit: 9465c87e0e0964dcda84413aa2ae645a022718ce
