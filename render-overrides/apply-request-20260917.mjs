@@ -27,7 +27,7 @@ for (const p of files) {
   if (s !== before) fs.writeFileSync(p, s);
 }
 
-// Administração: remove definitivamente admin/admin e aceita apenas os três administradores solicitados.
+// Administração: acesso administrativo único do Felipe; a senha nunca fica em texto puro no repositório.
 const serverAuthPath = path.join(target, 'src/lib/management-auth.server.ts');
 fs.writeFileSync(serverAuthPath, `import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
@@ -35,9 +35,7 @@ import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server
 const COOKIE_NAME = "transsalomao_gerencia";
 const SESSION_SECONDS = 60 * 60 * 12;
 const ADMINS = [
-  { username: "Felipe", passwordHash: "3d14c2d4e4ced81e459e4ace7c01466a700000fb94a3bbe944a55fb92693e879" },
-  { username: "Emanuel", passwordHash: "0013fa1710b8b0e4816d6eaad9668dab6dfa7ea9f1d07291fa5072e857e94522" },
-  { username: "Murillo", passwordHash: "58f966a9a6f34334c5d70a548d1c04674296c826c5c5162d49425ce2fe9b78cf" },
+  { username: "Felipe", passwordHash: "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92" },
 ] as const;
 
 function passwordHash(value: string) {
@@ -168,7 +166,7 @@ export async function managementLogout() {
 }
 `);
 
-// Login da Gerência: não exibe mais admin/admin nem preenche o usuário antigo.
+// Login da Gerência: usuário administrativo padrão é Felipe.
 const managementRoutePath = path.join(target, 'src/routes/dono/route.tsx');
 if (fs.existsSync(managementRoutePath)) {
   let route = fs.readFileSync(managementRoutePath, 'utf8');
