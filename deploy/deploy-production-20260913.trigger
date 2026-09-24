@@ -20,3 +20,9 @@ Correção adicional Fotos IA Android:
 - sem dependência de label/htmlFor
 - galeria e câmera acionadas pelo próprio input nativo
 Commit: 62798df4727f84d5cad6e71dd2c12c4589663846
+
+
+Fotos IA error handling:
+- retornar mensagem clara quando OpenAI responder 401
+- evitar HTTPError genérico no celular
+Commit: 4d1784507f7d11c923d6ed82cadd1bd60f78c8bc
