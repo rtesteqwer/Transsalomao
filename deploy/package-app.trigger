@@ -17,3 +17,5 @@ validate-layout-aware-vports-ocr
 validate-dedicated-ticket-plate-crops
 
 validate-net-weight-difference-rule
+
+validate-narrow-vports-log-receipt
