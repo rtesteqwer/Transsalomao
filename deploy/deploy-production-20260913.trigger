@@ -47,3 +47,12 @@ Fotos dos Tickets - arquivo da Gerência:
 - histórico com visualizar e excluir foto
 - acesso somente pela Gerência
 Commits: 1a83f6df / b337d6b9 / f0db197e
+
+
+Leitor de ticket no app do motorista:
+- /api/ler-ticket usa Anthropic e devolve dados + alertas
+- /api/salvar-ticket grava no Neon e retorna 409 para duplicado
+- /motorista lê foto, permite conferência e lança na Caixa
+- TICKET_TOKEN não é exposto no JavaScript do navegador
+- tabela tickets_balanca com numero_ticket único
+Build validado com sucesso no GitHub Actions
