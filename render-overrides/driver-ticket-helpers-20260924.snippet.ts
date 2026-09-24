@@ -21,7 +21,7 @@ type TicketData = {
   alertas: string[];
 };
 
-async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85) {
+async function reduzirImagemTicket(file: File, maxLado = 2600, qualidade = 0.90) {
   if (!file.type.startsWith("image/")) throw new Error("Selecione uma foto válida.");
   if (file.size > 15_000_000) throw new Error("A foto é grande demais.");
 
@@ -33,18 +33,29 @@ async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85)
       image.onerror = () => reject(new Error("Não foi possível abrir esta foto. Use JPG ou PNG."));
       image.src = url;
     });
-    const escala = Math.min(1, maxLado / Math.max(img.naturalWidth, img.naturalHeight));
+
+    let escala = Math.min(1, maxLado / Math.max(img.naturalWidth, img.naturalHeight));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
-    canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Não foi possível preparar a foto.");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    let imagem = canvas.toDataURL("image/jpeg", qualidade).split(",")[1] || "";
-    if (imagem.length > 3_500_000) imagem = canvas.toDataURL("image/jpeg", 0.65).split(",")[1] || "";
-    if (!imagem || imagem.length > 3_500_000) throw new Error("A foto é grande demais. Escolha outra imagem.");
-    return { imagem, tipo: "image/jpeg" };
+
+    // Preserva letras pequenas de placas e razão social. Só reduz mais se for
+    // necessário para ficar dentro do limite seguro do request da Vercel.
+    for (let tentativa = 0; tentativa < 5; tentativa++) {
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      for (const q of [qualidade, 0.82, 0.74, 0.66, 0.58]) {
+        const imagem = canvas.toDataURL("image/jpeg", q).split(",")[1] || "";
+        if (imagem && imagem.length <= 3_500_000) return { imagem, tipo: "image/jpeg" };
+      }
+      escala *= 0.86;
+    }
+
+    throw new Error("A foto é grande demais. Escolha outra imagem.");
   } finally { URL.revokeObjectURL(url); }
 }
 
@@ -83,6 +94,9 @@ async function ocrTicketLocal(file: File) {
     }
 
     const regions = [
+      // Página inteira para layouts desconhecidos. Os recortes abaixo continuam
+      // ajudando nos modelos já conhecidos, mas o OCR não depende mais só deles.
+      ["FULL_PAGE", cropCanvas(0, 0, 1, 1, 2400)],
       ["TICKET", cropCanvas(0.03, 0.055, 0.47, 0.10, 1350)],
       ["TICKET_NUM", cropCanvas(0.17, 0.060, 0.30, 0.060, 1200)],
       ["CARRETA_VAL", cropCanvas(0.035, 0.135, 0.20, 0.070, 1200)],
@@ -133,6 +147,7 @@ function interpretarOcrTicketLocal(
     return (match?.[1] || "").trim();
   }
 
+  const fullPageText = section("FULL_PAGE");
   const ticketText = section("TICKET");
   const ticketNumberText = section("TICKET_NUM");
   const trailerValueText = section("CARRETA_VAL");
@@ -147,6 +162,7 @@ function interpretarOcrTicketLocal(
   const receiptWeightsText = section("RECEIPT_WEIGHTS");
   const receiptPlatesText = section("RECEIPT_PLATES");
   const allText = [
+    fullPageText,
     ticketText,
     ticketNumberText,
     trailerValueText,
@@ -524,8 +540,14 @@ function interpretarOcrTicketLocal(
 
   const placaCarreta = plateFromValueCrop(trailerValueText) || plateAfterLabel("CARRETA");
   const placaVeiculo = plateFromValueCrop(tractorValueText) || plateAfterLabel("VEICULO");
+  const fallbackPlateMatches = [
+    ...(allUpper.match(/\b[A-Z]{3}[\s.-]*[0-9][\s.-]*[A-Z0-9][\s.-]*[0-9]{2}\b/g) || []),
+    ...(allUpper.match(/[A-Z]\s*[A-Z]\s*[A-Z]\s*[0-9]\s*[A-Z0-9]\s*[0-9]\s*[0-9]/g) || []),
+  ];
   const fallbackPlates = Array.from(new Set(
-    allUpper.match(/\b[A-Z]{3}[0-9][A-Z0-9][0-9]{2}\b|\b[A-Z]{3}[0-9]{4}\b/g) || [],
+    fallbackPlateMatches
+      .map((value) => normalizePlate(value.replace(/\s+/g, "")))
+      .filter((value): value is string => Boolean(value)),
   ));
 
   const pesoInicial = parseWeightFrom(weightText, ["PESAGEM INICIAL", "PESO INICIAL", "BRUTO"]);
@@ -579,10 +601,10 @@ function interpretarOcrTicketLocal(
 
   const transportBlock = blockBetween(companyText, "TRANSPORTADORA", "DESTINATARIO");
   const destBlock = blockBetween(companyText, "DESTINATARIO", "REMETENTE");
-  const operadora = firstMatchIn(headerText + "\n" + companyText, [
+  const operadora = firstMatchIn(headerText + "\n" + companyText + "\n" + fullPageText, [
     /OPERADOR(?:A)?\s*[:\-]?\s*([^\n]{2,120})/i,
   ])?.replace(/\s+(?:TICKET|DATA|BERCO|TRANSPORTADORA|MOTORISTA|PRODUTO).*$/i, "").trim() || null;
-  const contratante = firstMatchIn(headerText + "\n" + companyText, [
+  const contratante = firstMatchIn(headerText + "\n" + companyText + "\n" + fullPageText, [
     /EMPRESA\s+CONTRATANTE\s*[:\-]?\s*([^\n]{2,160})/i,
     /CONTRATANTE\s*[:\-]?\s*([^\n]{2,160})/i,
     /TOMADOR(?:A)?\s*[:\-]?\s*([^\n]{2,160})/i,
@@ -634,12 +656,18 @@ function interpretarOcrTicketLocal(
     peso_liquido_kg: freightMode === "ton" ? pesoLiquido : null,
     peso_origem_kg: freightMode === "ton" ? pesoOrigem : null,
     numero_nf: numeroNf || null,
-    transportadora: companyName(transportBlock),
+    transportadora: companyName(transportBlock) || companyName(
+      textBetweenLabels(fullPageText, "TRANSPORTADORA", ["DESTINATARIO", "RECEBEDOR", "MOTORISTA", "PRODUTO", "PESO"]) || "",
+    ),
     operadora,
     contratante,
     motorista: firstMatchIn(headerText, [/MOTORISTA\s*[:\-]?\s*([^\n]{2,100})/i])?.replace(/^[-.]\s*$/, "") || null,
     cliente: firstMatchIn(headerText, [/CLIENTE\s*[:\-]?\s*([^\n]{1,100})/i])?.replace(/^[-.]\s*$/, "") || null,
-    destinatario: companyName(destBlock),
+    destinatario: companyName(destBlock) || companyName(
+      textBetweenLabels(fullPageText, "DESTINATARIO", ["REMETENTE", "MOTORISTA", "PRODUTO", "PESO", "NOTA"]) ||
+      textBetweenLabels(fullPageText, "RECEBEDOR", ["MOTORISTA", "PRODUTO", "PESO", "NOTA"]) ||
+      "",
+    ),
     anotacoes_manuscritas: null,
     alertas: alerts,
   };
@@ -649,7 +677,7 @@ async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "
   const payload = await reduzirImagemTicket(file);
   const response = await fetch("/api/ler-ticket", {
     method: "POST",
-    signal: AbortSignal.timeout(50_000),
+    signal: AbortSignal.timeout(80_000),
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...payload, freightMode, fileName: file.name }),
