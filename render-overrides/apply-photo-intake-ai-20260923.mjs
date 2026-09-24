@@ -38,6 +38,10 @@ copy("render-overrides/photo-intake-page-20260923.tsx", "src/routes/dono/fotos.t
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   let apiSource = Buffer.from(payload, "base64").toString("utf8");
   apiSource = apiSource.replace(
+    'const model = process.env.OPENAI_WHATSAPP_MODEL?.trim() || process.env.OPENAI_ASSISTANT_MODEL?.trim() || "gpt-5.6-sol";',
+    'const model = process.env.OPENAI_PHOTO_MODEL?.trim() || "gpt-5.6-luna";',
+  );
+  apiSource = apiSource.replace(
     "        const parsed = await readTicketWithAI(image);",
     `        let parsed: any;
         try {
