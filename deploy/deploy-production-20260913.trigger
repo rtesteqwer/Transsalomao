@@ -13,3 +13,10 @@ Correção Fotos IA Android:
 - permitir selecionar uma ou várias fotos da memória do celular
 - manter botão separado para tirar foto
 Commit da correção: 6e4e9d2a28e7237fce70b213a3f64fa442813033
+
+
+Correção adicional Fotos IA Android:
+- input de arquivo agora cobre diretamente toda a área clicável
+- sem dependência de label/htmlFor
+- galeria e câmera acionadas pelo próprio input nativo
+Commit: 62798df4727f84d5cad6e71dd2c12c4589663846
