@@ -82,6 +82,9 @@ async function ocrTicketLocal(file: File) {
 
     const regions = [
       ["TICKET", cropCanvas(0.03, 0.055, 0.47, 0.10, 1350)],
+      ["TICKET_NUM", cropCanvas(0.17, 0.060, 0.30, 0.060, 1200)],
+      ["CARRETA_VAL", cropCanvas(0.035, 0.135, 0.20, 0.070, 1200)],
+      ["VEICULO_VAL", cropCanvas(0.205, 0.135, 0.27, 0.070, 1200)],
       ["CABECALHO", cropCanvas(0.03, 0.055, 0.94, 0.24, 1800)],
       ["PESOS", cropCanvas(0.53, 0.105, 0.45, 0.29, 1500)],
       ["EMPRESAS", cropCanvas(0.03, 0.255, 0.94, 0.17, 1800)],
@@ -116,11 +119,14 @@ function interpretarOcrTicketLocal(
   }
 
   const ticketText = section("TICKET");
+  const ticketNumberText = section("TICKET_NUM");
+  const trailerValueText = section("CARRETA_VAL");
+  const tractorValueText = section("VEICULO_VAL");
   const headerText = section("CABECALHO");
   const weightText = section("PESOS");
   const companyText = section("EMPRESAS");
   const nfText = section("NF");
-  const allText = [ticketText, headerText, weightText, companyText, nfText].filter(Boolean).join("\n");
+  const allText = [ticketText, ticketNumberText, trailerValueText, tractorValueText, headerText, weightText, companyText, nfText].filter(Boolean).join("\n");
   const allUpper = allText.toUpperCase();
 
   const alerts: string[] = [
@@ -182,13 +188,26 @@ function interpretarOcrTicketLocal(
     return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(plate) || /^[A-Z]{3}[0-9]{4}$/.test(plate) ? plate : null;
   }
 
+  function plateFromValueCrop(value: string) {
+    const tokens = value.toUpperCase().match(/[A-Z0-9]{7}/g) || [];
+    for (const token of tokens) {
+      const exact = normalizePlate(token);
+      if (exact) return exact;
+    }
+    return null;
+  }
+
   function plateAfterLabel(label: string) {
     const upper = headerText.toUpperCase();
     const idx = upper.indexOf(label);
     if (idx < 0) return null;
-    const nearby = headerText.slice(idx + label.length, idx + label.length + 120);
-    const match = nearby.toUpperCase().match(/\b([A-Z]{3}[0-9][A-Z0-9][0-9]{2}|[A-Z]{3}[0-9]{4})\b/);
-    return normalizePlate(match?.[1] || null);
+    const nearby = headerText.slice(idx + label.length, idx + label.length + 140);
+    const tokens = nearby.toUpperCase().match(/[A-Z0-9]{7}/g) || [];
+    for (const token of tokens) {
+      const exact = normalizePlate(token);
+      if (exact) return exact;
+    }
+    return null;
   }
 
   function blockBetween(value: string, startLabel: string, endLabel: string) {
@@ -219,6 +238,7 @@ function interpretarOcrTicketLocal(
 
   let numeroTicket: string | null = null;
   const ticketCandidates = [
+    firstMatchIn(ticketNumberText, [/\b([0-9OQDISBL|]{5,12})\b/]),
     firstMatchIn(ticketText, [/\b([0-9OQDISBL|]{5,12})\b/]),
     firstMatchIn(headerText, [
       /NUMERO\s*[:#=\-]?\s*([0-9OQDISBL|]{5,12})/i,
@@ -239,8 +259,8 @@ function interpretarOcrTicketLocal(
     alerts.push("O número do ticket foi obtido do nome do arquivo; confira no documento.");
   }
 
-  const placaCarreta = plateAfterLabel("CARRETA");
-  const placaVeiculo = plateAfterLabel("VEICULO");
+  const placaCarreta = plateFromValueCrop(trailerValueText) || plateAfterLabel("CARRETA");
+  const placaVeiculo = plateFromValueCrop(tractorValueText) || plateAfterLabel("VEICULO");
   const fallbackPlates = Array.from(new Set(
     allUpper.match(/\b[A-Z]{3}[0-9][A-Z0-9][0-9]{2}\b|\b[A-Z]{3}[0-9]{4}\b/g) || [],
   ));
