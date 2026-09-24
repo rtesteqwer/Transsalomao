@@ -12,6 +12,8 @@ type TicketData = {
   peso_origem_kg: number | null;
   numero_nf: string | null;
   transportadora: string | null;
+  operadora: string | null;
+  contratante: string | null;
   motorista: string | null;
   cliente: string | null;
   destinatario: string | null;
@@ -388,6 +390,42 @@ function interpretarOcrTicketLocal(
         ["MOTORISTA", "PRODUTO", "PESO ENTRADA"],
       );
 
+    const receiptOperadora =
+      textBetweenLabels(
+        receiptTopText || receiptAllText,
+        "OPERADORA",
+        ["TICKET AGEND", "DATA/HORA", "BERCO", "TRANSPORTADORA", "MOTORISTA", "PRODUTO"],
+      ) ||
+      textBetweenLabels(
+        receiptTopText || receiptAllText,
+        "OPERADOR",
+        ["TICKET AGEND", "DATA/HORA", "BERCO", "TRANSPORTADORA", "MOTORISTA", "PRODUTO"],
+      );
+
+    const receiptContratante =
+      textBetweenLabels(
+        receiptPeopleText || receiptAllText,
+        "EMPRESA CONTRATANTE",
+        ["TRANSPORTADORA", "MOTORISTA", "PRODUTO", "PESO ENTRADA"],
+      ) ||
+      textBetweenLabels(
+        receiptPeopleText || receiptAllText,
+        "CONTRATANTE",
+        ["TRANSPORTADORA", "MOTORISTA", "PRODUTO", "PESO ENTRADA"],
+      );
+
+    const receiptDestinatario =
+      textBetweenLabels(
+        receiptPeopleText || receiptAllText,
+        "DESTINATARIO",
+        ["RECEBEDOR", "MOTORISTA", "PRODUTO", "PESO ENTRADA"],
+      ) ||
+      textBetweenLabels(
+        receiptPeopleText || receiptAllText,
+        "RECEBEDOR",
+        ["MOTORISTA", "PRODUTO", "PESO ENTRADA"],
+      );
+
     const receiptMotorista =
       textBetweenLabels(
         receiptPeopleText || receiptAllText,
@@ -420,6 +458,9 @@ function interpretarOcrTicketLocal(
     if (!receiptTransportadora) {
       receiptAlerts.push("Transportadora não foi identificada com segurança.");
     }
+    if (!receiptOperadora && !receiptContratante && !receiptDestinatario) {
+      receiptAlerts.push("Operadora, contratante ou destinatário não foi identificado com segurança.");
+    }
 
     const receiptScore =
       (receiptTicket ? 3 : 0) +
@@ -427,6 +468,7 @@ function interpretarOcrTicketLocal(
       (receiptPesoLiquido ? 3 : 0) +
       (receiptPlates.length >= 2 ? 3 : receiptPlates.length) +
       (receiptTransportadora ? 2 : 0) +
+      (receiptOperadora || receiptContratante || receiptDestinatario ? 2 : 0) +
       (receiptMotorista ? 1 : 0) +
       (receiptProduto ? 1 : 0) +
       Math.min(2, receiptSignalCount);
@@ -447,9 +489,11 @@ function interpretarOcrTicketLocal(
       peso_origem_kg: null,
       numero_nf: null,
       transportadora: receiptTransportadora || null,
+      operadora: receiptOperadora || null,
+      contratante: receiptContratante || null,
       motorista: receiptMotorista || null,
       cliente: null,
-      destinatario: null,
+      destinatario: receiptDestinatario || null,
       anotacoes_manuscritas: null,
       alertas: receiptAlerts,
     };
@@ -535,6 +579,14 @@ function interpretarOcrTicketLocal(
 
   const transportBlock = blockBetween(companyText, "TRANSPORTADORA", "DESTINATARIO");
   const destBlock = blockBetween(companyText, "DESTINATARIO", "REMETENTE");
+  const operadora = firstMatchIn(headerText + "\n" + companyText, [
+    /OPERADOR(?:A)?\s*[:\-]?\s*([^\n]{2,120})/i,
+  ])?.replace(/\s+(?:TICKET|DATA|BERCO|TRANSPORTADORA|MOTORISTA|PRODUTO).*$/i, "").trim() || null;
+  const contratante = firstMatchIn(headerText + "\n" + companyText, [
+    /EMPRESA\s+CONTRATANTE\s*[:\-]?\s*([^\n]{2,160})/i,
+    /CONTRATANTE\s*[:\-]?\s*([^\n]{2,160})/i,
+    /TOMADOR(?:A)?\s*[:\-]?\s*([^\n]{2,160})/i,
+  ])?.replace(/\s+(?:TRANSPORTADORA|DESTINATARIO|REMETENTE|MOTORISTA|PRODUTO).*$/i, "").trim() || null;
 
   let produto = firstMatchIn(headerText, [
     /PRODUTO\s*[:\-]?\s*([^\n]{2,120})/i,
@@ -583,6 +635,8 @@ function interpretarOcrTicketLocal(
     peso_origem_kg: freightMode === "ton" ? pesoOrigem : null,
     numero_nf: numeroNf || null,
     transportadora: companyName(transportBlock),
+    operadora,
+    contratante,
     motorista: firstMatchIn(headerText, [/MOTORISTA\s*[:\-]?\s*([^\n]{2,100})/i])?.replace(/^[-.]\s*$/, "") || null,
     cliente: firstMatchIn(headerText, [/CLIENTE\s*[:\-]?\s*([^\n]{1,100})/i])?.replace(/^[-.]\s*$/, "") || null,
     destinatario: companyName(destBlock),
