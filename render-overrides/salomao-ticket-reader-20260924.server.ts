@@ -113,93 +113,134 @@ export async function readTicketWithSalomaoIA(
 export function readTicketFromSalomaoOcr(text: string, requestedMode: TicketFreightMode, fileName = ""): TicketData {
   const mode = normalizeFreightMode(requestedMode);
   const raw = String(text || "").replace(/\r/g, "\n").slice(0, 30_000);
-  if (raw.replace(/\s/g, "").length < 8) throw new TicketError(422, "A leitura local não encontrou texto suficiente. Tire outra foto mais nítida.");
+  const clean = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const upper = clean.toUpperCase();
+  const lines = clean.split(/\n+/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const stem = String(fileName || "").replace(/\.[^.]+$/, "").trim();
 
-  const normalized = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const lines = normalized.split(/\n+/).map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean);
-  const joined = lines.join("\n");
+  if (clean.replace(/\s/g, "").length < 4 && !/^\d{3,14}$/.test(stem)) {
+    throw new TicketError(422, "A Salomão IA não encontrou texto suficiente. Tire outra foto mais nítida.");
+  }
 
-  const take = (patterns: RegExp[]) => {
+  const alerts: string[] = [
+    "Leitura feita pela Salomão IA com OCR local. Confira os dados com a foto antes de lançar.",
+  ];
+
+  function firstMatch(patterns: RegExp[]) {
     for (const pattern of patterns) {
-      const match = joined.match(pattern);
+      const match = clean.match(pattern);
       const value = match?.[1]?.trim();
       if (value) return value.slice(0, 200);
     }
     return null;
-  };
-  const lineValue = (labels: string[]) => {
-    for (const line of lines) {
-      const upper = line.toUpperCase();
-      const label = labels.find((x) => upper.includes(x));
-      if (!label) continue;
-      const idx = upper.indexOf(label) + label.length;
-      const value = line.slice(idx).replace(/^\s*[:#=\-]?\s*/, "").trim();
-      if (value) return value.slice(0, 200);
-    }
-    return null;
-  };
-  const brNumber = (value: string | null, unit = "") => {
-    if (!value) return null;
-    let s = value.replace(/\s/g, "").replace(/[^0-9.,]/g, "");
-    if (!s) return null;
-    if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, "").replace(",", ".");
-    else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, "");
-    else if (s.includes(",") && !s.includes(".")) s = s.replace(",", ".");
-    else if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
-    const n = Number(s);
-    if (!Number.isFinite(n) || n < 0) return null;
-    const kg = /\b(T|TON|TONELADA|TONELADAS)\b/i.test(unit) && n < 1000 ? n * 1000 : n;
-    return Math.round(kg);
-  };
-  const weight = (labels: string[]) => {
-    for (const label of labels) {
-      const re = new RegExp(label + "\\s*[:=\\-]?\\s*([0-9][0-9.,\\s]{1,18})\\s*(KG|KGS|T|TON|TONELADAS?)?", "i");
-      const match = joined.match(re);
-      if (match) return brNumber(match[1], match[2] || "");
-    }
-    return null;
-  };
+  }
 
-  let numeroTicket = take([
+  function afterLabel(labels: string[]) {
+    for (const originalLine of lines) {
+      const lineUpper = originalLine.toUpperCase();
+      for (const label of labels) {
+        const idx = lineUpper.indexOf(label);
+        if (idx < 0) continue;
+        const value = originalLine
+          .slice(idx + label.length)
+          .replace(/^\s*[:#=\-]?\s*/, "")
+          .trim();
+        if (value) return value.slice(0, 200);
+      }
+    }
+    return null;
+  }
+
+  function parseWeight(labelPatterns: RegExp[]) {
+    if (mode !== "ton") return null;
+    for (const pattern of labelPatterns) {
+      const match = clean.match(pattern);
+      if (!match?.[1]) continue;
+      let rawNumber = match[1].replace(/\s/g, "");
+      const unit = String(match[2] || "").toUpperCase();
+
+      if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(rawNumber)) {
+        rawNumber = rawNumber.replace(/\./g, "").replace(",", ".");
+      } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(rawNumber)) {
+        rawNumber = rawNumber.replace(/,/g, "");
+      } else if (rawNumber.includes(",") && !rawNumber.includes(".")) {
+        rawNumber = rawNumber.replace(",", ".");
+      } else if (rawNumber.includes(",") && rawNumber.includes(".")) {
+        rawNumber = rawNumber.replace(/\./g, "").replace(",", ".");
+      }
+
+      const number = Number(rawNumber);
+      if (!Number.isFinite(number) || number <= 0) continue;
+      const kg = /^(T|TON|TONELADA|TONELADAS)$/.test(unit) && number < 1000 ? number * 1000 : number;
+      return Math.round(kg);
+    }
+    return null;
+  }
+
+  let numeroTicket = firstMatch([
     /(?:TICKET|TIQUETE|ROMANEIO|COMPROVANTE)\s*(?:N(?:UMERO|[Oº°])?\s*)?[:#=\-]?\s*([A-Z0-9./-]{2,30})/i,
     /(?:N[º°O]|NUMERO)\s*[:#=\-]?\s*([0-9]{3,14})\b/i,
   ]);
-  const stem = fileName.replace(/\.[^.]+$/, "").trim();
-  const alerts: string[] = ["Leitura feita pelo OCR local da Salomão IA. Confira os dados com a foto antes de lançar."];
   if (!numeroTicket && /^\d{3,14}$/.test(stem)) {
     numeroTicket = stem;
     alerts.push("O número do ticket foi obtido do nome do arquivo; confira no documento.");
   }
 
-  const plates = Array.from(new Set((joined.toUpperCase().match(/\b[A-Z]{3}[0-9][A-Z0-9][0-9]{2}\b|\b[A-Z]{3}[0-9]{4}\b/g) || [])));
-  const pesoLiquido = mode === "ton" ? weight(["PESO\\s*LIQUIDO", "LIQUIDO", "P\\.?\\s*LIQUIDO"]) : null;
-  const bruto = mode === "ton" ? weight(["PESO\\s*BRUTO", "BRUTO", "PESAGEM\\s*INICIAL"]) : null;
-  const tara = mode === "ton" ? weight(["TARA", "PESO\\s*TARA", "PESAGEM\\s*FINAL"]) : null;
+  const plates = Array.from(new Set(
+    upper.match(/\b[A-Z]{3}[0-9][A-Z0-9][0-9]{2}\b|\b[A-Z]{3}[0-9]{4}\b/g) || [],
+  ));
 
-  const result = normalizeTicket({
+  const pesoLiquido = parseWeight([
+    /PESO\s*LIQUIDO\s*[:=\-]?\s*([0-9][0-9.,\s]{1,18})\s*(KG|KGS|T|TON|TONELADAS?)?/i,
+    /\bLIQUIDO\s*[:=\-]?\s*([0-9][0-9.,\s]{1,18})\s*(KG|KGS|T|TON|TONELADAS?)?/i,
+    /P\.?\s*LIQUIDO\s*[:=\-]?\s*([0-9][0-9.,\s]{1,18})\s*(KG|KGS|T|TON|TONELADAS?)?/i,
+  ]);
+  const bruto = parseWeight([
+    /PESO\s*BRUTO\s*[:=\-]?\s*([0-9][0-9.,\s]{1,18})\s*(KG|KGS|T|TON|TONELADAS?)?/i,
+    /\bBRUTO\s*[:=\-]?\s*([0-9][0-9.,\s]{1,18})\s*(KG|KGS|T|TON|TONELADAS?)?/i,
+  ]);
+  const tara = parseWeight([
+    /\bTARA\s*[:=\-]?\s*([0-9][0-9.,\s]{1,18})\s*(KG|KGS|T|TON|TONELADAS?)?/i,
+  ]);
+
+  const result: TicketData = {
     numero_ticket: numeroTicket,
-    status: lineValue(["STATUS"]),
+    status: afterLabel(["STATUS"]),
     placa_veiculo: plates[0] || null,
     placa_carreta: plates[1] || null,
-    produto: lineValue(["PRODUTO", "MERCADORIA", "CARGA"]),
-    pesagem_inicial_kg: bruto,
+    produto: afterLabel(["PRODUTO", "MERCADORIA", "CARGA"]),
+    pesagem_inicial_kg: mode === "ton" ? bruto : null,
     pesagem_inicial_data: null,
-    pesagem_final_kg: tara,
+    pesagem_final_kg: mode === "ton" ? tara : null,
     pesagem_final_data: null,
-    peso_liquido_kg: pesoLiquido,
+    peso_liquido_kg: mode === "ton" ? pesoLiquido : null,
     peso_origem_kg: null,
-    numero_nf: take([/(?:NOTA\s*FISCAL|NFE|NF-E|NF)\s*[:#=\-]?\s*([0-9./-]{2,30})/i]),
-    transportadora: lineValue(["TRANSPORTADORA", "TRANSP."]),
-    motorista: lineValue(["MOTORISTA"]),
-    cliente: lineValue(["CLIENTE"]),
-    destinatario: lineValue(["DESTINATARIO", "RECEBEDOR", "DESTINO"]),
+    numero_nf: firstMatch([
+      /(?:NOTA\s*FISCAL|NFE|NF-E|NF)\s*[:#=\-]?\s*([0-9./-]{2,30})/i,
+    ]),
+    transportadora: afterLabel(["TRANSPORTADORA", "TRANSP."]),
+    motorista: afterLabel(["MOTORISTA"]),
+    cliente: afterLabel(["CLIENTE"]),
+    destinatario: afterLabel(["DESTINATARIO", "RECEBEDOR", "DESTINO"]),
     anotacoes_manuscritas: null,
     alertas,
-  });
+  };
 
-  if (!result.numero_ticket) result.alertas.push("Número do ticket não identificado pela leitura local.");
-  if (mode === "ton" && (!result.peso_liquido_kg || result.peso_liquido_kg <= 0)) {
-    result.alertas.push("Peso líquido não identificado pela leitura local.");
+  if (!result.destinatario && result.cliente) result.destinatario = result.cliente;
+  if (!result.cliente && result.destinatario) result.cliente = result.destinatario;
+
+  if (!result.numero_ticket) {
+    result.alertas.push("Número do ticket não identificado automaticamente. Digite e confira antes de lançar.");
   }
+  if (mode === "ton" && (!result.peso_liquido_kg || result.peso_liquido_kg <= 0)) {
+    result.alertas.push("Peso líquido não identificado automaticamente. Informe e confira o peso antes de lançar.");
+  }
+  if (result.pesagem_inicial_kg != null && result.pesagem_final_kg != null && result.peso_liquido_kg != null) {
+    const diferenca = Math.abs(result.pesagem_inicial_kg - result.pesagem_final_kg);
+    if (diferenca !== result.peso_liquido_kg) {
+      result.alertas.push("Peso líquido diferente da diferença entre bruto e tara. Confira o ticket.");
+    }
+  }
+
   return ticketForMode(result, mode);
 }
