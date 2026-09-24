@@ -45,7 +45,7 @@ export function ticketProviders(): Provider[] {
   const anthropic = process.env.ANTHROPIC_API_KEY?.trim();
   const providers: Provider[] = [];
 
-  // Auto intentionally prefers the already-configured OpenAI key used by Salomão IA.
+  // Auto intentionally prefers the already-configured OpenAI key used by Salomão IA; Anthropic is fallback.
   if ((chosen === "auto" || chosen === "openai") && openai) {
     providers.push({
       name: "openai",
