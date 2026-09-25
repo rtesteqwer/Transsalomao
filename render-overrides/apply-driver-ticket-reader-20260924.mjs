@@ -38,12 +38,12 @@ for (const rel of ["src/lib/ticket-provider.server.ts", "src/lib/salomao-ticket-
   if (fs.existsSync(file)) fs.rmSync(file);
 }
 
-// OCR local é o único mecanismo de leitura de tickets.
+// O modo Motorista envia a foto ao endpoint privado /api/ler-ticket,
+// que usa ChatGPT Vision no servidor. Tesseract local não é mais necessário.
 {
   const packagePath = dst("package.json");
   const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
-  pkg.dependencies = pkg.dependencies || {};
-  pkg.dependencies["tesseract.js"] = "^6.0.1";
+  if (pkg.dependencies?.["tesseract.js"]) delete pkg.dependencies["tesseract.js"];
   fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
 }
 
