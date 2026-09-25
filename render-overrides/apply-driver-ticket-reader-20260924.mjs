@@ -26,7 +26,7 @@ copy("render-overrides/ticket-save-api-20260924.ts", "src/routes/api/salvar-tick
 copy("render-overrides/0012_ticket_reader.sql", "migrations/0012_ticket_reader.sql");
 copy("render-overrides/0015_ticket_safety.sql", "migrations/0015_ticket_safety.sql");
 copy("render-overrides/0016_ticket_modes_metadata.sql", "migrations/0016_ticket_modes_metadata.sql");
-copy("render-overrides/ticket-core-20260924.ts", "src/lib/ticket-core.ts");
+copy("render-overrides/ticket-core-20260924.ts", "src/lib/ticket-core.ts");\ncopy("render-overrides/ocr-prompts-20260924.ts", "src/lib/ocr-prompts.ts");
 copy("render-overrides/ticket-auth-20260924.server.ts", "src/lib/ticket-auth.server.ts");
 copy("render-overrides/ticket-provider-20260924.ts", "src/lib/ticket-provider.server.ts");
 copy("render-overrides/ticket-photo-access-20260924.tsx", "src/components/ticket-photo-access.tsx");
