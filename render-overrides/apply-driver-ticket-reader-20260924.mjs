@@ -28,20 +28,12 @@ copy("render-overrides/0015_ticket_safety.sql", "migrations/0015_ticket_safety.s
 copy("render-overrides/0016_ticket_modes_metadata.sql", "migrations/0016_ticket_modes_metadata.sql");
 copy("render-overrides/ticket-core-20260924.ts", "src/lib/ticket-core.ts");
 copy("render-overrides/ocr-prompts-20260924.ts", "src/lib/ocr-prompts.ts");
+copy("render-overrides/ocr-service-20260925.server.ts", "src/lib/ocr-service.server.ts");
 copy("render-overrides/ticket-auth-20260924.server.ts", "src/lib/ticket-auth.server.ts");
 copy("render-overrides/ticket-provider-20260924.ts", "src/lib/ticket-provider.server.ts");
 copy("render-overrides/ticket-photo-access-20260924.tsx", "src/components/ticket-photo-access.tsx");
 copy("render-overrides/ticket-meta-api-20260924.ts", "src/routes/api/ticket-meta.ts");
 copy("render-overrides/salomao-ticket-reader-20260924.server.ts", "src/lib/salomao-ticket-reader.server.ts");
-
-// OCR local sob demanda para a Salomão IA quando a visão avançada estiver indisponível.
-{
-  const packagePath = dst("package.json");
-  const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
-  pkg.dependencies = pkg.dependencies || {};
-  pkg.dependencies["tesseract.js"] = "^6.0.1";
-  fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
-}
 
 // Use the existing private deployment secret when no dedicated management key is set.
 const authPath = "src/lib/management-auth.server.ts";
