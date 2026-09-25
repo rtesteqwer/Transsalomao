@@ -74,6 +74,26 @@ test('MULTILIFT labeled plates remain distinct; scale operator is not an operati
   assert.equal(d.operadora, null); assert.equal(d.operador_pesagem, 'Pessoa da balança');
 });
 
+test('real noisy Multilift fallback recovers net weight, fleet plates and carrier', () => {
+  const noisy = `MULTILAFT LOGISTICA LTDA
+TICKET DE PESAGEM 0534063 - Encerrado
+Carreta Veic/Cavalo NAVIO
+MQP-SD98 OVH-4 13 PACIFIC VIRTUE
+Transportadora
+130 - Multilifi
+Emissor
+77 - CX-M20
+Peso Liqui
+{23.510 kg
+Dados Motorista`;
+  const d = parseTicketOcr(noisy, 'ton', { tractorPlate: 'OVH4J13', trailerPlate: 'MQP5D98' });
+  assert.equal(d.numero_ticket, '0534063');
+  assert.equal(d.peso_liquido_kg, 23510);
+  assert.equal(d.placa_veiculo, 'OVH4J13');
+  assert.equal(d.placa_carreta, 'MQP5D98');
+  assert.equal(d.transportadora, 'Multilift Logística Ltda');
+});
+
 test('VPORTS report companies use their own blocks, including inverted CNPJ labels', () => {
   const d = parseTicketOcr('Número Ticket: 0024090\nPlaca Carreta: FYW7J05\nPlaca Veículo: QWS3E13\nPesagem Inicial: 54270 kg\nPesagem Final: 18460 kg\nPeso Líquido: 35810 kg\nTransportadora\nCNPJ: 49544417000104\nRazão Social: RAS TRANSPORTES E SERVICOS LTDA\nDestinatário\nCNPJ: VPORTS AUTORIDADE PORTUARIA\nRazão Social: 27316538000409', 'ton');
   assert.equal(d.numero_ticket, '0024090'); assert.equal(d.peso_liquido_kg, 35810);

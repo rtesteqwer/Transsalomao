@@ -8,6 +8,38 @@ const plate = (s: unknown) => {
 };
 const platePattern = /\b[A-Z]{3}[ -]*[0-9][A-Z0-9][0-9]{2}\b|\b[A-Z]\s+[A-Z]\s+[A-Z]\s+[0-9]\s+[A-Z0-9]\s+[0-9]\s+[0-9]\b/g;
 
+function editDistance(a: string, b: string) {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diagonal = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const old = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diagonal = old;
+    }
+  }
+  return row[b.length];
+}
+
+function plateSeenApproximately(raw: string, expected: string | null) {
+  if (!expected) return false;
+  for (const line of folded(raw).split(/\n+/)) {
+    const chunks = line.match(/[A-Z0-9-]{2,12}/g) || [];
+    for (let start = 0; start < chunks.length; start++) {
+      let candidate = "";
+      for (let end = start; end < Math.min(chunks.length, start + 3); end++) {
+        candidate += chunks[end].replace(/[^A-Z0-9]/g, "");
+        if (candidate.length < 5) continue;
+        if (candidate.length > 9) break;
+        if (candidate[0] !== expected[0] || candidate.slice(-2) !== expected.slice(-2)) continue;
+        if (editDistance(candidate, expected) <= 2) return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function missingTicketFields(d: TicketData, mode: TicketFreightMode) {
   const missing = ["numero_ticket", "placa_veiculo", "placa_carreta", "transportadora"].filter(k => !d[k as keyof TicketData]);
   if (mode === "ton" && !d.peso_liquido_kg) missing.push("peso_liquido_kg");
@@ -68,7 +100,7 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   if (raw.replace(/\s/g, "").length < 8) throw new TicketError(422, "A leitura local não encontrou texto suficiente. Tire outra foto mais nítida.");
   const lines = raw.split(/\n+/).map(s => s.replace(/[ \t]+/g, " ").trim()).filter(Boolean);
   const joined = folded(lines.join("\n"));
-  const model = /MULTILIFT/.test(joined) ? "multilift" : /ADUBOS\s+REAL/.test(joined) ? "adubos_real"
+  const model = /MULTIL[IA]FT/.test(joined) ? "multilift" : /ADUBOS\s+REAL/.test(joined) ? "adubos_real"
     : /PLACA\s+DO\s+VEICULO|PESO\s+LIQUIDO\s+DE\s+ENTRADA/.test(joined) ? "log_consulting"
     : /TICKET\s+AGEND|BERCO/.test(joined) ? "vports_recibo"
     : /NUMERO\s+(?:DO\s+)?TICKET|PLACA\s+CARRETA/.test(joined) ? "vports_relatorio" : "desconhecido";
@@ -129,29 +161,51 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   }
   // A filename, NF, CNPJ, schedule number, or title is never a physical ticket.
   const detected = [...new Set((joined.match(platePattern) || []).map(plate).filter((p): p is string => !!p))];
+  const tractorFromEvidence = plate(fleet.tractorPlate);
+  const trailerFromEvidence = plate(fleet.trailerPlate);
   const labeledPlate = (label: string) => {
     const value = field(label);
     return value ? plate((folded(value).match(platePattern) || [])[0]) : null;
   };
   const vehicle = labeledPlate("PLACA\\s+(?:DO\\s+)?(?:VEICULO|CAVALO)|VEIC(?:ULO)?\\.?\\s*/\\s*CAVALO|CAVALO|PLACA(?!S|\\s+(?:DA|CARRETA))");
   const trailer = labeledPlate("PLACA\\s+(?:DA\\s+)?CARRETA|CARRETA|REBOQUE");
+  const headerCompany = /MULTIL[IA]FT\s+LOGISTICA\s+LTDA/.test(joined) ? "Multilift Logística Ltda" : null;
+  let transportadora = company("TRANSPORTADORA|TRANSP\\.");
+  if (model === "multilift" && headerCompany && (!transportadora || transportadora.length <= 4 || /MULTIL/.test(folded(transportadora)))) {
+    transportadora = headerCompany;
+  }
+  let vehicleFromOcr = vehicle;
+  let trailerFromOcr = trailer;
+  if (!vehicleFromOcr && tractorFromEvidence && plateSeenApproximately(raw, tractorFromEvidence)) vehicleFromOcr = tractorFromEvidence;
+  if (!trailerFromOcr && trailerFromEvidence && plateSeenApproximately(raw, trailerFromEvidence)) trailerFromOcr = trailerFromEvidence;
   const data = {
     numero_ticket: numero, model_type: model,
-    status: field("STATUS"), placa_veiculo: vehicle, placa_carreta: trailer, placas_detectadas: detected,
+    status: field("STATUS"), placa_veiculo: vehicleFromOcr, placa_carreta: trailerFromOcr, placas_detectadas: detected,
     produto: field("PRODUTO|MERCADORIA|ITEM"), motorista: field("MOTORISTA"),
-    transportadora: company("TRANSPORTADORA|TRANSP\\."),
+    transportadora,
     destinatario: company("DESTINATARIO|RECEBEDOR"), contratante: company("EMPRESA\\s+CONTRATANTE|CONTRATANTE|TOMADOR|EMPRESA"),
     operadora: model === "multilift" ? null : company("OPERADORA|OPERADOR"),
     operador_pesagem: model === "multilift" ? field("OPERADOR") : null,
     remetente: company("REMETENTE"), cliente: company("CLIENTE"),
-    empresa_documento: model === "adubos_real" ? "ADUBOS REAL S.A." : model === "multilift" ? "MULTILIFT LOGISTICA LTDA" : null,
+    empresa_documento: model === "adubos_real" ? "ADUBOS REAL S.A." : model === "multilift" ? headerCompany : null,
     navio: field("NAVIO(?!\\s+(?:ORIGEM|DESTINO))"), navio_origem: field("NAVIO\\s+ORIGEM"), navio_destino: field("NAVIO\\s+DESTINO"),
     emissor: field("EMISSOR"), numero_nf: field("NUMERO\\s+NF|NOTA\\s+FISCAL|NF-E|NFE"),
     pesagem_inicial_kg: mode === "ton" ? readWeight("PESO\\s+LIQUIDO\\s+DE\\s+ENTRADA|PESO\\s+ENTRADA|PESO\\s+BRUTO|BRUTO|PESAGEM\\s+INICIAL") : null,
     pesagem_final_kg: mode === "ton" ? readWeight("PESO\\s+LIQUIDO\\s+DE\\s+SAIDA|PESO\\s+SAIDA|PESO\\s+TARA|TARA|PESAGEM\\s+FINAL") : null,
-    peso_liquido_kg: mode === "ton" ? readWeight("(?:PESO\\s+)?LIQUIDO(?!\\s+(?:DE\\s+)?(?:ENTRADA|SAIDA))") : null,
+    peso_liquido_kg: mode === "ton" ? readWeight("(?:PESO\\s+)?LIQUI(?:DO)?(?!\\s+(?:DE\\s+)?(?:ENTRADA|SAIDA))") : null,
     alertas: ["Leitura feita pelo OCR local da Salomão IA. Confira os dados com a foto antes de lançar."],
   };
+  if (mode === "ton" && model === "multilift" && data.peso_liquido_kg == null) {
+    const netIndex = lines.findIndex(line => /^PESO\s+LIQ/i.test(folded(line)) || /^LIQ/i.test(folded(line)));
+    if (netIndex >= 0) {
+      for (const line of lines.slice(netIndex, netIndex + 4)) {
+        const hit = folded(line).match(/(?:^|[^0-9])([0-9]{1,3}(?:[.,][0-9]{3})|[0-9]{4,6})\s*(KG|KGS|T|TON)?\b/);
+        if (!hit) continue;
+        const n = weightNumber(hit[1], hit[2] || "KG");
+        if (n != null && n >= 1000) { data.peso_liquido_kg = n; break; }
+      }
+    }
+  }
   if (model === "adubos_real" && !data.destinatario) data.destinatario = data.empresa_documento;
   return finishTicketReading(data, mode, fleet);
 }
