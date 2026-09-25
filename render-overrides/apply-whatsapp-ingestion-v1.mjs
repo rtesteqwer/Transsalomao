@@ -11,6 +11,7 @@ const copies = [
   ['whatsapp-v1/0014_whatsapp_group_context.sql', 'migrations/0014_whatsapp_group_context.sql'],
   ['whatsapp-v1/0018_whatsapp_group_drivers.sql', 'migrations/0018_whatsapp_group_drivers.sql'],
   ['whatsapp-v1/0019_whatsapp_group_driver_backfill.sql', 'migrations/0019_whatsapp_group_driver_backfill.sql'],
+  ['whatsapp-v1/bind-murillo-group-invite.mjs', 'scripts/bind-murillo-group-invite.mjs'],
 ];
 
 for (const [srcRel, dstRel] of copies) {
@@ -21,4 +22,13 @@ for (const [srcRel, dstRel] of copies) {
   fs.copyFileSync(src, dst);
 }
 
-console.log('[whatsapp-ingestion-v1] webhook and migration installed');
+// One-time/idempotent explicit group binding runs after normal migrations.
+// It only does real work inside the Trans Salomao Vercel production build.
+const packagePath = path.join(target, 'package.json');
+const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+if (pkg.scripts?.['db:migrate'] && !pkg.scripts['db:migrate'].includes('bind-murillo-group-invite.mjs')) {
+  pkg.scripts['db:migrate'] += ' && node scripts/bind-murillo-group-invite.mjs';
+  fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + '\n');
+}
+
+console.log('[whatsapp-ingestion-v1] webhook, migrations and explicit group binder installed');
