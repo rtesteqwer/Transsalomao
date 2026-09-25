@@ -1,0 +1,194 @@
+name: Repair WhatsApp Production
+
+on:
+  push:
+    paths:
+      - 'deploy/repair-whatsapp-production.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WA_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN || secrets.META_WHATSAPP_ACCESS_TOKEN }}
+      WA_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID || secrets.META_WHATSAPP_PHONE_NUMBER_ID }}
+      WA_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET || secrets.META_APP_SECRET }}
+      WA_WABA_ID: ${{ secrets.WHATSAPP_WABA_ID || secrets.WABA_ID }}
+      WA_GRAPH_VERSION: ${{ secrets.WHATSAPP_GRAPH_VERSION }}
+      WA_VERIFY_TOKEN: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Diagnose available WhatsApp credentials safely
+        id: diag
+        shell: bash
+        run: |
+          set -euo pipefail
+          check() {
+            local key="$1" value="$2"
+            if [ -n "$value" ]; then
+              echo "$key=PRESENT"
+            else
+              echo "$key=MISSING"
+            fi
+          }
+          check WHATSAPP_ACCESS_TOKEN "$WA_ACCESS_TOKEN"
+          check WHATSAPP_PHONE_NUMBER_ID "$WA_PHONE_ID"
+          check WHATSAPP_APP_SECRET "$WA_APP_SECRET"
+          check WHATSAPP_WABA_ID "$WA_WABA_ID"
+          check WHATSAPP_GRAPH_VERSION "$WA_GRAPH_VERSION"
+          check WHATSAPP_VERIFY_TOKEN "$WA_VERIFY_TOKEN"
+
+          missing=0
+          for value in "$WA_ACCESS_TOKEN" "$WA_PHONE_ID" "$WA_APP_SECRET"; do
+            [ -n "$value" ] || missing=1
+          done
+          echo "core_missing=$missing" >> "$GITHUB_OUTPUT"
+
+      - name: Generate verification token when absent
+        if: steps.diag.outputs.core_missing == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$WA_VERIFY_TOKEN" ]; then
+            token="$(openssl rand -hex 24)"
+            echo "::add-mask::$token"
+            echo "WA_VERIFY_TOKEN=$token" >> "$GITHUB_ENV"
+          fi
+          if [ -z "$WA_GRAPH_VERSION" ]; then
+            echo "WA_GRAPH_VERSION=v23.0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Link Trans Salomao production project
+        if: steps.diag.outputs.core_missing == '0'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+
+      - name: Sync WhatsApp credentials to Vercel production
+        if: steps.diag.outputs.core_missing == '0'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          upsert_sensitive() {
+            local key="$1" value="$2"
+            npx --yes vercel@latest env rm "$key" production --yes --scope=transsalomao --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
+            printf '%s' "$value" | npx --yes vercel@latest env add "$key" production --sensitive --scope=transsalomao --token="$VERCEL_TOKEN"
+          }
+          upsert_plain() {
+            local key="$1" value="$2"
+            npx --yes vercel@latest env rm "$key" production --yes --scope=transsalomao --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
+            printf '%s' "$value" | npx --yes vercel@latest env add "$key" production --no-sensitive --scope=transsalomao --token="$VERCEL_TOKEN"
+          }
+
+          upsert_sensitive WHATSAPP_ACCESS_TOKEN "$WA_ACCESS_TOKEN"
+          upsert_plain WHATSAPP_PHONE_NUMBER_ID "$WA_PHONE_ID"
+          upsert_sensitive WHATSAPP_APP_SECRET "$WA_APP_SECRET"
+          upsert_sensitive WHATSAPP_VERIFY_TOKEN "$WA_VERIFY_TOKEN"
+          upsert_plain WHATSAPP_GRAPH_VERSION "$WA_GRAPH_VERSION"
+          if [ -n "$WA_WABA_ID" ]; then
+            upsert_plain WHATSAPP_WABA_ID "$WA_WABA_ID"
+          fi
+
+      - name: Check Meta Groups API and subscribe WABA
+        if: steps.diag.outputs.core_missing == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$WA_GRAPH_VERSION"
+          [[ "$version" == v* ]] || version="v$version"
+
+          phone_status="$(curl -sS -o /tmp/phone.json -w '%{http_code}' \
+            -H "Authorization: Bearer $WA_ACCESS_TOKEN" \
+            "https://graph.facebook.com/$version/$WA_PHONE_ID?fields=id,display_phone_number,verified_name,webhook_configuration")"
+          echo "PHONE_API_HTTP=$phone_status"
+          if [ "$phone_status" != "200" ]; then
+            node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/phone.json","utf8")||"{}"); console.log("PHONE_API_ERROR="+String(x?.error?.message||"unknown").slice(0,300))'
+            exit 1
+          fi
+
+          groups_status="$(curl -sS -o /tmp/groups.json -w '%{http_code}' \
+            -H "Authorization: Bearer $WA_ACCESS_TOKEN" \
+            "https://graph.facebook.com/$version/$WA_PHONE_ID/groups?limit=1")"
+          echo "GROUPS_API_HTTP=$groups_status"
+          if [ "$groups_status" != "200" ]; then
+            node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/groups.json","utf8")||"{}"); console.log("GROUPS_API_ERROR="+String(x?.error?.message||"unknown").slice(0,300))'
+          else
+            echo "GROUPS_API=AVAILABLE"
+          fi
+
+          if [ -z "$WA_WABA_ID" ]; then
+            echo "WABA_SUBSCRIPTION=SKIPPED_MISSING_WABA_ID"
+            exit 0
+          fi
+
+          base="https://graph.facebook.com/$version/$WA_WABA_ID/subscribed_apps"
+          sub_status="$(curl -sS -o /tmp/sub.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $WA_ACCESS_TOKEN" "$base")"
+          echo "WABA_SUBSCRIBE_HTTP=$sub_status"
+          if [ "$sub_status" != "200" ]; then
+            node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/sub.json","utf8")||"{}"); console.log("WABA_SUBSCRIBE_ERROR="+String(x?.error?.message||"unknown").slice(0,300))'
+            exit 1
+          fi
+
+          override_status="$(curl -sS -o /tmp/override.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $WA_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$(node -e 'process.stdout.write(JSON.stringify({override_callback_uri:"https://transsalomao.vercel.app/api/whatsapp/webhook",verify_token:process.env.WA_VERIFY_TOKEN}))')" \
+            "$base")"
+          echo "WABA_OVERRIDE_HTTP=$override_status"
+          if [ "$override_status" != "200" ]; then
+            node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/override.json","utf8")||"{}"); console.log("WABA_OVERRIDE_ERROR="+String(x?.error?.message||"unknown").slice(0,300))'
+            exit 1
+          fi
+          echo "WABA_CALLBACK=https://transsalomao.vercel.app/api/whatsapp/webhook"
+
+      - name: Bind Murillo invite when Groups API is available
+        if: steps.diag.outputs.core_missing == '0'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          TARGET_WHATSAPP_INVITE_URL: 'https://chat.whatsapp.com/EDDKxm4IZ7VFFVFhCP88rf?s=cl&p=a&mlu=4&ilr=4'
+          TARGET_DRIVER_NAME: 'Murillo Rocha Garcia'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          node scripts/bind-whatsapp-group-invite.mjs || true
+
+      - name: Deploy repaired production
+        if: steps.diag.outputs.core_missing == '0'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="$(npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
+          echo "Published: $URL"
+
+      - name: Stop with exact missing requirement
+        if: steps.diag.outputs.core_missing != '0'
+        shell: bash
+        run: |
+          echo "WhatsApp Business credentials are not stored in GitHub Actions secrets or Vercel production."
+          echo "Required: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET."
+          exit 1
