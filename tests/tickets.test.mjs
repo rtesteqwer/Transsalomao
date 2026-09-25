@@ -19,9 +19,10 @@ function compile(name, imports = {}) {
   writeFileSync(path.join(tmp, name + '.mjs'), js);
 }
 compile('ticket-core');
+compile('ocr-prompts');
 compile('ticket-provider.server', { '@/lib/ticket-core': './ticket-core.mjs' });
 writeFileSync(path.join(tmp, 'salomao-ai.mjs'), 'export const getSalomaoOpenAIKeys = async () => []; export const salomaoModel = () => "test-model";');
-compile('salomao-ticket-reader.server', { '@/lib/ticket-core': './ticket-core.mjs', '@/lib/salomao-ai.server': './salomao-ai.mjs', '@/lib/db': './db-stub.mjs' });
+compile('salomao-ticket-reader.server', { '@/lib/ticket-core': './ticket-core.mjs', '@/lib/salomao-ai.server': './salomao-ai.mjs', '@/lib/ocr-prompts': './ocr-prompts.mjs', '@/lib/db': './db-stub.mjs' });
 writeFileSync(path.join(tmp, 'sessions.mjs'), 'export const managementSession = () => null; export const klebersomSession = () => null;');
 compile('ticket-auth.server', { '@/lib/ticket-core': './ticket-core.mjs', '@/lib/management-auth.server': './sessions.mjs', '@/lib/klebersom-access.server': './sessions.mjs' });
 const { normalizeTicket, validateSave, validateImage, saveTicket, TicketError } = await import(pathToFileURL(path.join(tmp, 'ticket-core.mjs')));
