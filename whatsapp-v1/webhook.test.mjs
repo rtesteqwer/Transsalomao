@@ -13,6 +13,7 @@ const factory = new Function('createHmac', 'randomUUID', 'timingSafeEqual', 'cre
 
 function fixture({ env = {}, drivers = [], parsed = { kind: 'unknown', confidence: 0.2 }, failDb = false } = {}) {
   const audit = new Map();
+  const groupDrivers = new Map();
   let aiCalls = 0;
   const sql = async (strings, ...values) => {
     if (failDb) throw new Error('database unavailable');
@@ -24,6 +25,15 @@ function fixture({ env = {}, drivers = [], parsed = { kind: 'unknown', confidenc
       return [{ id: row.id }];
     }
     if (query.includes('from whatsapp_messages')) return [audit.get(values[0])].filter(Boolean);
+    if (query.includes('from whatsapp_group_drivers')) {
+      const groupId = values[0];
+      const driverId = groupDrivers.get(groupId);
+      return drivers.filter((d) => d.id === driverId);
+    }
+    if (query.startsWith('insert into whatsapp_group_drivers')) {
+      if (!groupDrivers.has(values[0])) groupDrivers.set(values[0], values[1]);
+      return [];
+    }
     if (query.startsWith('update whatsapp_messages')) {
       const row = [...audit.values()].find((r) => r.id === values.at(-1));
       assert.ok(row);
@@ -51,7 +61,7 @@ function fixture({ env = {}, drivers = [], parsed = { kind: 'unknown', confidenc
     WHATSAPP_PHONE_NUMBER_ID: 'business-phone-id', OPENAI_API_KEY: 'unit-test-only',
     WHATSAPP_ACCESS_TOKEN: 'unit-test-access', WHATSAPP_GRAPH_VERSION: 'v-test', ...env } };
   const api = factory(createHmac, randomUUID, timingSafeEqual, () => (route) => route, async () => sql, runtime, fetchMock);
-  return { ...api, audit, aiCalls: () => aiCalls };
+  return { ...api, audit, groupDrivers, aiCalls: () => aiCalls };
 }
 
 function payload({ groupId, receiver = 'business-phone-id', sender = '5527999991111', type = 'text' } = {}) {
@@ -122,6 +132,13 @@ test('A name in a message cannot authorize an unknown sender', async () => {
   await api.receiveWebhook(signed(payload()));
   assert.equal([...api.audit.values()][0].status, 'pending_sender_authorization');
   assert.equal(api.aiCalls(), 0);
+});
+
+test('First message from a known driver safely binds that WhatsApp group to the driver', async () => {
+  const api = fixture({ drivers: [driver], env: { WHATSAPP_ALLOWED_GROUP_IDS: 'group-test' } });
+  await api.receiveWebhook(signed(payload({ groupId: 'group-test' })));
+  assert.equal(api.groupDrivers.get('group-test'), driver.id);
+  assert.equal([...api.audit.values()][0].status, 'pending_review');
 });
 
 test('Concurrent redelivery creates a single audit entry and a single AI call', async () => {
