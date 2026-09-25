@@ -47,16 +47,27 @@ async function ocrTicketLocal(file: File) {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = url;
       });
-      const scale = Math.min(3, 3000 / Math.max(img.naturalWidth, img.naturalHeight));
+      const scale = Math.min(3, 3200 / Math.max(img.naturalWidth, img.naturalHeight));
       const canvas = document.createElement("canvas");
       canvas.width = Math.round(img.naturalWidth * scale); canvas.height = Math.round(img.naturalHeight * scale);
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.filter = "grayscale(1) contrast(1.3)";
+        ctx.filter = "grayscale(1) contrast(1.8)";
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.SPARSE_TEXT });
-        const focused = await worker.recognize(canvas);
-        text += "\n" + String(focused?.data?.text || "");
+        // Receipts with boxed fields (Multilift/VPORTS/LOG) are much more reliable
+        // as one enhanced text block than with sparse-text segmentation alone.
+        await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.SINGLE_BLOCK });
+        const block = await worker.recognize(canvas);
+        text += "\n" + String(block?.data?.text || "");
+
+        // Only spend a third OCR pass when the first two passes still missed
+        // several of the fields that are important to a trip.
+        const cues = (text.match(/(?:TICKET|TIQUETE|PESO|LIQ|PLACA|CARRETA|VEIC|TRANSPORTADORA)/gi) || []).length;
+        if (cues < 5) {
+          await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.SPARSE_TEXT });
+          const sparse = await worker.recognize(canvas);
+          text += "\n" + String(sparse?.data?.text || "");
+        }
       }
     } catch { /* Preserve the first reading if image enhancement is unavailable. */ }
     finally { URL.revokeObjectURL(url); }
