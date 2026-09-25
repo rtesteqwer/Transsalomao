@@ -487,36 +487,94 @@ async function globalPrice(mode: string) {
   return num(rows[0]?.price);
 }
 
-async function createImageReport(parsed: Parsed, driver: Row | null, fleet: Row | null, sourceId: string) {
-  if (!driver) throw new Error("Motorista não identificado com segurança.");
+async function createImageReport(
+  parsed: Parsed,
+  driver: Row | null,
+  fleet: Row | null,
+  sourceId: string,
+  imageDataUrl: string | null,
+) {
+  if (!driver) throw new Error("Motorista do grupo não identificado com segurança.");
   if (!fleet) throw new Error("Conjunto não identificado com segurança.");
+  if (!parsed.is_weighing_ticket) throw new Error("A imagem não foi confirmada como ticket de pesagem.");
 
-  const net = num(parsed.net_weight);
-  if (net <= 0) throw new Error("Peso líquido não identificado com segurança na foto.");
+  const ticket = String(parsed.ticket_number || "").trim().toUpperCase().replace(/[^A-Z0-9./_-]/g, "");
+  if (!ticket || ticket.length > 80) throw new Error("Número físico do ticket não identificado com segurança.");
+
+  const kg = Math.round(num(parsed.net_weight_kg));
+  if (!Number.isSafeInteger(kg) || kg < 1000 || kg > 100000) {
+    throw new Error("Peso líquido em kg não identificado com segurança na foto.");
+  }
+  const tons = kg / 1000;
 
   const sql = await getSql();
-  const id = "report_" + randomUUID().replace(/-/g, "").slice(0, 12);
-  const ticket = await nextTicket();
+  const reportId = "report_" + randomUUID().replace(/-/g, "").slice(0, 12);
+  const photoId = "ticket_photo_" + randomUUID().replace(/-/g, "").slice(0, 18);
   const date = isoDate(parsed.date) || todayBR();
+  const mime = imageDataUrl?.match(/^data:([^;]+);base64,/)?.[1] || "image/jpeg";
+  const ticketData = {
+    source: "whatsapp_chatgpt",
+    ticket_number: ticket,
+    is_weighing_ticket: true,
+    tractor_plate: parsed.tractor_plate,
+    trailer_plate: parsed.trailer_plate,
+    carrier: parsed.carrier,
+    operator: parsed.operator,
+    contractor: parsed.contractor,
+    recipient: parsed.recipient,
+    product: parsed.product,
+    invoice_number: parsed.invoice_number,
+    confidence: parsed.confidence,
+    notes: parsed.notes,
+  };
 
-  await sql`
-    with created as (
+  const rows = await sql<Row>`
+    with saved_ticket as (
+      insert into tickets_balanca
+        (numero_ticket,placa_veiculo,placa_carreta,produto,peso_liquido_kg,data_pesagem,
+         numero_nf,transportadora,motorista,km_carreta,driver_id,fleet_id,report_id,
+         destinatario,freight_mode,ticket_data)
+      values
+        (${ticket},${parsed.tractor_plate},${parsed.trailer_plate},${parsed.product},${kg},${date},
+         ${parsed.invoice_number},${parsed.carrier},${driver.name},${num(parsed.km)},${driver.id},
+         ${fleet.id},${reportId},${parsed.recipient},null,${JSON.stringify(ticketData)}::jsonb)
+      on conflict (numero_ticket) do nothing
+      returning report_id
+    ), saved_report as (
       insert into reports
         (id,ticket,driver_id,fleet_id,km,tons,status,freight_mode,loading_date,quantity,trip_billing_type,daily_value)
-      values
-        (${id},${ticket},${driver.id},${fleet.id},${num(parsed.km)},${net},
-         'pendente',null,${date},1,'fixed',0)
+      select
+        report_id,${ticket},${driver.id},${fleet.id},${num(parsed.km)},${tons},
+        'pendente',null,${date},1,'fixed',0
+      from saved_ticket
+      returning id
+    ), saved_photo as (
+      insert into trip_ticket_photos
+        (id,relation_type,relation_id,trip_code,driver_id,driver_name,fleet_id,fleet_name,
+         trip_date,freight_mode,net_weight,report_status,file_name,mime_type,image_data,created_by)
+      select
+        ${photoId},'report',report_id,${ticket},${driver.id},${driver.name},${fleet.id},${fleet.name},
+        ${date},null,${tons},'pendente',${"whatsapp-ticket-" + ticket + ".jpg"},${mime},
+        ${imageDataUrl || ""},'WhatsApp + ChatGPT'
+      from saved_ticket
+      where ${imageDataUrl || ""} <> ''
+      returning id
+    ), marked as (
+      update whatsapp_messages
+      set status='committed',created_entity_type='report',created_entity_id=${reportId},processed_at=now()
+      where provider_message_id=${sourceId}
+        and exists (select 1 from saved_report)
       returning id
     )
-    update whatsapp_messages
-    set status='committed',created_entity_type='report',created_entity_id=created.id,processed_at=now()
-    from created where provider_message_id=${sourceId}
+    select r.id as report_id from saved_report r
   `;
+
+  if (!rows[0]) throw new Error(`Ticket ${ticket} já foi lançado ou não pôde ser registrado.`);
 
   return {
     type: "report",
-    id,
-    summary: `lançamento ${ticket} criado na Caixa para ${driver.name}: peso líquido ${net} t; modalidade a definir pela Gerência.`,
+    id: reportId,
+    summary: `ticket ${ticket} lançado na Caixa para ${driver.name}: peso líquido ${tons.toFixed(3)} t; modalidade a definir pela Gerência.`,
   };
 }
 
