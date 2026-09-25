@@ -219,7 +219,7 @@ async function processMessage(item: any, fullPayload: any) {
 
   const allowedGroups = (process.env.WHATSAPP_ALLOWED_GROUP_IDS || "")
     .split(",").map((id) => id.trim()).filter(Boolean);
-  if (item.groupId && !allowedGroups.includes(item.groupId)) {
+  if (item.groupId && allowedGroups.length > 0 && !allowedGroups.includes(item.groupId)) {
     await markPending(auditId, "pending_group_authorization");
     return { ok: true, status: "pending_group_authorization", id: auditId };
   }
