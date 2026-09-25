@@ -294,6 +294,7 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     }
   }
 
+  // Guard against vertical OCR column drift: labels/truncated labels are not field values.
   const looksLikeLabelValue = (value: string | null) => {
     if (!value) return true;
     const u = folded(value).replace(/[.:;,_-]+/g, " ").replace(/\\s+/g, " ").trim();
