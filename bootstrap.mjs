@@ -160,6 +160,12 @@ if (!original.includes("apply-excel-date-mode-style-20260925.mjs")) {
   original = original.replace(dailyMarker, `const excelDateModeStyle = path.join(repo, 'render-overrides', 'apply-excel-date-mode-style-20260925.mjs');\nif (!fs.existsSync(excelDateModeStyle)) throw new Error('Missing Excel date/mode style patch');\nexecFileSync(process.execPath, [excelDateModeStyle, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Cegonha/Caixinha: várias fotos, sem dados de ticket obrigatórios e agrupamento por modalidade na Caixa.
+if (!original.includes("apply-fixed-photo-batch-20260925.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de lote de fotos Cegonha/Caixinha não encontrado');
+  original = original.replace(dailyMarker, `const fixedPhotoBatch = path.join(repo, 'render-overrides', 'apply-fixed-photo-batch-20260925.mjs');\nif (!fs.existsSync(fixedPhotoBatch)) throw new Error('Missing fixed photo batch patch');\nexecFileSync(process.execPath, [fixedPhotoBatch, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
