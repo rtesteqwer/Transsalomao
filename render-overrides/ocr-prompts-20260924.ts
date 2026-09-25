@@ -52,7 +52,8 @@ REGRAS CRÍTICAS:
 REGRAS DE LAYOUT JÁ CONHECIDAS:
 - ADUBOS REAL/SERRAES: quando houver "ADUBOS REAL S.A." sem rótulo de transportadora, trate como destinatário/recebedor e deixe transportadora null. "Placa" simples = placa_veiculo; placa_carreta só se houver segunda placa explícita.
 - MULTILIFT LOGÍSTICA: "Carreta" = placa_carreta; "Veíc/Cavalo" = placa_veiculo; "Transportadora" = transportadora; "Navio" = navio; "Emissor" = emissor; em "Item", código antes do hífen = item_codigo e descrição depois do hífen = produto. "Operador" nas pesagens = operador_pesagem.
-- VPORTS/LOG CONSULTING: procure placas, empresas e pesos também em linhas adjacentes ao rótulo e em textos pequenos; não dependa de uma frase exata.
+- VPORTS/LOG CONSULTING (recibo estreito): leia o campo "Tiquete" como numero_ticket. Leia "Peso Entrada" como pesagem_inicial_kg e "Peso Saída" como pesagem_final_kg; "Peso Líquido" deve conferir com a diferença absoluta. No bloco "Placas", quando houver duas caixas sem rótulo individual, a placa da ESQUERDA é a placa_carreta e a placa da DIREITA é a placa_veiculo. O campo "Operador" que contém nome de empresa, como "LOG CONSULTING", é operadora; operador_pesagem só recebe nome de pessoa quando isso estiver explícito. "Transportadora" pode ocupar várias linhas: una o nome completo. Leia também Navio, Motorista e Produto.
+- CASO DE REGRESSÃO VPORTS conhecido: em um ticket com Tiquete 72416, Navio BELISLAND, Operador LOG CONSULTING, Transportadora GIZELE APARECIDA DA ROCHA GARCIA, Peso Entrada 17.230 kg, Peso Saída 55.700 kg, Peso Líquido 38.470 kg e placas MQX5F98 (esquerda) e NZE8I52 (direita), a saída correta é numero_ticket="72416", peso_liquido_kg=38470, placa_carreta="MQX5F98", placa_veiculo="NZE8I52", transportadora="GIZELE APARECIDA DA ROCHA GARCIA", operadora="LOG CONSULTING" e navio="BELISLAND".
 
 Se houver dúvida em qualquer campo, deixe null e descreva a dúvida em alertas.
 `;
