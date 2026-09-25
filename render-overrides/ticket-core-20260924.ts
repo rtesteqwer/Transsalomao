@@ -8,7 +8,7 @@ export const MAX_IMAGE_BASE64 = 3_500_000;
 const MAX_INTEGER = 2_147_483_647;
 export const freightModes = ["ton", "trip", "cegonha", "caixinha"] as const;
 export type TicketFreightMode = typeof freightModes[number];
-const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "transportadora", "motorista", "cliente", "destinatario", "anotacoes_manuscritas", "operadora", "contratante", "remetente", "empresa_documento", "transportadora_cnpj", "destinatario_cnpj", "navio", "navio_origem", "navio_destino", "operador_pesagem", "emissor", "model_type"] as const;
+const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "data_ticket", "hora_ticket", "transportadora", "motorista", "cliente", "destinatario", "anotacoes_manuscritas", "operadora", "contratante", "remetente", "empresa_documento", "transportadora_cnpj", "destinatario_cnpj", "navio", "navio_origem", "navio_destino", "operador_pesagem", "emissor", "model_type"] as const;
 const weightFields = ["pesagem_inicial_kg", "pesagem_final_kg", "peso_liquido_kg", "peso_origem_kg"] as const;
 export type TicketData = Record<typeof textFields[number], string | null> & Record<typeof weightFields[number], number | null> & { alertas: string[]; placas_detectadas?: string[]; campos_ausentes?: string[] };
 
@@ -77,6 +77,8 @@ export function normalizeTicket(value: unknown): TicketData {
   const source = value as Record<string, unknown>;
   const result = {} as TicketData;
   for (const key of textFields) result[key] = nullableText(source[key]);
+  // Nota fiscal deixou de fazer parte da leitura/lançamento de novos tickets.
+  result.numero_nf = null;
   if (!result.destinatario && result.cliente) result.destinatario = result.cliente;
   if (!result.cliente && result.destinatario) result.cliente = result.destinatario;
   for (const key of ["placa_veiculo", "placa_carreta"] as const) result[key] = result[key]?.toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
@@ -213,7 +215,7 @@ export async function saveTicket(
         report_id, ticket_data, freight_mode)
       select ${d.numero_ticket}, ${d.placa_veiculo}, ${d.placa_carreta}, ${d.produto},
         ${d.pesagem_inicial_kg}, ${d.pesagem_final_kg}, ${d.peso_liquido_kg}, ${d.pesagem_final_data || d.pesagem_inicial_data},
-        ${d.numero_nf}, ${d.transportadora}, ${d.destinatario}, ${drivers[0].name}, ${km}, ${driverId}, ${fleetId},
+        ${null}, ${d.transportadora}, ${d.destinatario}, ${drivers[0].name}, ${km}, ${driverId}, ${fleetId},
         ${reportId}, ${JSON.stringify(d)}::jsonb, ${freightMode}
       where not exists (select 1 from tickets_balanca where upper(btrim(numero_ticket)) = ${d.numero_ticket})
       on conflict (numero_ticket) do nothing returning id, report_id
