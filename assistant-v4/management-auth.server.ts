@@ -32,6 +32,15 @@ export async function verifyManagementCredentials(username: string, password: st
       limit 1
     `;
     const row = rows[0];
+    // Murillo's credential is intentionally pinned to the current server-side
+    // hash so an older database hash can never keep the previous password valid.
+    if (row && row.username.toLocaleLowerCase("pt-BR") === "murillo") {
+      const murillo = LEGACY_ADMINS.find((x) => x.username === "Murillo");
+      if (row.status === "ativo" && murillo && sameHash(supplied, murillo.passwordHash)) {
+        return { ok: true as const, username: row.username, role: row.role || "admin" };
+      }
+      return { ok: false as const };
+    }
     if (row && row.status === "ativo" && sameHash(supplied, row.password_hash)) {
       return { ok: true as const, username: row.username, role: row.role || "admin" };
     }
