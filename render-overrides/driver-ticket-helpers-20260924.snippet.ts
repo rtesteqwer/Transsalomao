@@ -47,8 +47,15 @@ async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85)
 }
 
 async function ocrTicketLocal(file: File) {
-  const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("por");
+  const tesseract = await import("tesseract.js");
+  const createWorker = tesseract.createWorker;
+  if (typeof createWorker !== "function") throw new Error("OCR local indisponível neste navegador.");
+  let worker;
+  try {
+    worker = await createWorker("por");
+  } catch {
+    worker = await createWorker("eng");
+  }
   try {
     const result = await worker.recognize(file);
     const text = String(result?.data?.text || "").trim();
@@ -57,7 +64,7 @@ async function ocrTicketLocal(file: File) {
     }
     return text;
   } finally {
-    await worker.terminate();
+    if (worker) await worker.terminate();
   }
 }
 
