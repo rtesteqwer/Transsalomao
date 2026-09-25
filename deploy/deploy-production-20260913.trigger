@@ -118,3 +118,6 @@ Commit: 55750d128e8ce11e6583a5277b518af2a3b7b8d4
 - Ticket reading uses local OCR only
 - No vision provider in ticket read path
 - Models: Multilift, Adubos Real, VPORTS receipt/report, LOG Consulting
+
+Retry OCR-only publication after fuzzy plate fix — 2026-09-25
+Commit: 806685278f527e3e8e874f226eb362f2fa482c86
