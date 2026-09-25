@@ -22,9 +22,13 @@ for (const name of ['ticket-core', 'ticket-parser']) {
 const { parseTicketOcr, finishTicketReading } = await import(pathToFileURL(path.join(tmp, 'ticket-parser.mjs')));
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
-test('ticket reader build is OCR-only and contains no vision provider modules', () => {
-  assert.equal(existsSync(path.join(source, 'src/lib/ticket-provider.server.ts')), false);
-  assert.equal(existsSync(path.join(source, 'src/lib/salomao-ticket-reader.server.ts')), false);
+test('ticket reader build uses ChatGPT vision and no longer ships local Tesseract', () => {
+  const route = readFileSync(path.join(source, 'src/routes/api/ler-ticket.ts'), 'utf8');
+  const pkg = JSON.parse(readFileSync(path.join(source, 'package.json'), 'utf8'));
+  assert.match(route, /api\.openai\.com\/v1\/responses/);
+  assert.match(route, /input_image/);
+  assert.match(route, /OPENAI_API_KEY/);
+  assert.equal(pkg.dependencies?.['tesseract.js'], undefined);
 });
 
 test('MULTILIFT photo model: ticket 0534063, exact net kg and selected fleet plates', () => {
