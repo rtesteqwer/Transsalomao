@@ -182,3 +182,5 @@ Functional commit: e30ef69539affeab44ffb661c749a0a593862097
 
 Deploy OpenAI-only OCR VPORTS fix 2026-09-25
 Functional commit: 7f7b42fc7c40da5e8a66fc7e4c289618c1282b72
+
+Retry OpenAI-only OCR deploy after OPENAI_API_KEY setup 2026-09-25
