@@ -705,17 +705,21 @@ async function parseWithAI(message: string, driverName: string | null, imageData
   if (!key) throw new Error("OPENAI_API_KEY não configurada.");
   const model =
     process.env.OPENAI_WHATSAPP_MODEL?.trim() ||
+    process.env.OPENAI_TICKET_MODEL?.trim() ||
     process.env.OPENAI_ASSISTANT_MODEL?.trim() ||
     "gpt-5.6-sol";
 
   const nullableString = { type: ["string", "null"] };
   const nullableNumber = { type: ["number", "null"] };
+  const nullableInteger = { type: ["integer", "null"] };
   const schema = {
     type: "object",
     additionalProperties: false,
     properties: {
       kind: { type: "string", enum: ["trip", "fueling", "expense", "unknown"] },
       confidence: { type: "number", minimum: 0, maximum: 1 },
+      is_weighing_ticket: { type: "boolean" },
+      ticket_number: nullableString,
       driver: nullableString,
       fleet: nullableString,
       tractor_plate: nullableString,
@@ -724,8 +728,15 @@ async function parseWithAI(message: string, driverName: string | null, imageData
       client: nullableString,
       origin: nullableString,
       destination: nullableString,
+      carrier: nullableString,
+      operator: nullableString,
+      contractor: nullableString,
+      recipient: nullableString,
+      product: nullableString,
+      invoice_number: nullableString,
       freight_mode: { type: ["string", "null"], enum: ["ton", "trip", "cegonha", "caixinha", null] },
       net_weight: nullableNumber,
+      net_weight_kg: nullableInteger,
       gross_weight: nullableNumber,
       loaded_tons: nullableNumber,
       price_per_ton: nullableNumber,
@@ -740,31 +751,44 @@ async function parseWithAI(message: string, driverName: string | null, imageData
       notes: nullableString,
     },
     required: [
-      "kind","confidence","driver","fleet","tractor_plate","trailer_plate","date","client","origin",
-      "destination","freight_mode","net_weight","gross_weight","loaded_tons","price_per_ton","fixed_value",
-      "km","liters","price_per_liter","station","category","description","asset_type","notes"
+      "kind","confidence","is_weighing_ticket","ticket_number","driver","fleet",
+      "tractor_plate","trailer_plate","date","client","origin","destination","carrier",
+      "operator","contractor","recipient","product","invoice_number","freight_mode",
+      "net_weight","net_weight_kg","gross_weight","loaded_tons","price_per_ton",
+      "fixed_value","km","liters","price_per_liter","station","category","description",
+      "asset_type","notes"
     ],
   };
 
-  const instructions = `Você extrai lançamentos operacionais recebidos pelo WhatsApp da transportadora Trans Salomão.
-Responda somente pelo schema fornecido. Não invente dados ausentes.
-Classifique como trip, fueling, expense ou unknown.
-Quando houver FOTO DE TICKET/PESAGEM de grupo operacional: trate como trip; leia SOMENTE o PESO LÍQUIDO para net_weight e loaded_tons.
-Ignore peso bruto, tara, peso de entrada/saída e valores monetários impressos na foto para esse fluxo.
-Para fotos de pesagem, freight_mode deve ser null: a modalidade final é escolhida exclusivamente pelo Painel da Gerência ao fechar a viagem na Caixa.
-Se a legenda mencionar cegonha, caixinha, diária ou tonelada, preserve essa informação apenas em notes como contexto; não escolha a modalidade.
-"por tonelada", "R$/t", peso/toneladas em mensagem de texto => freight_mode "ton".
-"diária" ou "por viagem" => freight_mode "trip"; cegonha => "cegonha"; caixinha => "caixinha".
-Para peso brasileiro como 41.860 em contexto de carga/toneladas, interprete como 41.860 toneladas, não quarenta e um mil toneladas.
-Valores monetários devem ser números em reais. Datas em YYYY-MM-DD quando conhecidas.
-Motorista já associado ao telefone: ${driverName || "(não identificado)"}.
-Use esse motorista como contexto, mas não invente conjunto/placa.
-Só dê confiança >= 0.86 quando existirem dados suficientes para criar o registro com segurança.
+  const instructions = `Você analisa mensagens e fotos operacionais recebidas no WhatsApp da transportadora Trans Salomão.
+Responda somente pelo schema. Não invente dados ausentes.
+
+REGRAS PARA FOTO:
+- is_weighing_ticket=true SOMENTE quando a imagem for claramente um ticket, tiquete, comprovante ou relatório de pesagem de carga/caminhão.
+- Foto comum, documento não relacionado, conversa, veículo, selfie ou imagem sem comprovante de pesagem => is_weighing_ticket=false.
+- Em ticket de pesagem: kind="trip"; leia o NÚMERO FÍSICO DO TICKET em ticket_number. Não use agendamento, NF, CNPJ ou outro código.
+- Leia o PESO LÍQUIDO impresso em net_weight_kg como inteiro em kg. Se estiver em toneladas, converta (38,470 t = 38470 kg).
+- net_weight deve ser o mesmo peso em TONELADAS (38470 kg = 38.470 t). loaded_tons deve repetir esse valor.
+- Não confunda bruto, tara, peso de entrada ou peso de saída com peso líquido.
+- Se peso líquido não estiver legível mas bruto e tara estiverem claramente legíveis, pode calcular a diferença e explicar em notes.
+- Leia placas, transportadora, operadora, contratante, destinatário, produto e NF somente quando realmente visíveis.
+- Para foto de ticket, freight_mode=null. A modalidade é escolhida pela Gerência ao fechar na Caixa.
+- Se legenda disser cegonha/caixinha/diária/tonelada, preserve apenas em notes; não escolha freight_mode para a foto.
+- Só dê confidence >= 0.86 quando ticket_number e net_weight_kg estiverem confiáveis e a imagem for ticket de pesagem.
+
+REGRAS PARA TEXTO:
+- "por tonelada", "R$/t" => freight_mode="ton".
+- "diária" ou "por viagem" => freight_mode="trip"; cegonha => "cegonha"; caixinha => "caixinha".
+- Peso como 41.860 no contexto brasileiro de carga representa 41.860 toneladas, não 41.860 kg.
+- Valores monetários em reais; datas em YYYY-MM-DD quando conhecidas.
+
+Motorista já associado ao remetente/grupo: ${driverName || "(não identificado)"}.
+Esse nome é apenas contexto de roteamento; não invente conjunto ou placa.
 Hoje em São Paulo: ${todayBR()}.`;
 
   const r = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
-    signal: AbortSignal.timeout(25_000),
+    signal: AbortSignal.timeout(35_000),
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
@@ -773,21 +797,36 @@ Hoje em São Paulo: ${todayBR()}.`;
       input: imageDataUrl ? [{
         role: "user",
         content: [
-          { type: "input_text", text: message?.trim() ? message.slice(0, 5000) : "Leia o ticket de pesagem desta imagem conforme as instruções." },
+          {
+            type: "input_text",
+            text: message?.trim()
+              ? `Legenda/mensagem do WhatsApp: ${message.slice(0, 5000)}\nAnalise a imagem.`
+              : "Analise a imagem. Só marque como viagem automática se for claramente um ticket de pesagem.",
+          },
           { type: "input_image", image_url: imageDataUrl, detail: "high" },
         ],
       }] : message.slice(0, 5000),
       text: { format: { type: "json_schema", name: "trans_salomao_whatsapp_event", strict: true, schema } },
-      max_output_tokens: 1800,
+      max_output_tokens: 2200,
     }),
   });
-  const data: any = await r.json();
+  const data: any = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`OpenAI ${r.status}: ${JSON.stringify(data).slice(0,800)}`);
   const text = outputText(data);
   if (!text) throw new Error("OpenAI retornou resposta vazia.");
   const parsed = JSON.parse(text);
   const confidence = Number(parsed.confidence);
   parsed.confidence = Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0;
+
+  if (parsed.net_weight_kg != null) {
+    const kg = Math.round(Number(parsed.net_weight_kg));
+    parsed.net_weight_kg = Number.isSafeInteger(kg) && kg > 0 ? kg : null;
+    if (parsed.net_weight_kg) {
+      parsed.net_weight = parsed.net_weight_kg / 1000;
+      parsed.loaded_tons = parsed.net_weight_kg / 1000;
+    }
+  }
+
   return parsed as Parsed;
 }
 
