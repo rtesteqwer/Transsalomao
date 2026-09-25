@@ -189,10 +189,10 @@ export function readTicketFromSalomaoOcr(text: string, requestedMode: TicketFrei
     peso_liquido_kg: pesoLiquido,
     peso_origem_kg: null,
     numero_nf: take([/(?:NOTA\s*FISCAL|NFE|NF-E|NF)\s*[:#=\-]?\s*([0-9./-]{2,30})/i]),
-    transportadora: lineValue(["TRANSPORTADORA", "TRANSP."]),
+    transportadora: lineValue(["TRANSPORTADORA", "TRANSP.", "CONTRATANTE", "EMBARCADOR", "SHIPPER", "REMETENTE", "RAZAO SOCIAL"]),
     motorista: lineValue(["MOTORISTA"]),
     cliente: lineValue(["CLIENTE"]),
-    destinatario: lineValue(["DESTINATARIO", "RECEBEDOR", "DESTINO"]),
+    destinatario: lineValue(["DESTINATARIO", "RECEBEDOR", "CLIENTE", "OPERADORA", "OPERADOR", "DESTINO", "CONSIGNATARIO", "CONSIGNEE"]),
     anotacoes_manuscritas: null,
     alertas,
   });
