@@ -5,7 +5,6 @@ import { ticketAccess, allowTicketRead } from "@/lib/ticket-auth.server";
 import { json, normalizeFreightMode, readBody, validateImage, ticketErrorResponse, TicketError } from "@/lib/ticket-core";
 import {
   readTicketWithSalomaoIA,
-  readTicketFromSalomaoOcr,
   SalomaoVisionUnavailable,
 } from "@/lib/salomao-ticket-reader.server";
 
@@ -18,8 +17,10 @@ export const Route = createFileRoute("/api/ler-ticket")({
           authenticated: true,
           ...access,
           available: true,
-          engine: "salomao-ia",
-          localOcrFallback: true,
+          engine: "openai-vision",
+          model: process.env.OPENAI_OCR_MODEL?.trim() || "gpt-4o-mini",
+          localOcrFallback: false,
+          aiOnly: true,
         });
       } catch (error) { return ticketErrorResponse(error); }
     },
@@ -31,13 +32,6 @@ export const Route = createFileRoute("/api/ler-ticket")({
         const access = ticketAccess(request);
         const body = await readBody(request);
         const freightMode = normalizeFreightMode(body.freightMode);
-
-        // OCR local do celular volta para a Salomão IA apenas para interpretação.
-        // A foto original já foi arquivada na primeira tentativa com imagem.
-        if (typeof body.ocrText === "string") {
-          const fileName = typeof body.fileName === "string" ? body.fileName.slice(0, 160) : "";
-          return json(readTicketFromSalomaoOcr(body.ocrText, freightMode, fileName));
-        }
 
         const image = validateImage(body);
         sql = await getSql();
@@ -64,11 +58,12 @@ export const Route = createFileRoute("/api/ler-ticket")({
           return json(result);
         } catch (error) {
           if (error instanceof SalomaoVisionUnavailable) {
-            await markArchivedPhoto(sql, archiveId, "aguardando_ocr_local", error.message);
+            await markArchivedPhoto(sql, archiveId, "erro_ia_indisponivel", error.message);
             return json({
               erro: error.message,
-              code: "SALOMAO_LOCAL_OCR",
-              ocrFallback: true,
+              code: "OPENAI_VISION_UNAVAILABLE",
+              ocrFallback: false,
+              aiOnly: true,
             }, 503);
           }
           await markArchivedPhoto(sql, archiveId, "erro_leitura", error instanceof Error ? error.message : "Falha na leitura");
