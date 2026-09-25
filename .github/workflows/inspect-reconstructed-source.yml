@@ -100,5 +100,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TRANS_TEST_APP=/tmp/trans-source node --test tests/tickets.test.mjs
+          TRANS_TEST_APP=/tmp/trans-source node --test tests/ticket-reader.test.mjs tests/tickets.test.mjs
 

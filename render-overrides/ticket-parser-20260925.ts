@@ -286,9 +286,9 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   // Prefer explicit HERINGER evidence over a misaligned "Empresa" column.
   if (model === "log_consulting") {
     const heringerLine = lines.find(line => /HERINGER/i.test(folded(line)));
-    if (/HERINGER[\\s\\S]{0,120}(?:MANH|MANHUACU|MG)/.test(joined) || heringerLine) {
+    if (/HERINGER[\s\S]{0,120}(?:MANH|MANHUACU|MG)/.test(joined) || heringerLine) {
       const h = folded(heringerLine || "");
-      if (/MANH|MANHUACU/.test(h) || /HERINGER[\\s\\S]{0,120}MANH/.test(joined)) {
+      if (/MANH|MANHUACU/.test(h) || /HERINGER[\s\S]{0,120}MANH/.test(joined)) {
         contratante = "HERINGER MANHUACU - MG";
       }
     }
@@ -297,18 +297,18 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   // Guard against vertical OCR column drift: labels/truncated labels are not field values.
   const looksLikeLabelValue = (value: string | null) => {
     if (!value) return true;
-    const u = folded(value).replace(/[.:;,_-]+/g, " ").replace(/\\s+/g, " ").trim();
-    return /^(NOTA\\s*FISC|NOTA\\s+FISCAL|NUMERO\\s+NF|NF\\b|TRANSPORTADORA\\b|EMPRESA\\b|DESTINATARIO\\b|OPERADORA\\b|PRODUTO\\b)/.test(u);
+    const u = folded(value).replace(/[.:;,_-]+/g, " ").replace(/\s+/g, " ").trim();
+    return /^(NOTA\s*FISC|NOTA\s+FISCAL|NUMERO\s+NF|NF\b|TRANSPORTADORA\b|EMPRESA\b|DESTINATARIO\b|OPERADORA\b|PRODUTO\b)/.test(u);
   };
 
   let produto = field("PRODUTO|MERCADORIA|ITEM");
   if (looksLikeLabelValue(produto)) {
     const productLine = lines.find(line => {
       const u = folded(line);
-      return /\\b(NPK|KCL|UREIA|FERTILIZANTE|ADUBO)\\b/.test(u) && !/^(PRODUTO|NOTA\\s*FISC)/.test(u);
+      return /\b(NPK|KCL|UREIA|FERTILIZANTE|ADUBO)\b/.test(u) && !/^(PRODUTO|NOTA\s*FISC)/.test(u);
     });
     if (productLine) {
-      produto = productLine.replace(/^\\s*(?:PRODUTO|MERCADORIA|ITEM)\\s*[:.=-]*\\s*/i, "").trim().slice(0, 200) || null;
+      produto = productLine.replace(/^\s*(?:PRODUTO|MERCADORIA|ITEM)\s*[:.=-]*\s*/i, "").trim().slice(0, 200) || null;
     } else {
       produto = null;
     }
@@ -316,12 +316,12 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
 
   const cleanInvoice = (value: string | null) => {
     if (!value) return null;
-    const match = folded(value).match(/\\b(\\d{4,}(?:[-/]\\d{1,6})?)\\b/);
+    const match = folded(value).match(/\b(\d{4,}(?:[-/]\d{1,6})?)\b/);
     return match ? match[1] : null;
   };
   let numeroNf = cleanInvoice(field("NUMERO\\s+NF|NOTA\\s+FISCAL|NF-E|NFE"));
   if (!numeroNf) {
-    const direct = joined.match(/(?:NUMERO\\s+NF|NOTA\\s+FISCAL|NF-E|NFE|NRO\\s+NOTA)[\\s.:#=–-]{0,20}(?:NRO\\s+NOTA[\\s.:#=–-]*)?(\\d{4,}(?:[-/]\\d{1,6})?)/);
+    const direct = joined.match(/(?:NUMERO\s+NF|NOTA\s+FISCAL|NF-E|NFE|NRO\s+NOTA)[\s.:#=–-]{0,20}(?:NRO\s+NOTA[\s.:#=–-]*)?(\d{4,}(?:[-/]\d{1,6})?)/);
     numeroNf = direct?.[1] || null;
   }
 
