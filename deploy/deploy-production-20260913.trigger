@@ -105,3 +105,10 @@ Commit: 69d3e0740ea9b0e854e98ab37dcc0422c4ab9d43
 - Prefer Anthropic vision when configured; OpenAI remains fallback
 - Keep local OCR only after both vision providers fail
 - Harden Multilift carrier and selected-fleet plate recovery
+
+Publish targeted local OCR bands for Multilift photo — 2026-09-25
+Commit: 214b0857e4ab80a2d77d35a8eec199abad44de31
+- Preserve current production version
+- Add high-resolution top/weight OCR bands
+- Correct OCR-confused plates such as S/5
+- Prefer valid 23.510 kg candidate over false 123.510 kg
