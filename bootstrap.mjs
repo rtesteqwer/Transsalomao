@@ -143,6 +143,11 @@ if (installDriverTicketReader && !original.includes("apply-driver-ticket-reader-
   original = original.replace(dailyMarker, `const driverTicketReader = path.join(repo, 'render-overrides', 'apply-driver-ticket-reader-20260924.mjs');\nif (!fs.existsSync(driverTicketReader)) throw new Error('Missing driver ticket reader patch');\nexecFileSync(process.execPath, [driverTicketReader, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+if (!original.includes("apply-release-fixes-20260925.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de correção final não encontrado');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-release-fixes-20260925.mjs'), work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });

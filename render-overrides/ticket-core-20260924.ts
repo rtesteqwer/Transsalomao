@@ -8,9 +8,9 @@ export const MAX_IMAGE_BASE64 = 3_500_000;
 const MAX_INTEGER = 2_147_483_647;
 export const freightModes = ["ton", "trip", "cegonha", "caixinha"] as const;
 export type TicketFreightMode = typeof freightModes[number];
-const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "transportadora", "motorista", "cliente", "destinatario", "anotacoes_manuscritas"] as const;
+const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "transportadora", "motorista", "cliente", "destinatario", "anotacoes_manuscritas", "operadora", "contratante", "remetente", "empresa_documento", "transportadora_cnpj", "destinatario_cnpj", "navio", "navio_origem", "navio_destino", "operador_pesagem", "emissor", "model_type"] as const;
 const weightFields = ["pesagem_inicial_kg", "pesagem_final_kg", "peso_liquido_kg", "peso_origem_kg"] as const;
-export type TicketData = Record<typeof textFields[number], string | null> & Record<typeof weightFields[number], number | null> & { alertas: string[] };
+export type TicketData = Record<typeof textFields[number], string | null> & Record<typeof weightFields[number], number | null> & { alertas: string[]; placas_detectadas?: string[]; campos_ausentes?: string[] };
 
 export function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
@@ -80,6 +80,11 @@ export function normalizeTicket(value: unknown): TicketData {
   if (!result.destinatario && result.cliente) result.destinatario = result.cliente;
   if (!result.cliente && result.destinatario) result.cliente = result.destinatario;
   for (const key of ["placa_veiculo", "placa_carreta"] as const) result[key] = result[key]?.toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
+  for (const key of ["placa_veiculo", "placa_carreta"] as const) {
+    if (result[key] && !/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(result[key]!)) result[key] = null;
+  }
+  result.placas_detectadas = Array.isArray(source.placas_detectadas)
+    ? [...new Set(source.placas_detectadas.filter((x): x is string => typeof x === "string").map(x => x.toUpperCase().replace(/[^A-Z0-9]/g, "")).filter(x => /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(x)))].slice(0, 8) : [];
   for (const key of weightFields) result[key] = kilograms(source[key]);
   result.alertas = Array.isArray(source.alertas) ? source.alertas.filter((x): x is string => typeof x === "string").slice(0, 20).map(x => x.slice(0, 500)) : [];
   const { pesagem_inicial_kg: ini, pesagem_final_kg: fim, peso_liquido_kg: liq } = result;

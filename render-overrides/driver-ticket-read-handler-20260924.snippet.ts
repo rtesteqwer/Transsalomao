@@ -7,10 +7,10 @@
     setTicketData(null);
     setTicketReadError("");
     setTicketConfirmed(false);
-    if (freightMode !== "ton") setTons("");
+    setTons("");
     setTicketFileName(file.name);
     try {
-      const dados = await lerTicket(file, freightMode);
+      const dados = await lerTicket(file, freightMode, fleet ? { tractorPlate: fleet.tractorPlate, trailerPlate: fleet.trailerPlate } : undefined);
       setTicketData(dados);
       if (freightMode === "ton" && dados.peso_liquido_kg != null && dados.peso_liquido_kg > 0) {
         setTons(new Intl.NumberFormat("pt-BR", {
@@ -20,7 +20,8 @@
       } else if (freightMode !== "ton") {
         setTons("");
       }
-      if (dados.alertas?.length) toast.warning("Ticket lido. Confira os alertas antes de lançar.");
+      if (dados.campos_ausentes?.length) toast.warning("Leitura incompleta. Preencha os campos que faltam antes de lançar.");
+      else if (dados.alertas?.length) toast.warning("Ticket lido. Confira os alertas antes de lançar.");
       else toast.success("Ticket lido. Confira os dados antes de lançar.");
     } catch (error) {
       setTicketData(null);

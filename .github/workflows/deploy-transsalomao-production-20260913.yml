@@ -29,6 +29,25 @@ jobs:
           xz -t /tmp/update.tar.xz
           echo 'UPDATE_20260913_HASH_OK'
 
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify ticket reader and Caixa before publication
+        shell: bash
+        env:
+          VERCEL: '1'
+          VERCEL_PROJECT_PRODUCTION_URL: 'transsalomao.vercel.app'
+        run: |
+          set -euo pipefail
+          export TRANS_SOURCE_DUMP="$RUNNER_TEMP/transsalomao-ticket-check"
+          export TRANS_TEST_APP="$TRANS_SOURCE_DUMP"
+          node bootstrap.mjs
+          npm --prefix "$TRANS_TEST_APP" install --ignore-scripts --no-audit --no-fund
+          node --test tests/ticket-reader.test.mjs tests/tickets.test.mjs
+          git restore bootstrap.original.mjs
+
       - name: Link Trans Salomao production project
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

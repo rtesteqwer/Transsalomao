@@ -32,6 +32,7 @@ copy("render-overrides/ticket-provider-20260924.ts", "src/lib/ticket-provider.se
 copy("render-overrides/ticket-photo-access-20260924.tsx", "src/components/ticket-photo-access.tsx");
 copy("render-overrides/ticket-meta-api-20260924.ts", "src/routes/api/ticket-meta.ts");
 copy("render-overrides/salomao-ticket-reader-20260924.server.ts", "src/lib/salomao-ticket-reader.server.ts");
+copy("render-overrides/ticket-parser-20260925.ts", "src/lib/ticket-parser.ts");
 
 // OCR local sob demanda para a Salomão IA quando a visão avançada estiver indisponível.
 {
@@ -182,6 +183,8 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
   placaCarreta: string | null;
   transportadora: string | null;
   destinatario: string | null;
+  operadora: string | null;
+  contratante: string | null;
   pesoLiquidoKg: number | null;
   freightMode: string | null;
 };
@@ -211,6 +214,8 @@ function TicketMetadata({ reportId, mode }: { reportId: string; mode?: string | 
         <span>Veículo: <b className="text-fg">{ticket.placaVeiculo || "—"}</b></span>
         <span>Carreta: <b className="text-fg">{ticket.placaCarreta || "—"}</b></span>
         <span>Transportadora: <b className="text-fg">{ticket.transportadora || "—"}</b></span>
+        <span>Operadora: <b className="text-fg">{ticket.operadora || "—"}</b></span>
+        <span>Contratante: <b className="text-fg">{ticket.contratante || "—"}</b></span>
         <span>Destinatário: <b className="text-fg">{ticket.destinatario || "—"}</b></span>
         {mode === "ton" && ticket.pesoLiquidoKg ? (
           <span>Peso líquido: <b className="text-fg">{new Intl.NumberFormat("pt-BR").format(ticket.pesoLiquidoKg)} kg</b></span>

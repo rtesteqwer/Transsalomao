@@ -1,25 +1,6 @@
-type TicketData = {
-  numero_ticket: string | null;
-  status: string | null;
-  placa_veiculo: string | null;
-  placa_carreta: string | null;
-  produto: string | null;
-  pesagem_inicial_kg: number | null;
-  pesagem_inicial_data: string | null;
-  pesagem_final_kg: number | null;
-  pesagem_final_data: string | null;
-  peso_liquido_kg: number | null;
-  peso_origem_kg: number | null;
-  numero_nf: string | null;
-  transportadora: string | null;
-  motorista: string | null;
-  cliente: string | null;
-  destinatario: string | null;
-  anotacoes_manuscritas: string | null;
-  alertas: string[];
-};
+import type { TicketData } from "@/lib/ticket-core";
 
-async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85) {
+async function reduzirImagemTicket(file: File, maxLado = 2600, qualidade = 0.90) {
   if (!file.type.startsWith("image/")) throw new Error("Selecione uma foto válida.");
   if (file.size > 15_000_000) throw new Error("A foto é grande demais.");
 
@@ -58,7 +39,27 @@ async function ocrTicketLocal(file: File) {
   }
   try {
     const result = await worker.recognize(file);
-    const text = String(result?.data?.text || "").trim();
+    let text = String(result?.data?.text || "").trim();
+    // A second full-page pass helps small text and shadows without depending on
+    // fixed crop coordinates or omitting another part of the document.
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = url;
+      });
+      const scale = Math.min(3, 3000 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.naturalWidth * scale); canvas.height = Math.round(img.naturalHeight * scale);
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.filter = "grayscale(1) contrast(1.3)";
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.SPARSE_TEXT });
+        const focused = await worker.recognize(canvas);
+        text += "\n" + String(focused?.data?.text || "");
+      }
+    } catch { /* Preserve the first reading if image enhancement is unavailable. */ }
+    finally { URL.revokeObjectURL(url); }
     if (text.replace(/\s/g, "").length < 8) {
       throw new Error("A Salomão IA não encontrou texto suficiente. Tire outra foto mais nítida.");
     }
@@ -68,14 +69,14 @@ async function ocrTicketLocal(file: File) {
   }
 }
 
-async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "caixinha"): Promise<TicketData> {
+async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "caixinha", selectedFleet?: { tractorPlate: string; trailerPlate: string }): Promise<TicketData> {
   const payload = await reduzirImagemTicket(file);
   const response = await fetch("/api/ler-ticket", {
     method: "POST",
     signal: AbortSignal.timeout(50_000),
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...payload, freightMode, fileName: file.name }),
+    body: JSON.stringify({ ...payload, freightMode, fileName: file.name, selectedFleet }),
   });
   const result = await response.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
 
@@ -88,7 +89,7 @@ async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "
       signal: AbortSignal.timeout(20_000),
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ocrText, freightMode, fileName: file.name }),
+      body: JSON.stringify({ ocrText, freightMode, fileName: file.name, selectedFleet }),
     });
     const localResult = await localResponse.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
     if (!localResponse.ok) throw new Error(localResult?.erro || "A Salomão IA não conseguiu interpretar o OCR.");

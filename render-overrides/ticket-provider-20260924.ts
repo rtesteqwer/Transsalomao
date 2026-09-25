@@ -45,20 +45,19 @@ export function ticketProviders(): Provider[] {
   const anthropic = process.env.ANTHROPIC_API_KEY?.trim();
   const providers: Provider[] = [];
 
-  // O fluxo de tickets usa Anthropic como primeira opção, conforme a integração do motorista.
-  // Em modo auto, OpenAI continua disponível como fallback se estiver configurada.
+  // Keep ticket vision consistent with the OpenAI-first reader.
+  if ((chosen === "auto" || chosen === "openai") && openai) {
+    providers.push({
+      name: "openai",
+      key: openai,
+      model: process.env.TICKET_OPENAI_MODEL?.trim() || process.env.OPENAI_PHOTO_MODEL?.trim() || "gpt-4o",
+    });
+  }
   if ((chosen === "auto" || chosen === "anthropic") && anthropic) {
     providers.push({
       name: "anthropic",
       key: anthropic,
       model: process.env.CLAUDE_MODEL?.trim() || "claude-sonnet-5",
-    });
-  }
-  if ((chosen === "auto" || chosen === "openai") && openai) {
-    providers.push({
-      name: "openai",
-      key: openai,
-      model: process.env.TICKET_OPENAI_MODEL?.trim() || process.env.OPENAI_ASSISTANT_MODEL?.trim() || "gpt-5.6-sol",
     });
   }
   return providers;
@@ -90,7 +89,7 @@ async function readOpenAI(provider: Extract<Provider, { name: "openai" }>, image
   const body = {
     model: provider.model,
     store: false,
-    reasoning: { effort: "low" },
+    ...(provider.model.startsWith("gpt-5") || provider.model.startsWith("gpt-6") ? { reasoning: { effort: "low" } } : {}),
     instructions: PROMPT,
     input: [{
       role: "user",

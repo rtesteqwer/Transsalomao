@@ -90,3 +90,9 @@ Commit: 2f678127c267ad19d14415de749747d2ab078203
 
 Publish trained ticket layouts
 Commit: b00c62defe6c73c617ed183933343db2f065f82c
+
+Publish verified ticket reader and operational fixes 2026-09-25
+- Fix local OCR ReferenceError and structured parsing for five layouts
+- Preserve company roles, exact kg, editable review and Caixa metadata
+- Restore individual trip deletion and billing PDF fueling details
+- Gate publication on 21 ticket and database regression tests

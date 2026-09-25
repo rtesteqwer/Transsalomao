@@ -12,7 +12,7 @@ export const Route = createFileRoute("/api/ticket-meta")({
       const sql = await getSql();
       const rows = await sql<Record<string, unknown>>`
         select numero_ticket, placa_veiculo, placa_carreta, transportadora, destinatario,
-               peso_liquido_kg, freight_mode
+               peso_liquido_kg, freight_mode, ticket_data
         from tickets_balanca
         where report_id = ${reportId}
         order by id desc
@@ -30,6 +30,8 @@ export const Route = createFileRoute("/api/ticket-meta")({
           destinatario: row.destinatario,
           pesoLiquidoKg: row.peso_liquido_kg,
           freightMode: row.freight_mode,
+          operadora: (row.ticket_data as Record<string, unknown> | null)?.operadora || null,
+          contratante: (row.ticket_data as Record<string, unknown> | null)?.contratante || null,
         },
       });
     },

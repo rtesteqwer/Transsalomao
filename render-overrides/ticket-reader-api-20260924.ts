@@ -28,14 +28,11 @@ export const Route = createFileRoute("/api/ler-ticket")({
         const access = ticketAccess(request);
         const body = await readBody(request);
         const freightMode = normalizeFreightMode(body.freightMode);
-
-        // OCR local do celular volta para a Salomão IA apenas para interpretação.
-        if (typeof body.ocrText === "string") {
-          const fileName = typeof body.fileName === "string" ? body.fileName.slice(0, 160) : "";
-          return json(readTicketFromSalomaoOcr(body.ocrText, freightMode, fileName));
-        }
-
-        const image = validateImage(body);
+        const selected = body.selectedFleet as Record<string, unknown> | undefined;
+        const fleet = {
+          tractorPlate: typeof selected?.tractorPlate === "string" ? selected.tractorPlate.slice(0, 20) : undefined,
+          trailerPlate: typeof selected?.trailerPlate === "string" ? selected.trailerPlate.slice(0, 20) : undefined,
+        };
         const sql = await getSql();
         if (access.driverId) {
           const drivers = await sql<{ status: string }>`select status from drivers where id=${access.driverId} limit 1`;
@@ -43,8 +40,15 @@ export const Route = createFileRoute("/api/ler-ticket")({
         }
         await allowTicketRead(sql, `${access.role}:${access.username}`);
 
+        // OCR local do celular volta para a Salomão IA apenas para interpretação.
+        if (typeof body.ocrText === "string") {
+          const fileName = typeof body.fileName === "string" ? body.fileName.slice(0, 160) : "";
+          return json(readTicketFromSalomaoOcr(body.ocrText, freightMode, fileName, fleet));
+        }
+
+        const image = validateImage(body);
         try {
-          return json(await readTicketWithSalomaoIA(sql, image, freightMode));
+          return json(await readTicketWithSalomaoIA(sql, image, freightMode, fleet));
         } catch (error) {
           if (error instanceof SalomaoVisionUnavailable) {
             return json({

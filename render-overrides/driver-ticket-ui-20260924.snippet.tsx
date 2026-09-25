@@ -3,7 +3,7 @@
                 <p className="text-sm font-semibold">Foto do ticket / documento da viagem</p>
                 <p className="mt-1 text-xs text-muted">
                   {freightMode === "ton"
-                    ? "A IA lê número do ticket, peso líquido, placas, transportadora e destinatário."
+                    ? "A IA lê número do ticket, peso líquido, placas, transportadora, operadora e destinatário."
                     : "Neste modo a IA guarda número do ticket, placas, transportadora e destinatário; pesos e pesagens são ignorados."}
                 </p>
               </div>
@@ -70,13 +70,24 @@
                     </Field>
                   ) : null}
 
-                  <div className="grid grid-cols-1 gap-2 text-xs text-muted sm:grid-cols-2">
-                    <span>Placa veículo: <b className="text-fg">{ticketData.placa_veiculo || "—"}</b></span>
-                    <span>Placa carreta: <b className="text-fg">{ticketData.placa_carreta || "—"}</b></span>
-                    <span>Transportadora: <b className="text-fg">{ticketData.transportadora || "—"}</b></span>
-                    <span>Destinatário: <b className="text-fg">{ticketData.destinatario || ticketData.cliente || "—"}</b></span>
-                    <span>Produto: <b className="text-fg">{ticketData.produto || "—"}</b></span>
-                    <span>NF: <b className="text-fg">{ticketData.numero_nf || "—"}</b></span>
+                  <p className="text-sm font-semibold">Conferência dos dados</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {([
+                      ["placa_veiculo", "Placa do veículo"], ["placa_carreta", "Placa da carreta"],
+                      ["transportadora", "Transportadora"], ["operadora", "Operadora"],
+                      ["contratante", "Empresa contratante"], ["destinatario", "Destinatário / recebedor"],
+                      ["produto", "Produto"], ["numero_nf", "Nota fiscal"],
+                    ] as const).map(([key, label]) => (
+                      <Field key={key} label={label} hint={!ticketData[key] ? "Não identificado — confira na foto" : undefined}>
+                        <Input value={ticketData[key] ?? ""}
+                          className={!ticketData[key] ? "border-warn/60" : ""}
+                          onChange={event => {
+                            setTicketConfirmed(false);
+                            const value = key.startsWith("placa_") ? event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") : event.target.value;
+                            setTicketData({ ...ticketData, [key]: value || null });
+                          }} />
+                      </Field>
+                    ))}
                   </div>
 
                   {ticketData.alertas?.length ? (

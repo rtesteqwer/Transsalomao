@@ -16,7 +16,7 @@ export const Route = createFileRoute("/api/photo-intake")({
         const id = String(url.searchParams.get("id") || "").trim();
 
         if (id) {
-          const rows = await sql<any[]>`
+          const rows = await sql<Record<string, any>>`
             select image_data, mime_type, file_name
             from trip_ticket_photos
             where id=${id}
@@ -39,7 +39,7 @@ export const Route = createFileRoute("/api/photo-intake")({
           });
         }
 
-        const rows = await sql<any[]>`
+        const rows = await sql<Record<string, any>>`
           select
             id,
             relation_type,
@@ -113,7 +113,7 @@ export const Route = createFileRoute("/api/photo-intake")({
         const reportStatus = textValue(body?.reportStatus);
         const createdBy = textValue((session as any)?.username) || textValue((session as any)?.name) || "Gerência";
 
-        const existing = await sql<any[]>`select id from trip_ticket_photos where id=${id} limit 1`;
+        const existing = await sql<Record<string, any>>`select id from trip_ticket_photos where id=${id} limit 1`;
         if (existing[0]) return json({ ok: true, alreadyExists: true, id, message: "Esta foto já estava salva nesta viagem." });
 
         await sql`
