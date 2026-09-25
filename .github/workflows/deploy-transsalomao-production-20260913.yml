@@ -39,6 +39,24 @@ jobs:
           printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
           npx --yes vercel@59.26.0 pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
 
+      - name: Verify OpenAI Vision production key
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENV_FILE=".vercel/.env.production.local"
+          test -f "$ENV_FILE"
+          node <<'NODE'
+          const fs = require("node:fs");
+          const text = fs.readFileSync(".vercel/.env.production.local", "utf8");
+          const line = text.split(/\r?\n/).find((row) => row.startsWith("OPENAI_API_KEY="));
+          const raw = line ? line.slice("OPENAI_API_KEY=".length).trim().replace(/^["']|["']$/g, "") : "";
+          if (!raw || raw.length < 20) {
+            console.error("OPENAI_API_KEY_MISSING_OR_EMPTY");
+            process.exit(1);
+          }
+          console.log("OPENAI_API_KEY_CONFIGURED");
+          NODE
+
       - name: Deploy production
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
