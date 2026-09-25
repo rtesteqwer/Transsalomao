@@ -7,6 +7,8 @@ type Row = Record<string, any>;
 type Parsed = {
   kind: "trip" | "fueling" | "expense" | "unknown";
   confidence: number;
+  is_weighing_ticket: boolean;
+  ticket_number: string | null;
   driver: string | null;
   fleet: string | null;
   tractor_plate: string | null;
@@ -15,8 +17,15 @@ type Parsed = {
   client: string | null;
   origin: string | null;
   destination: string | null;
+  carrier: string | null;
+  operator: string | null;
+  contractor: string | null;
+  recipient: string | null;
+  product: string | null;
+  invoice_number: string | null;
   freight_mode: "ton" | "trip" | "cegonha" | "caixinha" | null;
   net_weight: number | null;
+  net_weight_kg: number | null;
   gross_weight: number | null;
   loaded_tons: number | null;
   price_per_ton: number | null;
@@ -210,7 +219,7 @@ async function processMessage(item: any, fullPayload: any) {
 
   const allowedGroups = (process.env.WHATSAPP_ALLOWED_GROUP_IDS || "")
     .split(",").map((id) => id.trim()).filter(Boolean);
-  if (item.groupId && !allowedGroups.includes(item.groupId)) {
+  if (item.groupId && allowedGroups.length > 0 && !allowedGroups.includes(item.groupId)) {
     await markPending(auditId, "pending_group_authorization");
     return { ok: true, status: "pending_group_authorization", id: auditId };
   }
@@ -272,7 +281,11 @@ async function processMessage(item: any, fullPayload: any) {
     return { ok: true, status: "pending_review", id: auditId, parsed };
   }
 
-  const imageGroupTrip = !!item.groupId && item.type === "image" && parsed.kind === "trip";
+  const imageGroupTrip =
+    !!item.groupId &&
+    item.type === "image" &&
+    parsed.kind === "trip" &&
+    parsed.is_weighing_ticket === true;
   if (!imageGroupTrip && !autoCommit) {
     await markPending(auditId, "pending_review");
     return { ok: true, status: "pending_review", id: auditId, parsed };
@@ -292,7 +305,10 @@ async function processMessage(item: any, fullPayload: any) {
   // Assim o peso líquido é capturado automaticamente sem adivinhar preço por tonelada.
   if (imageGroupTrip) {
     try {
-      const created = await createImageReport(parsed, matchedDriver, fleet, item.id);
+      const created = await createImageReport(parsed, matchedDriver, fleet, item.id, imageDataUrl);
+      if (process.env.WHATSAPP_SEND_CONFIRMATIONS === "1") {
+        await sendWhatsAppText(item.groupId, "Trans Salomão: " + created.summary, true);
+      }
       return { ok: true, status: "committed", id: auditId, created };
     } catch (error: any) {
       const msg = String(error?.message || error).slice(0, 1000);
@@ -377,13 +393,51 @@ function configuredGroupDriver(groupId: string | null) {
   return "";
 }
 
+async function findDriverForGroup(groupId: string | null) {
+  if (!groupId) return null;
+  const sql = await getSql();
+  const rows = await sql<Row>`
+    select d.*
+    from whatsapp_group_drivers g
+    join drivers d on d.id=g.driver_id
+    where g.group_id=${groupId} and d.status='ativo'
+    limit 1
+  `;
+  return rows[0] || null;
+}
+
+async function bindGroupToDriver(groupId: string, driver: Row, source: string) {
+  const sql = await getSql();
+  await sql`
+    insert into whatsapp_group_drivers(group_id,driver_id,source)
+    values(${groupId},${driver.id},${source})
+    on conflict (group_id) do nothing
+  `;
+}
+
 async function resolveDriverForMessage(item: any) {
-  const configured = configuredGroupDriver(item.groupId || null);
+  const groupId = item.groupId || null;
+
+  // Once a group is bound, every ticket in that group belongs to that driver,
+  // regardless of which authorized participant forwards the photo.
+  const persisted = await findDriverForGroup(groupId);
+  if (persisted) return persisted;
+
+  // Explicit environment mapping has priority for first-time group setup.
+  const configured = configuredGroupDriver(groupId);
   if (configured) {
     const byName = await findDriverByName(configured);
-    if (byName) return byName;
+    if (byName) {
+      if (groupId) await bindGroupToDriver(groupId, byName, "configured");
+      return byName;
+    }
   }
-  return findDriverByPhone(item.from);
+
+  // Safe auto-learning: bind only when the actual sender phone matches exactly
+  // one active driver. Never bind a group merely from a contact/profile name.
+  const byPhone = await findDriverByPhone(item.from);
+  if (byPhone && groupId) await bindGroupToDriver(groupId, byPhone, "sender_phone");
+  return byPhone;
 }
 
 async function findFleet(parsed: Parsed, driverId: string | null) {
@@ -433,36 +487,94 @@ async function globalPrice(mode: string) {
   return num(rows[0]?.price);
 }
 
-async function createImageReport(parsed: Parsed, driver: Row | null, fleet: Row | null, sourceId: string) {
-  if (!driver) throw new Error("Motorista não identificado com segurança.");
+async function createImageReport(
+  parsed: Parsed,
+  driver: Row | null,
+  fleet: Row | null,
+  sourceId: string,
+  imageDataUrl: string | null,
+) {
+  if (!driver) throw new Error("Motorista do grupo não identificado com segurança.");
   if (!fleet) throw new Error("Conjunto não identificado com segurança.");
+  if (!parsed.is_weighing_ticket) throw new Error("A imagem não foi confirmada como ticket de pesagem.");
 
-  const net = num(parsed.net_weight);
-  if (net <= 0) throw new Error("Peso líquido não identificado com segurança na foto.");
+  const ticket = String(parsed.ticket_number || "").trim().toUpperCase().replace(/[^A-Z0-9./_-]/g, "");
+  if (!ticket || ticket.length > 80) throw new Error("Número físico do ticket não identificado com segurança.");
+
+  const kg = Math.round(num(parsed.net_weight_kg));
+  if (!Number.isSafeInteger(kg) || kg < 1000 || kg > 100000) {
+    throw new Error("Peso líquido em kg não identificado com segurança na foto.");
+  }
+  const tons = kg / 1000;
 
   const sql = await getSql();
-  const id = "report_" + randomUUID().replace(/-/g, "").slice(0, 12);
-  const ticket = await nextTicket();
+  const reportId = "report_" + randomUUID().replace(/-/g, "").slice(0, 12);
+  const photoId = "ticket_photo_" + randomUUID().replace(/-/g, "").slice(0, 18);
   const date = isoDate(parsed.date) || todayBR();
+  const mime = imageDataUrl?.match(/^data:([^;]+);base64,/)?.[1] || "image/jpeg";
+  const ticketData = {
+    source: "whatsapp_chatgpt",
+    ticket_number: ticket,
+    is_weighing_ticket: true,
+    tractor_plate: parsed.tractor_plate,
+    trailer_plate: parsed.trailer_plate,
+    carrier: parsed.carrier,
+    operator: parsed.operator,
+    contractor: parsed.contractor,
+    recipient: parsed.recipient,
+    product: parsed.product,
+    invoice_number: parsed.invoice_number,
+    confidence: parsed.confidence,
+    notes: parsed.notes,
+  };
 
-  await sql`
-    with created as (
+  const rows = await sql<Row>`
+    with saved_ticket as (
+      insert into tickets_balanca
+        (numero_ticket,placa_veiculo,placa_carreta,produto,peso_liquido_kg,data_pesagem,
+         numero_nf,transportadora,motorista,km_carreta,driver_id,fleet_id,report_id,
+         destinatario,freight_mode,ticket_data)
+      values
+        (${ticket},${parsed.tractor_plate},${parsed.trailer_plate},${parsed.product},${kg},${date},
+         ${parsed.invoice_number},${parsed.carrier},${driver.name},${num(parsed.km)},${driver.id},
+         ${fleet.id},${reportId},${parsed.recipient},null,${JSON.stringify(ticketData)}::jsonb)
+      on conflict (numero_ticket) do nothing
+      returning report_id
+    ), saved_report as (
       insert into reports
         (id,ticket,driver_id,fleet_id,km,tons,status,freight_mode,loading_date,quantity,trip_billing_type,daily_value)
-      values
-        (${id},${ticket},${driver.id},${fleet.id},${num(parsed.km)},${net},
-         'pendente',null,${date},1,'fixed',0)
+      select
+        report_id,${ticket},${driver.id},${fleet.id},${num(parsed.km)},${tons},
+        'pendente',null,${date},1,'fixed',0
+      from saved_ticket
+      returning id
+    ), saved_photo as (
+      insert into trip_ticket_photos
+        (id,relation_type,relation_id,trip_code,driver_id,driver_name,fleet_id,fleet_name,
+         trip_date,freight_mode,net_weight,report_status,file_name,mime_type,image_data,created_by)
+      select
+        ${photoId},'report',report_id,${ticket},${driver.id},${driver.name},${fleet.id},${fleet.name},
+        ${date},null,${tons},'pendente',${"whatsapp-ticket-" + ticket + ".jpg"},${mime},
+        ${imageDataUrl || ""},'WhatsApp + ChatGPT'
+      from saved_ticket
+      where ${imageDataUrl || ""} <> ''
+      returning id
+    ), marked as (
+      update whatsapp_messages
+      set status='committed',created_entity_type='report',created_entity_id=${reportId},processed_at=now()
+      where provider_message_id=${sourceId}
+        and exists (select 1 from saved_report)
       returning id
     )
-    update whatsapp_messages
-    set status='committed',created_entity_type='report',created_entity_id=created.id,processed_at=now()
-    from created where provider_message_id=${sourceId}
+    select r.id as report_id from saved_report r
   `;
+
+  if (!rows[0]) throw new Error(`Ticket ${ticket} já foi lançado ou não pôde ser registrado.`);
 
   return {
     type: "report",
-    id,
-    summary: `lançamento ${ticket} criado na Caixa para ${driver.name}: peso líquido ${net} t; modalidade a definir pela Gerência.`,
+    id: reportId,
+    summary: `ticket ${ticket} lançado na Caixa para ${driver.name}: peso líquido ${tons.toFixed(3)} t; modalidade a definir pela Gerência.`,
   };
 }
 
@@ -593,17 +705,21 @@ async function parseWithAI(message: string, driverName: string | null, imageData
   if (!key) throw new Error("OPENAI_API_KEY não configurada.");
   const model =
     process.env.OPENAI_WHATSAPP_MODEL?.trim() ||
+    process.env.OPENAI_TICKET_MODEL?.trim() ||
     process.env.OPENAI_ASSISTANT_MODEL?.trim() ||
     "gpt-5.6-sol";
 
   const nullableString = { type: ["string", "null"] };
   const nullableNumber = { type: ["number", "null"] };
+  const nullableInteger = { type: ["integer", "null"] };
   const schema = {
     type: "object",
     additionalProperties: false,
     properties: {
       kind: { type: "string", enum: ["trip", "fueling", "expense", "unknown"] },
       confidence: { type: "number", minimum: 0, maximum: 1 },
+      is_weighing_ticket: { type: "boolean" },
+      ticket_number: nullableString,
       driver: nullableString,
       fleet: nullableString,
       tractor_plate: nullableString,
@@ -612,8 +728,15 @@ async function parseWithAI(message: string, driverName: string | null, imageData
       client: nullableString,
       origin: nullableString,
       destination: nullableString,
+      carrier: nullableString,
+      operator: nullableString,
+      contractor: nullableString,
+      recipient: nullableString,
+      product: nullableString,
+      invoice_number: nullableString,
       freight_mode: { type: ["string", "null"], enum: ["ton", "trip", "cegonha", "caixinha", null] },
       net_weight: nullableNumber,
+      net_weight_kg: nullableInteger,
       gross_weight: nullableNumber,
       loaded_tons: nullableNumber,
       price_per_ton: nullableNumber,
@@ -628,31 +751,44 @@ async function parseWithAI(message: string, driverName: string | null, imageData
       notes: nullableString,
     },
     required: [
-      "kind","confidence","driver","fleet","tractor_plate","trailer_plate","date","client","origin",
-      "destination","freight_mode","net_weight","gross_weight","loaded_tons","price_per_ton","fixed_value",
-      "km","liters","price_per_liter","station","category","description","asset_type","notes"
+      "kind","confidence","is_weighing_ticket","ticket_number","driver","fleet",
+      "tractor_plate","trailer_plate","date","client","origin","destination","carrier",
+      "operator","contractor","recipient","product","invoice_number","freight_mode",
+      "net_weight","net_weight_kg","gross_weight","loaded_tons","price_per_ton",
+      "fixed_value","km","liters","price_per_liter","station","category","description",
+      "asset_type","notes"
     ],
   };
 
-  const instructions = `Você extrai lançamentos operacionais recebidos pelo WhatsApp da transportadora Trans Salomão.
-Responda somente pelo schema fornecido. Não invente dados ausentes.
-Classifique como trip, fueling, expense ou unknown.
-Quando houver FOTO DE TICKET/PESAGEM de grupo operacional: trate como trip; leia SOMENTE o PESO LÍQUIDO para net_weight e loaded_tons.
-Ignore peso bruto, tara, peso de entrada/saída e valores monetários impressos na foto para esse fluxo.
-Para fotos de pesagem, freight_mode deve ser null: a modalidade final é escolhida exclusivamente pelo Painel da Gerência ao fechar a viagem na Caixa.
-Se a legenda mencionar cegonha, caixinha, diária ou tonelada, preserve essa informação apenas em notes como contexto; não escolha a modalidade.
-"por tonelada", "R$/t", peso/toneladas em mensagem de texto => freight_mode "ton".
-"diária" ou "por viagem" => freight_mode "trip"; cegonha => "cegonha"; caixinha => "caixinha".
-Para peso brasileiro como 41.860 em contexto de carga/toneladas, interprete como 41.860 toneladas, não quarenta e um mil toneladas.
-Valores monetários devem ser números em reais. Datas em YYYY-MM-DD quando conhecidas.
-Motorista já associado ao telefone: ${driverName || "(não identificado)"}.
-Use esse motorista como contexto, mas não invente conjunto/placa.
-Só dê confiança >= 0.86 quando existirem dados suficientes para criar o registro com segurança.
+  const instructions = `Você analisa mensagens e fotos operacionais recebidas no WhatsApp da transportadora Trans Salomão.
+Responda somente pelo schema. Não invente dados ausentes.
+
+REGRAS PARA FOTO:
+- is_weighing_ticket=true SOMENTE quando a imagem for claramente um ticket, tiquete, comprovante ou relatório de pesagem de carga/caminhão.
+- Foto comum, documento não relacionado, conversa, veículo, selfie ou imagem sem comprovante de pesagem => is_weighing_ticket=false.
+- Em ticket de pesagem: kind="trip"; leia o NÚMERO FÍSICO DO TICKET em ticket_number. Não use agendamento, NF, CNPJ ou outro código.
+- Leia o PESO LÍQUIDO impresso em net_weight_kg como inteiro em kg. Se estiver em toneladas, converta (38,470 t = 38470 kg).
+- net_weight deve ser o mesmo peso em TONELADAS (38470 kg = 38.470 t). loaded_tons deve repetir esse valor.
+- Não confunda bruto, tara, peso de entrada ou peso de saída com peso líquido.
+- Se peso líquido não estiver legível mas bruto e tara estiverem claramente legíveis, pode calcular a diferença e explicar em notes.
+- Leia placas, transportadora, operadora, contratante, destinatário, produto e NF somente quando realmente visíveis.
+- Para foto de ticket, freight_mode=null. A modalidade é escolhida pela Gerência ao fechar na Caixa.
+- Se legenda disser cegonha/caixinha/diária/tonelada, preserve apenas em notes; não escolha freight_mode para a foto.
+- Só dê confidence >= 0.86 quando ticket_number e net_weight_kg estiverem confiáveis e a imagem for ticket de pesagem.
+
+REGRAS PARA TEXTO:
+- "por tonelada", "R$/t" => freight_mode="ton".
+- "diária" ou "por viagem" => freight_mode="trip"; cegonha => "cegonha"; caixinha => "caixinha".
+- Peso como 41.860 no contexto brasileiro de carga representa 41.860 toneladas, não 41.860 kg.
+- Valores monetários em reais; datas em YYYY-MM-DD quando conhecidas.
+
+Motorista já associado ao remetente/grupo: ${driverName || "(não identificado)"}.
+Esse nome é apenas contexto de roteamento; não invente conjunto ou placa.
 Hoje em São Paulo: ${todayBR()}.`;
 
   const r = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
-    signal: AbortSignal.timeout(25_000),
+    signal: AbortSignal.timeout(35_000),
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
@@ -661,21 +797,36 @@ Hoje em São Paulo: ${todayBR()}.`;
       input: imageDataUrl ? [{
         role: "user",
         content: [
-          { type: "input_text", text: message?.trim() ? message.slice(0, 5000) : "Leia o ticket de pesagem desta imagem conforme as instruções." },
+          {
+            type: "input_text",
+            text: message?.trim()
+              ? `Legenda/mensagem do WhatsApp: ${message.slice(0, 5000)}\nAnalise a imagem.`
+              : "Analise a imagem. Só marque como viagem automática se for claramente um ticket de pesagem.",
+          },
           { type: "input_image", image_url: imageDataUrl, detail: "high" },
         ],
       }] : message.slice(0, 5000),
       text: { format: { type: "json_schema", name: "trans_salomao_whatsapp_event", strict: true, schema } },
-      max_output_tokens: 1800,
+      max_output_tokens: 2200,
     }),
   });
-  const data: any = await r.json();
+  const data: any = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`OpenAI ${r.status}: ${JSON.stringify(data).slice(0,800)}`);
   const text = outputText(data);
   if (!text) throw new Error("OpenAI retornou resposta vazia.");
   const parsed = JSON.parse(text);
   const confidence = Number(parsed.confidence);
   parsed.confidence = Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0;
+
+  if (parsed.net_weight_kg != null) {
+    const kg = Math.round(Number(parsed.net_weight_kg));
+    parsed.net_weight_kg = Number.isSafeInteger(kg) && kg > 0 ? kg : null;
+    if (parsed.net_weight_kg) {
+      parsed.net_weight = parsed.net_weight_kg / 1000;
+      parsed.loaded_tons = parsed.net_weight_kg / 1000;
+    }
+  }
+
   return parsed as Parsed;
 }
 
