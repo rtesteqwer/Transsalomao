@@ -112,3 +112,9 @@ Commit: 214b0857e4ab80a2d77d35a8eec199abad44de31
 - Add high-resolution top/weight OCR bands
 - Correct OCR-confused plates such as S/5
 - Prefer valid 23.510 kg candidate over false 123.510 kg
+
+Publish OCR-only ticket reader — 2026-09-25
+Commit: 55750d128e8ce11e6583a5277b518af2a3b7b8d4
+- Ticket reading uses local OCR only
+- No vision provider in ticket read path
+- Models: Multilift, Adubos Real, VPORTS receipt/report, LOG Consulting
