@@ -122,7 +122,7 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   const lines = raw.split(/\n+/).map(s => s.replace(/[ \t]+/g, " ").trim()).filter(Boolean);
   const joined = folded(lines.join("\n"));
   const model = /MULTIL[IA]FT/.test(joined) ? "multilift"
-    : /ADUBOS\s+REAL|ADR[- ]DIV[- ]004|TARA[\s\S]{0,180}BRUTO[\s\S]{0,180}LIQUIDO/.test(joined) ? "adubos_real"
+    : /ADUBOS\s+REAL|ADR[- ]?DIV[- ]?004|TARA[\s\S]{0,180}BRUTO[\s\S]{0,180}LIQUIDO/.test(joined) ? "adubos_real"
     : /TICKET\s+AGEND|BERCO|VPORTS[\s\S]{0,140}TIQUET/.test(joined) ? "vports_recibo"
     : /NUMERO\s*(?:\n|\s)+(?:DO\s+)?TICKET|PLACA\s*(?:\n|\s)+CARRETA|PESO\s+ORIGEM[\s\S]{0,400}DESTINATARIO/.test(joined) ? "vports_relatorio"
     : /PLACA\s+DO\s+VEICULO|PESO\s+LIQUIDO\s+DE\s+ENTRADA|RODOVIA\s+DARLY/.test(joined) ? "log_consulting"
@@ -201,6 +201,15 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     if (!/^TICKET/i.test(folded(lines[i + 1]))) continue;
     const direct = folded(lines[i + 2]).match(/\b(0[0-9]{5,10})\b/);
     if (direct) ticketCandidates.push(direct[1]);
+  }
+  if (model === "vports_relatorio" || model === "multilift") {
+    const expectedStandalone = model === "multilift" ? /^0\d{6}$/ : /^0\d{6}$/;
+    for (const line of lines) {
+      const u = folded(line).trim();
+      if (/CNPJ|NF|NOTA|CHAVE|AGEND/.test(u)) continue;
+      const values = u.match(/\b0\d{6}\b/g) || [];
+      for (const value of values) if (expectedStandalone.test(value)) ticketCandidates.push(value);
+    }
   }
   const normalizeTicketCandidate = (candidate: string) => {
     let value = candidate.replace(/[^A-Z0-9]/g, "");
