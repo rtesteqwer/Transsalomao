@@ -17,7 +17,7 @@ function patch(rel, fn) {
   fs.writeFileSync(file, after);
 }
 
-const chronologicalBlock = (sheetName) => `
+const chronologicalBlock = (sheetName, tripSource) => `
     const excelModeInfo = (mode: string) => mode === "ton"
       ? { label: "POR TONELADA", fill: "D9EAD3", accent: "6AA84F", order: 1 }
       : mode === "trip"
@@ -38,7 +38,7 @@ const chronologicalBlock = (sheetName) => `
     };
     const excelSpecial = new Map<string, any>();
     const excelChronological: any[] = [];
-    ${sheetName === "sheet" ? "rows" : "excelTrips"}.forEach((trip: any) => {
+    ${tripSource}.forEach((trip: any) => {
       const mode = String(trip.freightMode ?? "ton");
       const date = excelDateKey(trip.date);
       if (mode === "cegonha" || mode === "caixinha") {
@@ -73,7 +73,7 @@ patch("src/routes/dono/viagens.tsx", (s) => {
   s = s.replace('ext: { width: 520, height: 260 }', 'ext: { width: 600, height: 300 }');
   s = mustReplace(s,
     '    const excelLightBlue = "DCEEFF"; for (let r = 1; r <= sheet.rowCount; r += 1) { for (let c = 1; c <= 8; c += 1) { const cell = sheet.getRow(r).getCell(c); cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: excelLightBlue } }; cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } }; } }',
-    chronologicalBlock("sheet"),
+    chronologicalBlock("sheet", "rows"),
     "Viagens chronological section",
   );
   s = mustReplace(s,
@@ -89,7 +89,7 @@ patch("src/routes/dono/totais.tsx", (s) => {
   s = s.replace('ext: { width: 340, height: 160 }', 'ext: { width: 480, height: 225 }');
   s = mustReplace(s,
     '    addSection("ABASTECIMENTOS / CUSTO DIESEL", ["Data", "Motorista", "Posto", "Litros", "Preço/L", "Custo diesel"]);',
-    chronologicalBlock("sheet") + '\n    addSection("ABASTECIMENTOS / CUSTO DIESEL", ["Data", "Motorista", "Posto", "Litros", "Preço/L", "Custo diesel"]);',
+    chronologicalBlock("sheet", "excelTrips") + '\n    addSection("ABASTECIMENTOS / CUSTO DIESEL", ["Data", "Motorista", "Posto", "Litros", "Preço/L", "Custo diesel"]);',
     "General chronological section",
   );
   s = s.replace(/\n\s*for \(let r = 1; r <= sheet\.rowCount; r \+= 1\) \{ for \(let c = 1; c <= 8; c \+= 1\) \{ const cell = sheet\.getRow\(r\)\.getCell\(c\); cell\.fill = \{ type: "pattern", pattern: "solid", fgColor: \{ argb: lightBlue \} \}; cell\.font = \{ \.\.\.\(cell\.font \?\? \{\}\), color: \{ argb: black \} \}; \} \}/, '');
