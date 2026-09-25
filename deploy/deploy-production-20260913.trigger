@@ -178,3 +178,7 @@ Functional commit: daee946be78d2cdd41da88714a7c99a059dd839d
 
 Deploy OCR IA integrado 2026-09-24 21:39 BRT
 Functional commit: e30ef69539affeab44ffb661c749a0a593862097
+
+
+Deploy OpenAI-only OCR VPORTS fix 2026-09-25
+Functional commit: 7f7b42fc7c40da5e8a66fc7e4c289618c1282b72
