@@ -5,13 +5,18 @@
     ticketBusy.current = true;
     setTicketReading(true);
     setTicketData(null);
+    setTicketImage(null);
     setTicketReadError("");
     setTicketConfirmed(false);
     setTons("");
     setTicketFileName(file.name);
     try {
-      const dados = await lerTicket(file, freightMode, fleet ? { tractorPlate: fleet.tractorPlate, trailerPlate: fleet.trailerPlate } : undefined);
+      const [dados, imageData] = await Promise.all([
+        lerTicket(file, freightMode, fleet ? { tractorPlate: fleet.tractorPlate, trailerPlate: fleet.trailerPlate } : undefined),
+        ticketImageToDataUrl(file),
+      ]);
       setTicketData(dados);
+      setTicketImage(imageData);
       if (freightMode === "ton" && dados.peso_liquido_kg != null && dados.peso_liquido_kg > 0) {
         setTons(new Intl.NumberFormat("pt-BR", {
           minimumFractionDigits: 3,
@@ -25,6 +30,7 @@
       else toast.success("Ticket lido. Confira os dados antes de lançar.");
     } catch (error) {
       setTicketData(null);
+      setTicketImage(null);
       const message = error instanceof Error ? error.message : "Não foi possível ler o ticket.";
       setTicketReadError(message);
       toast.error(message);
