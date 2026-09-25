@@ -220,7 +220,9 @@ async function processMessage(item: any, fullPayload: any) {
   const allowedGroups = (process.env.WHATSAPP_ALLOWED_GROUP_IDS || "")
     .split(",").map((id) => id.trim()).filter(Boolean);
   if (item.groupId && allowedGroups.length > 0 && !allowedGroups.includes(item.groupId)) {
-    const explicitlyMapped = await findDriverForGroup(item.groupId);
+    const explicitlyMapped =
+      (await findDriverForGroup(item.groupId)) ||
+      (await resolvePendingInviteClaim(item.groupId));
     if (!explicitlyMapped) {
       await markPending(auditId, "pending_group_authorization");
       return { ok: true, status: "pending_group_authorization", id: auditId };
@@ -418,6 +420,56 @@ async function bindGroupToDriver(groupId: string, driver: Row, source: string) {
   `;
 }
 
+async function resolvePendingInviteClaim(groupId: string | null) {
+  if (!groupId) return null;
+  const token = process.env.WHATSAPP_ACCESS_TOKEN?.trim() || "";
+  const rawVersion = process.env.WHATSAPP_GRAPH_VERSION?.trim() || "v23.0";
+  const version = rawVersion.startsWith("v") ? rawVersion : "v" + rawVersion;
+  if (!token) return null;
+
+  // Ask Meta for this group's current invite link first. If the account cannot
+  // see the group, no database claim is touched.
+  let inviteCode = "";
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/${version}/${encodeURIComponent(groupId)}/invite_link`,
+      {
+        signal: AbortSignal.timeout(10_000),
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      },
+    );
+    if (!response.ok) return null;
+    const body: any = await response.json().catch(() => ({}));
+    const link = String(body?.invite_link || body?.link || "");
+    if (!link) return null;
+    inviteCode = new URL(link).pathname.split("/").filter(Boolean).at(-1) || "";
+  } catch {
+    return null;
+  }
+  if (!inviteCode) return null;
+
+  const sql = await getSql();
+  const claims = await sql<Row>`
+    select c.invite_code,c.driver_id,d.*
+    from whatsapp_group_invite_claims c
+    join drivers d on d.id=c.driver_id
+    where c.invite_code=${inviteCode}
+      and c.status='pending'
+      and d.status='ativo'
+    limit 1
+  `;
+  const claim = claims[0] || null;
+  if (!claim) return null;
+
+  await bindGroupToDriver(groupId, claim, "manual_invite_link");
+  await sql`
+    update whatsapp_group_invite_claims
+    set status='resolved',group_id=${groupId},resolved_at=now()
+    where invite_code=${inviteCode}
+  `;
+  return claim;
+}
+
 async function resolveDriverForMessage(item: any) {
   const groupId = item.groupId || null;
 
@@ -425,6 +477,11 @@ async function resolveDriverForMessage(item: any) {
   // regardless of which authorized participant forwards the photo.
   const persisted = await findDriverForGroup(groupId);
   if (persisted) return persisted;
+
+  // Explicit invite claims registered by management are resolved through Meta
+  // before any sender-phone auto-learning is attempted.
+  const claimed = await resolvePendingInviteClaim(groupId);
+  if (claimed) return claimed;
 
   // Explicit environment mapping has priority for first-time group setup.
   const configured = configuredGroupDriver(groupId);

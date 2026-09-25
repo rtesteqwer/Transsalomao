@@ -11,6 +11,7 @@ const copies = [
   ['whatsapp-v1/0014_whatsapp_group_context.sql', 'migrations/0014_whatsapp_group_context.sql'],
   ['whatsapp-v1/0018_whatsapp_group_drivers.sql', 'migrations/0018_whatsapp_group_drivers.sql'],
   ['whatsapp-v1/0019_whatsapp_group_driver_backfill.sql', 'migrations/0019_whatsapp_group_driver_backfill.sql'],
+  ['whatsapp-v1/0020_whatsapp_group_invite_claims.sql', 'migrations/0020_whatsapp_group_invite_claims.sql'],
   ['whatsapp-v1/bind-murillo-group-invite.mjs', 'scripts/bind-murillo-group-invite.mjs'],
 ];
 
