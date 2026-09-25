@@ -50,11 +50,16 @@ jobs:
           const text = fs.readFileSync(".vercel/.env.production.local", "utf8");
           const line = text.split(/\r?\n/).find((row) => row.startsWith("OPENAI_API_KEY="));
           const raw = line ? line.slice("OPENAI_API_KEY=".length).trim().replace(/^["']|["']$/g, "") : "";
-          if (!raw || raw.length < 20) {
-            console.error("OPENAI_API_KEY_MISSING_OR_EMPTY");
+          if (!line || !raw) {
+            console.error("OPENAI_API_KEY_MISSING");
             process.exit(1);
           }
-          console.log("OPENAI_API_KEY_CONFIGURED");
+          if (raw === "[SENSITIVE]" || raw.length >= 20) {
+            console.log("OPENAI_API_KEY_CONFIGURED");
+            process.exit(0);
+          }
+          console.error("OPENAI_API_KEY_INVALID_PLACEHOLDER");
+          process.exit(1);
           NODE
 
       - name: Deploy production
