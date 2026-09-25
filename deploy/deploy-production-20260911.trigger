@@ -6,3 +6,4 @@ fix-log-ticket-field-routing-2026-09-25
 fix-log-ticket-regex-escaping-2026-09-25
 chatgpt-ticket-whatsapp-2026-09-25
 backfill-whatsapp-group-drivers-2026-09-25
+authorize-explicit-whatsapp-group-2026-09-25
