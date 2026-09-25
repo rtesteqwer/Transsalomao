@@ -427,16 +427,8 @@ async function resolvePendingInviteClaim(groupId: string | null) {
   const version = rawVersion.startsWith("v") ? rawVersion : "v" + rawVersion;
   if (!token) return null;
 
-  const sql = await getSql();
-  const claims = await sql<Row>`
-    select c.invite_code,c.driver_id,d.*
-    from whatsapp_group_invite_claims c
-    join drivers d on d.id=c.driver_id
-    where c.status='pending' and d.status='ativo'
-    order by c.created_at
-  `;
-  if (!claims.length) return null;
-
+  // Ask Meta for this group's current invite link first. If the account cannot
+  // see the group, no database claim is touched.
   let inviteCode = "";
   try {
     const response = await fetch(
@@ -456,7 +448,17 @@ async function resolvePendingInviteClaim(groupId: string | null) {
   }
   if (!inviteCode) return null;
 
-  const claim = claims.find((row) => String(row.invite_code || "") === inviteCode);
+  const sql = await getSql();
+  const claims = await sql<Row>`
+    select c.invite_code,c.driver_id,d.*
+    from whatsapp_group_invite_claims c
+    join drivers d on d.id=c.driver_id
+    where c.invite_code=${inviteCode}
+      and c.status='pending'
+      and d.status='ativo'
+    limit 1
+  `;
+  const claim = claims[0] || null;
   if (!claim) return null;
 
   await bindGroupToDriver(groupId, claim, "manual_invite_link");
