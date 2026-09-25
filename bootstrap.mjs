@@ -154,6 +154,12 @@ if (!original.includes("apply-caixa-ticket-prefill-20260925.mjs")) {
   original = original.replace(dailyMarker, `const caixaTicketPrefill = path.join(repo, 'render-overrides', 'apply-caixa-ticket-prefill-20260925.mjs');\nif (!fs.existsSync(caixaTicketPrefill)) throw new Error('Missing Caixa ticket prefill patch');\nexecFileSync(process.execPath, [caixaTicketPrefill, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Padroniza todos os Excel por data da viagem, modalidade e cor, por último para não ser sobrescrito.
+if (!original.includes("apply-excel-date-mode-style-20260925.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de padronização dos Excel não encontrado');
+  original = original.replace(dailyMarker, `const excelDateModeStyle = path.join(repo, 'render-overrides', 'apply-excel-date-mode-style-20260925.mjs');\nif (!fs.existsSync(excelDateModeStyle)) throw new Error('Missing Excel date/mode style patch');\nexecFileSync(process.execPath, [excelDateModeStyle, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
