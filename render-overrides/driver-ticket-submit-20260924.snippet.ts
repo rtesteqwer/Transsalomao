@@ -1,5 +1,6 @@
     if (ticketBusy.current) return;
     if (ticketFileName && !ticketData) return toast.error("A foto foi selecionada, mas não foi lida. Tente ler novamente ou remova a foto para lançar manualmente.");
+    if (ticketData && !ticketImage) return toast.error("A foto foi lida, mas não ficou pronta para arquivamento. Selecione a foto novamente.");
     if (ticketData && !ticketConfirmed) return toast.error("Confirme a conferência dos dados do ticket.");
     ticketBusy.current = true;
     setTicketSending(true);
@@ -22,6 +23,8 @@
           freightMode,
           dailyValue: freightMode === "trip" ? (dailyValueN ?? 0) : 0,
           km_carreta: Number.parseInt(kmCarreta.replace(/\D/g, ""), 10) || 0,
+          imagem: ticketImage ?? undefined,
+          fileName: ticketFileName || "ticket.jpg",
         });
         firstTicket = saved.ticket;
         sentCount = 1;
@@ -47,6 +50,7 @@
       setTons("");
       setDailyValue("");
       setTicketData(null);
+      setTicketImage(null);
       setTicketConfirmed(false);
       await queryClient.invalidateQueries({ queryKey: fleetKey });
       setTicketFileName("");
