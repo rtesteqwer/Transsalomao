@@ -94,6 +94,21 @@ Dados Motorista`;
   assert.equal(d.transportadora, 'Multilift Logística Ltda');
 });
 
+test('Multilift fallback replaces short carrier garbage and completes fleet pair from one observed plate', () => {
+  const noisy = `MULTILAFT LOGISTICA LTDA
+TICKET DE PESAGEM 0534063
+Carreta Veic/Cavalo NAVIO
+MOQP-SD98 PACIFIC VIRTUE
+Transportadora
+TAM P
+Peso Liquido`;
+  const d = parseTicketOcr(noisy, 'ton', { tractorPlate: 'OVH4J13', trailerPlate: 'MQP5D98' });
+  assert.equal(d.transportadora, 'Multilift Logística Ltda');
+  assert.equal(d.placa_carreta, 'MQP5D98');
+  assert.equal(d.placa_veiculo, 'OVH4J13');
+  assert(d.alertas.some(a => a.includes('conjunto selecionado')));
+});
+
 test('VPORTS report companies use their own blocks, including inverted CNPJ labels', () => {
   const d = parseTicketOcr('Número Ticket: 0024090\nPlaca Carreta: FYW7J05\nPlaca Veículo: QWS3E13\nPesagem Inicial: 54270 kg\nPesagem Final: 18460 kg\nPeso Líquido: 35810 kg\nTransportadora\nCNPJ: 49544417000104\nRazão Social: RAS TRANSPORTES E SERVICOS LTDA\nDestinatário\nCNPJ: VPORTS AUTORIDADE PORTUARIA\nRazão Social: 27316538000409', 'ton');
   assert.equal(d.numero_ticket, '0024090'); assert.equal(d.peso_liquido_kg, 35810);
@@ -119,9 +134,47 @@ test('non-ton modes suppress all weights while preserving ticket and company rol
   }
 });
 
-test('incomplete vision triggers focused second read without replacing valid first-read fields', async () => {
-  const before = globalThis.fetch; let calls = 0;
+test('Anthropic vision is used before local OCR when configured', async () => {
+  const beforeFetch = globalThis.fetch;
+  const beforeKey = process.env.ANTHROPIC_API_KEY;
+  const beforeModel = process.env.CLAUDE_MODEL;
   try {
+    process.env.ANTHROPIC_API_KEY = 'anthropic-test-key';
+    process.env.CLAUDE_MODEL = 'claude-test-model';
+    globalThis.fetch = async (url, options) => {
+      assert.match(String(url), /api\.anthropic\.com\/v1\/messages/);
+      const body = JSON.parse(options.body);
+      assert.equal(body.model, 'claude-test-model');
+      assert.equal(options.headers['x-api-key'], 'anthropic-test-key');
+      return Response.json({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: JSON.stringify({
+          numero_ticket: '0534063',
+          peso_liquido_kg: 23510,
+          placa_veiculo: 'OVH4J13',
+          placa_carreta: 'MQP5D98',
+          transportadora: 'Multilift Logística Ltda',
+          navio: 'PACIFIC VIRTUE'
+        }) }]
+      });
+    };
+    const d = await readTicketWithSalomaoIA(null, { mime:'image/jpeg', base64:'test' }, 'ton');
+    assert.equal(d.numero_ticket, '0534063');
+    assert.equal(d.peso_liquido_kg, 23510);
+    assert.equal(d.placa_veiculo, 'OVH4J13');
+    assert.equal(d.placa_carreta, 'MQP5D98');
+    assert.equal(d.transportadora, 'Multilift Logística Ltda');
+  } finally {
+    globalThis.fetch = beforeFetch;
+    if (beforeKey == null) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = beforeKey;
+    if (beforeModel == null) delete process.env.CLAUDE_MODEL; else process.env.CLAUDE_MODEL = beforeModel;
+  }
+});
+
+test('incomplete vision triggers focused second read without replacing valid first-read fields', async () => {
+  const before = globalThis.fetch; const beforeAnthropic = process.env.ANTHROPIC_API_KEY; let calls = 0;
+  try {
+    delete process.env.ANTHROPIC_API_KEY;
     globalThis.fetch = async (_url, options) => {
       const body = JSON.parse(options.body); calls++;
       assert.equal(body.store, false); assert.equal(body.text.format.type, 'json_object');
@@ -132,12 +185,16 @@ test('incomplete vision triggers focused second read without replacing valid fir
     const d = await readTicketWithSalomaoIA(null, { mime:'image/jpeg', base64:'test' }, 'ton');
     assert.equal(calls,2); assert.equal(d.numero_ticket,'72416'); assert.equal(d.peso_liquido_kg,38470);
     assert.equal(d.placa_veiculo,'NZE8I52'); assert.deepEqual(d.campos_ausentes,[]);
-  } finally { globalThis.fetch = before; }
+  } finally {
+    globalThis.fetch = before;
+    if (beforeAnthropic == null) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = beforeAnthropic;
+  }
 });
 
 test('rejected credentials, network errors and malformed JSON all enable local OCR safely', async () => {
-  const before = globalThis.fetch;
+  const before = globalThis.fetch; const beforeAnthropic = process.env.ANTHROPIC_API_KEY;
   try {
+    delete process.env.ANTHROPIC_API_KEY;
     for (const mock of [
       async () => Response.json({error:{message:'secret-test-value'}},{status:401}),
       async () => { throw new TypeError('network failed'); },
@@ -146,7 +203,10 @@ test('rejected credentials, network errors and malformed JSON all enable local O
       globalThis.fetch = mock;
       await assert.rejects(() => readTicketWithSalomaoIA(null,{mime:'image/jpeg',base64:'test'},'ton'), e => e instanceof SalomaoVisionUnavailable && e.ocrFallback && !e.message.includes('secret-test-value'));
     }
-  } finally { globalThis.fetch = before; }
+  } finally {
+    globalThis.fetch = before;
+    if (beforeAnthropic == null) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = beforeAnthropic;
+  }
 });
 
 test('unknown plates and unobserved fleet values are never invented', () => {

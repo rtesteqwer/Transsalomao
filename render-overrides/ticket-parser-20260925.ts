@@ -171,13 +171,22 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   const trailer = labeledPlate("PLACA\\s+(?:DA\\s+)?CARRETA|CARRETA|REBOQUE");
   const headerCompany = /MULTIL[IA]FT\s+LOGISTICA\s+LTDA/.test(joined) ? "Multilift Logística Ltda" : null;
   let transportadora = company("TRANSPORTADORA|TRANSP\\.");
-  if (model === "multilift" && headerCompany && (!transportadora || transportadora.length <= 4 || /MULTIL/.test(folded(transportadora)))) {
+  if (model === "multilift" && headerCompany && (!transportadora || transportadora.length <= 10 || /MULTIL/.test(folded(transportadora)))) {
     transportadora = headerCompany;
   }
   let vehicleFromOcr = vehicle;
   let trailerFromOcr = trailer;
   if (!vehicleFromOcr && tractorFromEvidence && plateSeenApproximately(raw, tractorFromEvidence)) vehicleFromOcr = tractorFromEvidence;
   if (!trailerFromOcr && trailerFromEvidence && plateSeenApproximately(raw, trailerFromEvidence)) trailerFromOcr = trailerFromEvidence;
+  const contextualPlateAlerts: string[] = [];
+  if (model === "multilift" && trailerFromOcr && trailerFromEvidence && trailerFromOcr === trailerFromEvidence && !vehicleFromOcr && tractorFromEvidence) {
+    vehicleFromOcr = tractorFromEvidence;
+    contextualPlateAlerts.push("Placa do veículo confirmada pelo conjunto selecionado após a carreta ser reconhecida no ticket.");
+  }
+  if (model === "multilift" && vehicleFromOcr && tractorFromEvidence && vehicleFromOcr === tractorFromEvidence && !trailerFromOcr && trailerFromEvidence) {
+    trailerFromOcr = trailerFromEvidence;
+    contextualPlateAlerts.push("Placa da carreta confirmada pelo conjunto selecionado após o veículo ser reconhecido no ticket.");
+  }
   const data = {
     numero_ticket: numero, model_type: model,
     status: field("STATUS"), placa_veiculo: vehicleFromOcr, placa_carreta: trailerFromOcr, placas_detectadas: detected,
@@ -193,7 +202,7 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     pesagem_inicial_kg: mode === "ton" ? readWeight("PESO\\s+LIQUIDO\\s+DE\\s+ENTRADA|PESO\\s+ENTRADA|PESO\\s+BRUTO|BRUTO|PESAGEM\\s+INICIAL") : null,
     pesagem_final_kg: mode === "ton" ? readWeight("PESO\\s+LIQUIDO\\s+DE\\s+SAIDA|PESO\\s+SAIDA|PESO\\s+TARA|TARA|PESAGEM\\s+FINAL") : null,
     peso_liquido_kg: mode === "ton" ? readWeight("(?:PESO\\s+)?LIQUI(?:DO)?(?!\\s+(?:DE\\s+)?(?:ENTRADA|SAIDA))") : null,
-    alertas: ["Leitura feita pelo OCR local da Salomão IA. Confira os dados com a foto antes de lançar."],
+    alertas: ["Leitura feita pelo OCR local da Salomão IA. Confira os dados com a foto antes de lançar.", ...contextualPlateAlerts],
   };
   if (mode === "ton" && model === "multilift" && data.peso_liquido_kg == null) {
     const netIndex = lines.findIndex(line => /^PESO\s+LIQ/i.test(folded(line)) || /^LIQ/i.test(folded(line)));
