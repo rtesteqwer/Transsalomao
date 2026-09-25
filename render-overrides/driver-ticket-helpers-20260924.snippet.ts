@@ -60,8 +60,34 @@ async function ocrTicketLocal(file: File) {
         const block = await worker.recognize(canvas);
         text += "\n" + String(block?.data?.text || "");
 
-        // Only spend a third OCR pass when the first two passes still missed
-        // several of the fields that are important to a trip.
+        // Long weigh tickets often keep the small plate row near the top and
+        // the net-weight box in the lower half. Whole-page OCR can see the labels
+        // but miss the values, so run two broad overlapping bands at higher scale.
+        // These are intentionally wide bands, not vendor-specific pixel crops.
+        if (img.naturalHeight > img.naturalWidth * 1.15) {
+          const recognizeBand = async (topRatio: number, bottomRatio: number) => {
+            const sy = Math.max(0, Math.floor(img.naturalHeight * topRatio));
+            const sh = Math.max(1, Math.floor(img.naturalHeight * (bottomRatio - topRatio)));
+            const sourceWidth = img.naturalWidth;
+            const scaleBand = Math.min(3.2, 2600 / Math.max(1, sourceWidth));
+            const band = document.createElement("canvas");
+            band.width = Math.max(1, Math.round(sourceWidth * scaleBand));
+            band.height = Math.max(1, Math.round(sh * scaleBand));
+            const bctx = band.getContext("2d");
+            if (!bctx) return "";
+            bctx.fillStyle = "#fff";
+            bctx.fillRect(0, 0, band.width, band.height);
+            bctx.filter = "grayscale(1) contrast(2)";
+            bctx.drawImage(img, 0, sy, sourceWidth, sh, 0, 0, band.width, band.height);
+            await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.SINGLE_BLOCK });
+            const bandResult = await worker.recognize(band);
+            return String(bandResult?.data?.text || "");
+          };
+
+          text += "\n" + await recognizeBand(0.00, 0.52);
+          text += "\n" + await recognizeBand(0.36, 0.82);
+        }
+
         const cues = (text.match(/(?:TICKET|TIQUETE|PESO|LIQ|PLACA|CARRETA|VEIC|TRANSPORTADORA)/gi) || []).length;
         if (cues < 5) {
           await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.SPARSE_TEXT });
