@@ -87,3 +87,6 @@ Commit: 9190f393928c7649cf8ed27fe4fae1b07459a5fb
 
 Publish structured OCR fallback update
 Commit: 2f678127c267ad19d14415de749747d2ab078203
+
+Publish trained ticket layouts
+Commit: b00c62defe6c73c617ed183933343db2f065f82c
