@@ -186,3 +186,5 @@ Functional commit: 7f7b42fc7c40da5e8a66fc7e4c289618c1282b72
 Retry OpenAI-only OCR deploy after OPENAI_API_KEY setup 2026-09-25
 
 Retry production deploy with masked-secret verification 2026-09-25
+
+Manual publish retry 2026-09-25 07:24 BRT
