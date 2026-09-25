@@ -230,7 +230,7 @@ export async function saveTicket(
         current_date, ${freightMode}, ${tons}, 'pendente', ${photo?.fileName || "ticket.jpg"},
         ${photo?.mime || "image/jpeg"}, ${photo?.imageData || null}, ${createdBy}
       from saved_ticket
-      where ${photoId} is not null
+      where ${photoId}::text is not null
       returning id
     )
     select t.id, t.report_id from saved_ticket t join saved_report r on r.id=t.report_id
