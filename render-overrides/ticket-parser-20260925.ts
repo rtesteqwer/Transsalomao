@@ -152,20 +152,20 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
       if (!hit) continue;
       let value = lines[i].slice((hit.index || 0) + hit[0].length).trim();
       if (!value && lines[i + 1] && !isLabel(lines[i + 1])) value = lines[i + 1];
-      value = value.replace(/^\\d+\\s*[-–]\\s*/, "").trim();
-      if (value && !/^(CNPJ|RAZAO SOCIAL)\\b/.test(folded(value)) && /[A-Za-zÀ-ÿ]/.test(value)) candidates.push(value.slice(0, 200));
+      value = value.replace(/^\d+\s*[-–]\s*/, "").trim();
+      if (value && !/^(CNPJ|RAZAO SOCIAL)\b/.test(folded(value)) && /[A-Za-zÀ-ÿ]/.test(value)) candidates.push(value.slice(0, 200));
 
       for (const line of lines.slice(i + 1, i + 6)) {
         const u = folded(line);
-        if (/^(DESTINATARIO|REMETENTE|TRANSPORTADORA|NUMERO NF|MOTORISTA|PESAGEM)\\b/.test(u)) break;
-        const block = u.match(/^(?:RAZAO\\s+SOCIAL|CNPJ|NOME)[\\s.:\\-]*/);
+        if (/^(DESTINATARIO|REMETENTE|TRANSPORTADORA|NUMERO NF|MOTORISTA|PESAGEM)\b/.test(u)) break;
+        const block = u.match(/^(?:RAZAO\s+SOCIAL|CNPJ|NOME)[\s.:\-]*/);
         if (!block) continue;
         const candidate = line.slice(block[0].length).trim();
         if (/[A-Za-zÀ-ÿ]/.test(candidate)) candidates.push(candidate.slice(0, 200));
       }
     }
     if (!candidates.length) return null;
-    const cleaned = candidates.map(v => v.replace(/[|]+/g, " ").replace(/\\s+/g, " ").trim());
+    const cleaned = candidates.map(v => v.replace(/[|]+/g, " ").replace(/\s+/g, " ").trim());
     cleaned.sort((a, b) => {
       const score = (v: string) => (v.match(/[A-Za-zÀ-ÿ]/g)?.length || 0) * 2 + Math.min(v.length, 80);
       return score(b) - score(a);
