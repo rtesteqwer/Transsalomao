@@ -121,3 +121,6 @@ Commit: 55750d128e8ce11e6583a5277b518af2a3b7b8d4
 
 Retry OCR-only publication after fuzzy plate fix — 2026-09-25
 Commit: 806685278f527e3e8e874f226eb362f2fa482c86
+
+Retry OCR-only deployment after plate evidence test fix — 2026-09-25
+Commit: 2d5628e0ecdf66d8177908cdea2b02265e52c7a2
