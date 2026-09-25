@@ -120,8 +120,8 @@ test('Messages for another business number cannot be ingested', async () => {
   assert.equal(api.audit.size, 0);
 });
 
-test('A group must be selected before its messages reach AI', async () => {
-  const api = fixture({ drivers: [driver] });
+test('An explicit group allowlist still blocks groups that were not selected', async () => {
+  const api = fixture({ drivers: [driver], env: { WHATSAPP_ALLOWED_GROUP_IDS: 'selected-group' } });
   await api.receiveWebhook(signed(payload({ groupId: 'unselected-group' })));
   assert.equal([...api.audit.values()][0].status, 'pending_group_authorization');
   assert.equal(api.aiCalls(), 0);
