@@ -116,6 +116,11 @@ export function parseTicketResponse(text: string, mode: TicketFreightMode = "ton
   catch (error) { if (error instanceof TicketError) throw error; throw new TicketError(502, "A leitura ficou incompleta. Tente outra foto."); }
 }
 
+function safeFileName(value: unknown) {
+  const clean = String(value ?? "ticket.jpg").replace(/[^A-Za-z0-9._ -]/g, "_").trim().slice(0, 120);
+  return clean || "ticket.jpg";
+}
+
 export function validateSave(body: Record<string, unknown>) {
   if (body.conferido !== true) throw new TicketError(400, "Confirme a conferência do ticket antes de lançar.");
   const freightMode = normalizeFreightMode(body.freightMode);
@@ -139,11 +144,30 @@ export function validateSave(body: Record<string, unknown>) {
   if (typeof km !== "number" || !Number.isSafeInteger(km) || km < 0 || km > MAX_INTEGER) throw new TicketError(400, "Informe uma quilometragem válida.");
   const dailyValueRaw = freightMode === "trip" ? Number(body.dailyValue ?? 0) : 0;
   if (!Number.isFinite(dailyValueRaw) || dailyValueRaw < 0 || dailyValueRaw > 100_000_000) throw new TicketError(400, "Informe um valor de diária válido.");
-  return { ticket: { ...ticket, numero_ticket: numero }, driverId, fleetId, km, tons, dailyValue: dailyValueRaw, freightMode };
+
+  const photo = body.imagem ? validateImage(body) : null;
+  return {
+    ticket: { ...ticket, numero_ticket: numero },
+    driverId,
+    fleetId,
+    km,
+    tons,
+    dailyValue: dailyValueRaw,
+    freightMode,
+    photo: photo ? {
+      mime: photo.mime,
+      imageData: `data:${photo.mime};base64,${photo.base64}`,
+      fileName: safeFileName(body.fileName),
+    } : null,
+  };
 }
 
-export async function saveTicket(sql: Sql, data: ReturnType<typeof validateSave>) {
-  const { ticket: d, driverId, fleetId, km, tons, dailyValue, freightMode } = data;
+export async function saveTicket(
+  sql: Sql,
+  data: ReturnType<typeof validateSave>,
+  meta: { createdBy?: string } = {},
+) {
+  const { ticket: d, driverId, fleetId, km, tons, dailyValue, freightMode, photo } = data;
   const [drivers, fleets] = await Promise.all([
     sql<{ name: string; status: string }>`select name,status from drivers where id=${driverId} limit 1`,
     sql<{ status: string }>`select status from fleets where id=${fleetId} limit 1`,
@@ -151,6 +175,8 @@ export async function saveTicket(sql: Sql, data: ReturnType<typeof validateSave>
   if (drivers[0]?.status !== "ativo") throw new TicketError(400, "Motorista inválido ou inativo.");
   if (fleets[0]?.status !== "ativo") throw new TicketError(400, "Conjunto inválido ou inativo.");
   const reportId = `rep_${crypto.randomUUID().replace(/-/g, "")}`;
+  const photoId = photo ? `ticket_photo_${crypto.randomUUID().replace(/-/g, "")}` : null;
+  const createdBy = String(meta.createdBy || drivers[0].name || "Motorista").slice(0, 200);
 
   const rows = await sql<{ id: number; report_id: string }>`
     with saved_ticket as (
@@ -168,9 +194,28 @@ export async function saveTicket(sql: Sql, data: ReturnType<typeof validateSave>
       insert into reports (id, ticket, driver_id, fleet_id, km, tons, daily_value, freight_mode, status)
       select report_id, ${d.numero_ticket}, ${driverId}, ${fleetId}, ${km}, ${tons}, ${dailyValue}, ${freightMode}, 'pendente'
       from saved_ticket returning id
+    ), saved_photo as (
+      insert into trip_ticket_photos
+        (id, relation_type, relation_id, trip_code, driver_id, driver_name, fleet_id, fleet_name,
+         trip_date, freight_mode, net_weight, report_status, file_name, mime_type, image_data, created_by)
+      select
+        ${photoId}, 'report', report_id, ${d.numero_ticket}, ${driverId}, ${drivers[0].name}, ${fleetId}, null,
+        current_date, ${freightMode}, ${tons}, 'pendente', ${photo?.fileName || "ticket.jpg"},
+        ${photo?.mime || "image/jpeg"}, ${photo?.imageData || null}, ${createdBy}
+      from saved_ticket
+      where ${photoId} is not null
+      returning id
     )
     select t.id, t.report_id from saved_ticket t join saved_report r on r.id=t.report_id
   `;
   if (!rows[0]) throw new TicketError(409, `Ticket ${d.numero_ticket} já foi lançado.`);
-  return { ok: true, id: rows[0].id, reportId: rows[0].report_id, ticket: d.numero_ticket, tons, freightMode };
+  return {
+    ok: true,
+    id: rows[0].id,
+    reportId: rows[0].report_id,
+    ticket: d.numero_ticket,
+    tons,
+    freightMode,
+    photoId,
+  };
 }
