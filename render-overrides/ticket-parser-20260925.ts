@@ -41,7 +41,8 @@ function plateSeenApproximately(raw: string, expected: string | null) {
         candidate += chunks[end].replace(/[^A-Z0-9]/g, "");
         if (candidate.length < 5) continue;
         if (candidate.length > 9) break;
-        if (candidate.slice(0, 3) !== expected.slice(0, 3)) continue;
+        if (candidate[0] !== expected[0]) continue;
+        if (candidate.slice(0, 3) !== expected.slice(0, 3) && candidate.slice(-2) !== expected.slice(-2)) continue;
         if (editDistance(candidate, expected) <= 2) return true;
       }
     }
@@ -64,7 +65,7 @@ export function finishTicketReading(value: unknown, mode: TicketFreightMode, fle
   const detected = d.placas_detectadas || [];
   const tractor = plate(fleet.tractorPlate), trailer = plate(fleet.trailerPlate);
   const near = (candidate: string | null, expected: string | null, max = 2) =>
-    !!candidate && !!expected && candidate.slice(0, 3) === expected.slice(0, 3) && editDistance(candidate, expected) <= max;
+    !!candidate && !!expected && candidate[0] === expected[0] && (candidate.slice(0, 3) === expected.slice(0, 3) || candidate.slice(-2) === expected.slice(-2)) && editDistance(candidate, expected) <= max;
 
   if (tractor && near(d.placa_veiculo, tractor, 2) && d.placa_veiculo !== tractor) {
     d.placa_veiculo = tractor;
