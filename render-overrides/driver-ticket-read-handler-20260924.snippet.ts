@@ -11,10 +11,13 @@
     setTons("");
     setTicketFileName(file.name);
     try {
-      const [dados, imageData] = await Promise.all([
-        lerTicket(file, freightMode, fleet ? { tractorPlate: fleet.tractorPlate, trailerPlate: fleet.trailerPlate } : undefined),
-        ticketImageToDataUrl(file),
-      ]);
+      const imageData = await ticketImageToDataUrl(file);
+      const dados = await lerTicket(
+        imageData,
+        freightMode,
+        fleet ? { tractorPlate: fleet.tractorPlate, trailerPlate: fleet.trailerPlate } : undefined,
+        file.name,
+      );
       setTicketData(dados);
       setTicketImage(imageData);
       if (freightMode === "ton" && dados.peso_liquido_kg != null && dados.peso_liquido_kg > 0) {
