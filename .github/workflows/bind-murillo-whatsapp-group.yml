@@ -1,0 +1,52 @@
+name: Bind Murillo WhatsApp Group
+
+on:
+  push:
+    paths:
+      - 'deploy/bind-murillo-whatsapp-group.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  bind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install PostgreSQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+
+      - name: Link production project and pull environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+          test -f .vercel/.env.production.local
+
+      - name: Bind invite to Murillo Rocha Garcia
+        shell: bash
+        env:
+          TARGET_WHATSAPP_INVITE_URL: 'https://chat.whatsapp.com/EDDKxm4IZ7VFFVFhCP88rf?s=cl&p=a&mlu=4&ilr=4'
+          TARGET_DRIVER_NAME: 'Murillo Rocha Garcia'
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          node scripts/bind-whatsapp-group-invite.mjs
