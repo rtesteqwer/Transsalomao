@@ -148,6 +148,12 @@ if (!original.includes("apply-release-fixes-20260925.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-release-fixes-20260925.mjs'), work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Preenche o formulário de fechamento da Caixa com os dados captados da foto do ticket.
+if (!original.includes("apply-caixa-ticket-prefill-20260925.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de preenchimento automático da Caixa não encontrado');
+  original = original.replace(dailyMarker, `const caixaTicketPrefill = path.join(repo, 'render-overrides', 'apply-caixa-ticket-prefill-20260925.mjs');\nif (!fs.existsSync(caixaTicketPrefill)) throw new Error('Missing Caixa ticket prefill patch');\nexecFileSync(process.execPath, [caixaTicketPrefill, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
