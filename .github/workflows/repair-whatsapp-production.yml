@@ -48,7 +48,7 @@ jobs:
           check WHATSAPP_VERIFY_TOKEN "$WA_VERIFY_TOKEN"
 
           missing=0
-          for value in "$WA_ACCESS_TOKEN" "$WA_PHONE_ID" "$WA_APP_SECRET"; do
+          for value in "$WA_ACCESS_TOKEN" "$WA_APP_SECRET"; do
             [ -n "$value" ] || missing=1
           done
           echo "core_missing=$missing" >> "$GITHUB_OUTPUT"
@@ -66,6 +66,85 @@ jobs:
           if [ -z "$WA_GRAPH_VERSION" ]; then
             echo "WA_GRAPH_VERSION=v23.0" >> "$GITHUB_ENV"
           fi
+
+      - name: Discover WABA and phone ID when not preconfigured
+        if: steps.diag.outputs.core_missing == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$WA_GRAPH_VERSION"
+          [[ "$version" == v* ]] || version="v$version"
+          target_digits="5527996176320"
+
+          if [ -n "$WA_WABA_ID" ] && [ -n "$WA_PHONE_ID" ]; then
+            echo "WHATSAPP_ASSETS=PRECONFIGURED"
+            exit 0
+          fi
+
+          curl -fsS -H "Authorization: Bearer $WA_ACCESS_TOKEN" \
+            "https://graph.facebook.com/$version/me/businesses?fields=id,name&limit=100" > /tmp/businesses.json || {
+              echo "WHATSAPP_ASSET_DISCOVERY=FAILED_BUSINESS_LIST"
+              echo "Add WHATSAPP_WABA_ID and WHATSAPP_PHONE_NUMBER_ID as GitHub Actions secrets, or use an access token with business_management."
+              exit 1
+            }
+
+          node <<'NODE' > /tmp/business_ids.txt
+          const fs=require("fs");
+          const j=JSON.parse(fs.readFileSync("/tmp/businesses.json","utf8"));
+          for(const x of Array.isArray(j.data)?j.data:[]) if(x?.id) console.log(x.id);
+NODE
+
+          : > /tmp/waba_ids.txt
+          while IFS= read -r business; do
+            [ -n "$business" ] || continue
+            for edge in owned_whatsapp_business_accounts client_whatsapp_business_accounts; do
+              curl -sS -H "Authorization: Bearer $WA_ACCESS_TOKEN" \
+                "https://graph.facebook.com/$version/$business/$edge?fields=id,name&limit=100" \
+                -o /tmp/wabas.json || true
+              node <<'NODE' >> /tmp/waba_ids.txt
+              const fs=require("fs");
+              let j={}; try{j=JSON.parse(fs.readFileSync("/tmp/wabas.json","utf8"))}catch{}
+              for(const x of Array.isArray(j.data)?j.data:[]) if(x?.id) console.log(x.id);
+NODE
+            done
+          done < /tmp/business_ids.txt
+          sort -u /tmp/waba_ids.txt -o /tmp/waba_ids.txt
+
+          found_waba=""
+          found_phone=""
+          while IFS= read -r waba; do
+            [ -n "$waba" ] || continue
+            curl -sS -H "Authorization: Bearer $WA_ACCESS_TOKEN" \
+              "https://graph.facebook.com/$version/$waba/phone_numbers?fields=id,display_phone_number,verified_name&limit=100" \
+              -o /tmp/phones.json || true
+            match="$(TARGET_DIGITS="$target_digits" node <<'NODE'
+            const fs=require("fs");
+            let j={}; try{j=JSON.parse(fs.readFileSync("/tmp/phones.json","utf8"))}catch{}
+            const target=process.env.TARGET_DIGITS;
+            for(const x of Array.isArray(j.data)?j.data:[]){
+              const digits=String(x?.display_phone_number||"").replace(/\D/g,"");
+              if(digits===target && x?.id){ console.log(x.id); break; }
+            }
+NODE
+            )"
+            if [ -n "$match" ]; then
+              found_waba="$waba"
+              found_phone="$match"
+              break
+            fi
+          done < /tmp/waba_ids.txt
+
+          if [ -z "$WA_WABA_ID" ]; then WA_WABA_ID="$found_waba"; fi
+          if [ -z "$WA_PHONE_ID" ]; then WA_PHONE_ID="$found_phone"; fi
+          if [ -z "$WA_WABA_ID" ] || [ -z "$WA_PHONE_ID" ]; then
+            echo "WHATSAPP_ASSET_DISCOVERY=NO_EXACT_MATCH_FOR_+55_27_99617_6320"
+            echo "Add WHATSAPP_WABA_ID and WHATSAPP_PHONE_NUMBER_ID as GitHub Actions secrets."
+            exit 1
+          fi
+
+          echo "WA_WABA_ID=$WA_WABA_ID" >> "$GITHUB_ENV"
+          echo "WA_PHONE_ID=$WA_PHONE_ID" >> "$GITHUB_ENV"
+          echo "WHATSAPP_ASSETS=DISCOVERED"
 
       - name: Link Trans Salomao production project
         if: steps.diag.outputs.core_missing == '0'
@@ -190,5 +269,5 @@ jobs:
         shell: bash
         run: |
           echo "WhatsApp Business credentials are not stored in GitHub Actions secrets or Vercel production."
-          echo "Required: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET."
+          echo "Required now: WHATSAPP_ACCESS_TOKEN and WHATSAPP_APP_SECRET. WABA/phone IDs can be auto-discovered when the token has business_management."
           exit 1
