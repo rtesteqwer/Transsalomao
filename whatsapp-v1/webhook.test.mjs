@@ -134,6 +134,17 @@ test('A name in a message cannot authorize an unknown sender', async () => {
   assert.equal(api.aiCalls(), 0);
 });
 
+test('An explicitly mapped group is allowed even when it is not in the legacy allowlist', async () => {
+  const api = fixture({
+    drivers: [driver],
+    env: { WHATSAPP_ALLOWED_GROUP_IDS: 'other-selected-group' },
+  });
+  api.groupDrivers.set('group-test', driver.id);
+  await api.receiveWebhook(signed(payload({ groupId: 'group-test' })));
+  assert.equal(api.aiCalls(), 1);
+  assert.equal([...api.audit.values()][0].status, 'pending_review');
+});
+
 test('First message from a known driver safely binds that WhatsApp group to the driver', async () => {
   const api = fixture({ drivers: [driver], env: { WHATSAPP_ALLOWED_GROUP_IDS: 'group-test' } });
   await api.receiveWebhook(signed(payload({ groupId: 'group-test' })));
