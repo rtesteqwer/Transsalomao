@@ -39,6 +39,12 @@ jobs:
           npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
           test -f .vercel/.env.production.local
 
+      - name: Show production environment variable names only
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' .vercel/.env.production.local | sort
+
       - name: Bind invite to Murillo Rocha Garcia
         shell: bash
         env:
