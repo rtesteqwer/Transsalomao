@@ -99,3 +99,9 @@ Publish verified ticket reader and operational fixes 2026-09-25
 
 Restore current production pipeline after legacy-workflow rollback — 2026-09-25
 Includes Multilift OCR fix commit 24128a51fe9ecad2b548a7393e1493f5f44fb6da
+
+Publish ticket vision fallback on restored current production — 2026-09-25
+Commit: 69d3e0740ea9b0e854e98ab37dcc0422c4ab9d43
+- Prefer Anthropic vision when configured; OpenAI remains fallback
+- Keep local OCR only after both vision providers fail
+- Harden Multilift carrier and selected-fleet plate recovery
