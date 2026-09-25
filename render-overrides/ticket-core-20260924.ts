@@ -8,7 +8,7 @@ export const MAX_IMAGE_BASE64 = 3_500_000;
 const MAX_INTEGER = 2_147_483_647;
 export const freightModes = ["ton", "trip", "cegonha", "caixinha"] as const;
 export type TicketFreightMode = typeof freightModes[number];
-const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "transportadora", "operadora", "contratante", "motorista", "cliente", "destinatario", "navio", "emissor", "operador_pesagem", "item_codigo", "anotacoes_manuscritas"] as const;
+const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "transportadora", "motorista", "cliente", "destinatario", "anotacoes_manuscritas"] as const;
 const weightFields = ["pesagem_inicial_kg", "pesagem_final_kg", "peso_liquido_kg", "peso_origem_kg"] as const;
 export type TicketData = Record<typeof textFields[number], string | null> & Record<typeof weightFields[number], number | null> & { alertas: string[] };
 
@@ -82,21 +82,10 @@ export function normalizeTicket(value: unknown): TicketData {
   for (const key of ["placa_veiculo", "placa_carreta"] as const) result[key] = result[key]?.toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
   for (const key of weightFields) result[key] = kilograms(source[key]);
   result.alertas = Array.isArray(source.alertas) ? source.alertas.filter((x): x is string => typeof x === "string").slice(0, 20).map(x => x.slice(0, 500)) : [];
-  const { pesagem_inicial_kg: ini, pesagem_final_kg: fim } = result;
-  const liqLido = result.peso_liquido_kg;
-  const liqCalculado = ini != null && fim != null ? Math.abs(ini - fim) : null;
-  if (liqCalculado != null && liqCalculado >= 1_000 && liqCalculado <= 100_000) {
-    if (liqLido == null || liqLido < 1_000 || Math.abs(liqLido - liqCalculado) > 100) {
-      result.peso_liquido_kg = liqCalculado;
-      result.alertas.push(`Peso líquido validado pela diferença entre as pesagens: ${liqCalculado} kg.`);
-    }
-  }
+  const { pesagem_inicial_kg: ini, pesagem_final_kg: fim, peso_liquido_kg: liq } = result;
+  if (ini != null && fim != null && liq != null && Math.abs(ini - fim) !== liq) result.alertas.push(`Peso líquido (${liq} kg) diferente das pesagens (${Math.abs(ini - fim)} kg). Confira o valor impresso.`);
   if (!result.numero_ticket) result.alertas.push("Número do ticket não identificado. Confira na foto.");
-  if (result.peso_liquido_kg == null || result.peso_liquido_kg <= 0) result.alertas.push("Peso líquido não identificado com segurança. Confira na foto.");
-  if (!result.placa_veiculo) result.alertas.push("Placa do veículo não identificada com segurança. Confira na foto.");
-  if (!result.placa_carreta) result.alertas.push("Placa da carreta não identificada com segurança. Confira na foto.");
-  if (!result.transportadora) result.alertas.push("Transportadora não identificada com segurança. Confira na foto.");
-  if (!result.destinatario && !result.operadora && !result.contratante) result.alertas.push("Contratante, operadora ou destinatário não identificado com segurança. Confira na foto.");
+  if (liq == null || liq <= 0) result.alertas.push("Peso líquido não identificado com segurança. Confira na foto.");
   return result;
 }
 

@@ -27,13 +27,20 @@ copy("render-overrides/0012_ticket_reader.sql", "migrations/0012_ticket_reader.s
 copy("render-overrides/0015_ticket_safety.sql", "migrations/0015_ticket_safety.sql");
 copy("render-overrides/0016_ticket_modes_metadata.sql", "migrations/0016_ticket_modes_metadata.sql");
 copy("render-overrides/ticket-core-20260924.ts", "src/lib/ticket-core.ts");
-copy("render-overrides/ocr-prompts-20260924.ts", "src/lib/ocr-prompts.ts");
-copy("render-overrides/ocr-service-20260925.server.ts", "src/lib/ocr-service.server.ts");
 copy("render-overrides/ticket-auth-20260924.server.ts", "src/lib/ticket-auth.server.ts");
 copy("render-overrides/ticket-provider-20260924.ts", "src/lib/ticket-provider.server.ts");
 copy("render-overrides/ticket-photo-access-20260924.tsx", "src/components/ticket-photo-access.tsx");
 copy("render-overrides/ticket-meta-api-20260924.ts", "src/routes/api/ticket-meta.ts");
 copy("render-overrides/salomao-ticket-reader-20260924.server.ts", "src/lib/salomao-ticket-reader.server.ts");
+
+// OCR local sob demanda para a Salomão IA quando a visão avançada estiver indisponível.
+{
+  const packagePath = dst("package.json");
+  const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+  pkg.dependencies = pkg.dependencies || {};
+  pkg.dependencies["tesseract.js"] = "^6.0.1";
+  fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
+}
 
 // Use the existing private deployment secret when no dedicated management key is set.
 const authPath = "src/lib/management-auth.server.ts";
@@ -68,6 +75,7 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
     '  const [ticketData, setTicketData] = useState<TicketData | null>(null);\n' +
     '  const [ticketReading, setTicketReading] = useState(false);\n' +
     '  const [ticketFileName, setTicketFileName] = useState("");\n' +
+    '  const [kmCarreta, setKmCarreta] = useState("");\n' +
     '  const [ticketReadError, setTicketReadError] = useState("");\n';
   s = replaceRequired(s, stateMarker, states, "states");
 
@@ -115,16 +123,24 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
     "tons sync",
   );
 
+  const submitButtonMarker = '\n\n          <Button\n            type="submit"';
+  s = replaceRequired(
+    s,
+    submitButtonMarker,
+    "\n\n" + readSource("render-overrides/driver-ticket-km-20260924.snippet.tsx") + '          <Button\n            type="submit"',
+    "km field",
+  );
+
   s = replaceRequired(s, 'import { useEffect, useMemo, useState } from "react";',
     'import { useEffect, useMemo, useRef, useState } from "react";\nimport { useQueryClient } from "@tanstack/react-query";\nimport { TicketPhotoAccess, type PhotoAccess } from "@/components/ticket-photo-access";', "ticket access imports");
   s = replaceRequired(s, 'import { useFleet, useFleetMutations }', 'import { fleetKey, useFleet, useFleetMutations }', "query key");
   s = replaceRequired(s, '  const drivers = (data?.drivers ?? []).filter((d) => d.status === "ativo");',
     '  const [ticketAccess, setTicketAccess] = useState<PhotoAccess | null>(null);\n  const drivers = (data?.drivers ?? []).filter((d) => d.status === "ativo" && (!ticketAccess?.driverId || d.id === ticketAccess.driverId));', "driver scope");
-  s = replaceRequired(s, '  const [ticketReadError, setTicketReadError] = useState("");',
-    '  const [ticketReadError, setTicketReadError] = useState("");\n  const [ticketConfirmed, setTicketConfirmed] = useState(false);\n  const [ticketSending, setTicketSending] = useState(false);\n  const ticketBusy = useRef(false);\n  const queryClient = useQueryClient();\n  useEffect(() => { if (ticketAccess?.driverId) setDriverId(ticketAccess.driverId); }, [ticketAccess?.driverId]);', "ticket state");
+  s = replaceRequired(s, '  const [kmCarreta, setKmCarreta] = useState("");',
+    '  const [kmCarreta, setKmCarreta] = useState("");\n  const [ticketConfirmed, setTicketConfirmed] = useState(false);\n  const [ticketSending, setTicketSending] = useState(false);\n  const ticketBusy = useRef(false);\n  const queryClient = useQueryClient();\n  useEffect(() => { if (ticketAccess?.driverId) setDriverId(ticketAccess.driverId); }, [ticketAccess?.driverId]);', "ticket state");
   s = replaceRequired(s, 'onChange={(e) => setDriverId(e.target.value)}', 'onChange={(e) => { setDriverId(e.target.value); setTicketConfirmed(false); }}', "driver confirmation");
   s = replaceRequired(s, 'onChange={(e) => setFleetId(e.target.value)}', 'onChange={(e) => { setFleetId(e.target.value); setTicketConfirmed(false); }}', "fleet confirmation");
-  s = replaceRequired(s, '                value={tons}', '                readOnly={!!ticketData && freightMode === "ton" && !!ticketData.peso_liquido_kg}\n                value={tons}', "one weight source");
+  s = replaceRequired(s, '                value={tons}', '                readOnly={!!ticketData && freightMode === "ton"}\n                value={tons}', "one weight source");
   s = replaceRequired(s, 'disabled={report.isPending || drivers.length === 0}',
     'disabled={report.isPending || ticketReading || ticketSending || drivers.length === 0 || (!!ticketData && !ticketConfirmed)}', "submit lock");
   s = replaceRequired(s, '{report.isPending ? "Enviando…" : "Depositar no painel"}', '{report.isPending || ticketSending ? "Enviando…" : "Depositar no painel"}', "saving label");
@@ -165,8 +181,6 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
   placaVeiculo: string | null;
   placaCarreta: string | null;
   transportadora: string | null;
-  operadora: string | null;
-  contratante: string | null;
   destinatario: string | null;
   pesoLiquidoKg: number | null;
   freightMode: string | null;
@@ -197,8 +211,6 @@ function TicketMetadata({ reportId, mode }: { reportId: string; mode?: string | 
         <span>Veículo: <b className="text-fg">{ticket.placaVeiculo || "—"}</b></span>
         <span>Carreta: <b className="text-fg">{ticket.placaCarreta || "—"}</b></span>
         <span>Transportadora: <b className="text-fg">{ticket.transportadora || "—"}</b></span>
-        <span>Operadora: <b className="text-fg">{ticket.operadora || "—"}</b></span>
-        <span>Contratante: <b className="text-fg">{ticket.contratante || "—"}</b></span>
         <span>Destinatário: <b className="text-fg">{ticket.destinatario || "—"}</b></span>
         {mode === "ton" && ticket.pesoLiquidoKg ? (
           <span>Peso líquido: <b className="text-fg">{new Intl.NumberFormat("pt-BR").format(ticket.pesoLiquidoKg)} kg</b></span>

@@ -12,20 +12,14 @@ type TicketData = {
   peso_origem_kg: number | null;
   numero_nf: string | null;
   transportadora: string | null;
-  operadora: string | null;
-  contratante: string | null;
   motorista: string | null;
   cliente: string | null;
   destinatario: string | null;
-  navio: string | null;
-  emissor: string | null;
-  operador_pesagem: string | null;
-  item_codigo: string | null;
   anotacoes_manuscritas: string | null;
   alertas: string[];
 };
 
-async function reduzirImagemTicket(file: File, maxLado = 2600, qualidade = 0.90) {
+async function reduzirImagemTicket(file: File, maxLado = 1600, qualidade = 0.85) {
   if (!file.type.startsWith("image/")) throw new Error("Selecione uma foto válida.");
   if (file.size > 15_000_000) throw new Error("A foto é grande demais.");
 
@@ -37,37 +31,41 @@ async function reduzirImagemTicket(file: File, maxLado = 2600, qualidade = 0.90)
       image.onerror = () => reject(new Error("Não foi possível abrir esta foto. Use JPG ou PNG."));
       image.src = url;
     });
-
-    let escala = Math.min(1, maxLado / Math.max(img.naturalWidth, img.naturalHeight));
+    const escala = Math.min(1, maxLado / Math.max(img.naturalWidth, img.naturalHeight));
     const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Não foi possível preparar a foto.");
-
-    // Preserva letras pequenas de placas e razão social. Só reduz mais se for
-    // necessário para ficar dentro do limite seguro do request da Vercel.
-    for (let tentativa = 0; tentativa < 5; tentativa++) {
-      canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
-      canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      for (const q of [qualidade, 0.82, 0.74, 0.66, 0.58]) {
-        const imagem = canvas.toDataURL("image/jpeg", q).split(",")[1] || "";
-        if (imagem && imagem.length <= 3_500_000) return { imagem, tipo: "image/jpeg" };
-      }
-      escala *= 0.86;
-    }
-
-    throw new Error("A foto é grande demais. Escolha outra imagem.");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    let imagem = canvas.toDataURL("image/jpeg", qualidade).split(",")[1] || "";
+    if (imagem.length > 3_500_000) imagem = canvas.toDataURL("image/jpeg", 0.65).split(",")[1] || "";
+    if (!imagem || imagem.length > 3_500_000) throw new Error("A foto é grande demais. Escolha outra imagem.");
+    return { imagem, tipo: "image/jpeg" };
   } finally { URL.revokeObjectURL(url); }
+}
+
+async function ocrTicketLocal(file: File) {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker("por");
+  try {
+    const result = await worker.recognize(file);
+    const text = String(result?.data?.text || "").trim();
+    if (text.replace(/\s/g, "").length < 8) {
+      throw new Error("A Salomão IA não encontrou texto suficiente. Tire outra foto mais nítida.");
+    }
+    return text;
+  } finally {
+    await worker.terminate();
+  }
 }
 
 async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "caixinha"): Promise<TicketData> {
   const payload = await reduzirImagemTicket(file);
   const response = await fetch("/api/ler-ticket", {
     method: "POST",
-    signal: AbortSignal.timeout(80_000),
+    signal: AbortSignal.timeout(50_000),
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...payload, freightMode, fileName: file.name }),
@@ -76,8 +74,18 @@ async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "
 
   if (response.ok) return result as TicketData;
 
-  if (response.status === 503) {
-    throw new Error(result?.erro || "A leitura por IA está temporariamente indisponível. Tente novamente.");
+  if (response.status === 503 && result?.ocrFallback) {
+    const ocrText = await ocrTicketLocal(file);
+    const localResponse = await fetch("/api/ler-ticket", {
+      method: "POST",
+      signal: AbortSignal.timeout(20_000),
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ocrText, freightMode, fileName: file.name }),
+    });
+    const localResult = await localResponse.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
+    if (!localResponse.ok) throw new Error(localResult?.erro || "A Salomão IA não conseguiu interpretar o OCR.");
+    return localResult as TicketData;
   }
 
   throw new Error(result?.erro || "Falha ao ler o ticket");

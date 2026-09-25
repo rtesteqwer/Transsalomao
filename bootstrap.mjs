@@ -143,12 +143,6 @@ if (installDriverTicketReader && !original.includes("apply-driver-ticket-reader-
   original = original.replace(dailyMarker, `const driverTicketReader = path.join(repo, 'render-overrides', 'apply-driver-ticket-reader-20260924.mjs');\nif (!fs.existsSync(driverTicketReader)) throw new Error('Missing driver ticket reader patch');\nexecFileSync(process.execPath, [driverTicketReader, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
-// Arquivo privado de fotos do Felipe + correção dos Relatórios rápidos em PDF.
-if (!original.includes("apply-private-photos-quick-pdf-20260924.mjs")) {
-  if (!original.includes(dailyMarker)) throw new Error("Ponto de injeção das fotos privadas/PDF rápido não encontrado");
-  original = original.replace(dailyMarker, `const privatePhotosQuickPdf = path.join(repo, 'render-overrides', 'apply-private-photos-quick-pdf-20260924.mjs');\nif (!fs.existsSync(privatePhotosQuickPdf)) throw new Error('Missing private photos / quick PDF patch');\nexecFileSync(process.execPath, [privatePhotosQuickPdf, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
-}
-
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });

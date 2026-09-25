@@ -19,17 +19,12 @@ function compile(name, imports = {}) {
   writeFileSync(path.join(tmp, name + '.mjs'), js);
 }
 compile('ticket-core');
-compile('ocr-prompts');
 compile('ticket-provider.server', { '@/lib/ticket-core': './ticket-core.mjs' });
-writeFileSync(path.join(tmp, 'salomao-ai.mjs'), 'export const getSalomaoOpenAIKeys = async () => ["test-openai"];');
-compile('ocr-service.server', { '@/lib/ticket-core': './ticket-core.mjs', '@/lib/salomao-ai.server': './salomao-ai.mjs', '@/lib/ocr-prompts': './ocr-prompts.mjs' });
-compile('salomao-ticket-reader.server', { '@/lib/ticket-core': './ticket-core.mjs', '@/lib/ocr-service.server': './ocr-service.server.mjs', '@/lib/db': './db-stub.mjs' });
 writeFileSync(path.join(tmp, 'sessions.mjs'), 'export const managementSession = () => null; export const klebersomSession = () => null;');
 compile('ticket-auth.server', { '@/lib/ticket-core': './ticket-core.mjs', '@/lib/management-auth.server': './sessions.mjs', '@/lib/klebersom-access.server': './sessions.mjs' });
 const { normalizeTicket, validateSave, validateImage, saveTicket, TicketError } = await import(pathToFileURL(path.join(tmp, 'ticket-core.mjs')));
 const { ticketAccess, allowTicketRead } = await import(pathToFileURL(path.join(tmp, 'ticket-auth.server.mjs')));
 const { readWithProvider } = await import(pathToFileURL(path.join(tmp, 'ticket-provider.server.mjs')));
-const { extrairDadosTicketIA } = await import(pathToFileURL(path.join(tmp, 'ocr-service.server.mjs')));
 const pg = new PGlite();
 await pg.exec(`create table drivers(id text primary key, name text, status text);
 create table fleets(id text primary key, status text);
@@ -41,7 +36,7 @@ await pg.exec(readFileSync(path.join(source, 'migrations/0012_ticket_reader.sql'
 await pg.exec(readFileSync(path.join(source, 'migrations/0015_ticket_safety.sql'), 'utf8'));
 await pg.exec(readFileSync(path.join(source, 'migrations/0016_ticket_modes_metadata.sql'), 'utf8'));
 const sql = async (strings, ...values) => (await pg.query(strings.reduce((text, part, i) => text + (i ? '$' + i : '') + part, ''), values)).rows;
-const input = (ticket, other = {}) => ({ numero_ticket: ticket, peso_liquido_kg: 35810, pesagem_inicial_kg: 57810, pesagem_final_kg: 22000, transportadora:'Trans Salomão', operadora:'LOG CONSULTING', contratante:'Empresa contratante', destinatario:'Cliente destino', driverId:'d1', fleetId:'f1', km_carreta:123456, conferido:true, freightMode:'ton', dailyValue:0, ...other });
+const input = (ticket, other = {}) => ({ numero_ticket: ticket, peso_liquido_kg: 35810, pesagem_inicial_kg: 57810, pesagem_final_kg: 22000, transportadora:'Trans Salomão', destinatario:'Cliente destino', driverId:'d1', fleetId:'f1', km_carreta:123456, conferido:true, freightMode:'ton', dailyValue:0, ...other });
 const expectStatus = status => error => error instanceof TicketError && error.status === status;
 
 after(async () => { await pg.close(); rmSync(tmp, { recursive:true, force:true }); });
@@ -51,131 +46,6 @@ test('preserves kg, handles Brazilian thousands, keeps handwritten/origin values
  assert.equal(d.peso_liquido_kg,35810); assert.equal(d.placa_veiculo,'QWE1A23'); assert.equal(d.alertas.length,0);
  assert.equal(normalizeTicket({ peso_origem_kg:40000 }).peso_liquido_kg,null);
  assert(normalizeTicket({ peso_liquido_kg:35810, pesagem_inicial_kg:57000, pesagem_final_kg:22000 }).alertas.some(x=>x.includes('diferente')));
-});
-
-test('Multilift remains supported through OpenAI Vision', async () => {
- const fetchBefore=globalThis.fetch;
- const modelBefore=process.env.OPENAI_OCR_MODEL;
- try {
-  process.env.OPENAI_OCR_MODEL='gpt-4o-mini';
-  globalThis.fetch=async (url,options)=>{
-    assert.equal(url,'https://api.openai.com/v1/responses');
-    const body=JSON.parse(options.body);
-    assert.equal(body.model,'gpt-4o-mini');
-    assert.equal(body.input[0].content[1].detail,'high');
-    return Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({
-      numero_ticket:'0534063',
-      status:'Encerrado',
-      placa_veiculo:'OVH4J13',
-      placa_carreta:'MQP5D98',
-      produto:'Saida de Espudomenio (LOW GRADE)',
-      pesagem_inicial_kg:20580,
-      pesagem_inicial_data:null,
-      pesagem_final_kg:44090,
-      pesagem_final_data:'11/09/2026 23:13:26',
-      peso_liquido_kg:23510,
-      peso_origem_kg:null,
-      numero_nf:null,
-      transportadora:'Multilift Logistica Ltda',
-      operadora:null,
-      contratante:null,
-      motorista:'Clovis Salomao Garcia',
-      cliente:null,
-      destinatario:'Destino operacional',
-      navio:'PACIFIC VIRTUE',
-      emissor:'CX-M20',
-      operador_pesagem:'Maycon Richard Nascimento Lima',
-      item_codigo:'138',
-      anotacoes_manuscritas:null,
-      alertas:[]
-    })}]}]});
-  };
-  const d=await extrairDadosTicketIA({mime:'image/jpeg',base64:'dGVzdA=='},'ton');
-  assert.equal(d.numero_ticket,'0534063');
-  assert.equal(d.placa_carreta,'MQP5D98');
-  assert.equal(d.placa_veiculo,'OVH4J13');
-  assert.equal(d.peso_liquido_kg,23510);
-  assert.equal(d.transportadora,'Multilift Logistica Ltda');
-  assert.equal(d.motorista,'Clovis Salomao Garcia');
-  assert.equal(d.navio,'PACIFIC VIRTUE');
-  assert.equal(d.emissor,'CX-M20');
-  assert.equal(d.item_codigo,'138');
-  assert.equal(d.operador_pesagem,'Maycon Richard Nascimento Lima');
- } finally {
-  globalThis.fetch=fetchBefore;
-  if(modelBefore===undefined) delete process.env.OPENAI_OCR_MODEL; else process.env.OPENAI_OCR_MODEL=modelBefore;
- }
-});
-
-test('VPORTS 72416 is mapped correctly by the OpenAI Vision contract', async () => {
- const fetchBefore=globalThis.fetch;
- const modelBefore=process.env.OPENAI_OCR_MODEL;
- try {
-  process.env.OPENAI_OCR_MODEL='gpt-4o-mini';
-  let calls=0;
-  globalThis.fetch=async (url,options)=>{
-    calls++;
-    assert.equal(url,'https://api.openai.com/v1/responses');
-    const body=JSON.parse(options.body);
-    assert.equal(body.model,'gpt-4o-mini');
-    assert.equal(body.store,false);
-    assert.equal(body.input[0].content[1].detail,'high');
-    assert.match(body.instructions,/72416/);
-    assert.match(body.instructions,/placa_carreta="MQX5F98"/);
-    assert.match(body.instructions,/placa_veiculo="NZE8I52"/);
-    return Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({
-      numero_ticket:'72416',
-      status:null,
-      placa_veiculo:'NZE8I52',
-      placa_carreta:'MQX5F98',
-      produto:'FERTILIZANTE',
-      pesagem_inicial_kg:17230,
-      pesagem_inicial_data:'13/09/2026 13:38:38',
-      pesagem_final_kg:55700,
-      pesagem_final_data:'13/09/2026 16:51:20',
-      peso_liquido_kg:38470,
-      peso_origem_kg:null,
-      numero_nf:null,
-      transportadora:'GIZELE APARECIDA DA ROCHA GARCIA',
-      operadora:'LOG CONSULTING',
-      contratante:null,
-      motorista:'LUIS ANTONIO FELIX DOS SANTOS',
-      cliente:null,
-      destinatario:null,
-      navio:'BELISLAND',
-      emissor:null,
-      operador_pesagem:null,
-      item_codigo:null,
-      anotacoes_manuscritas:null,
-      alertas:[]
-    })}]}]});
-  };
-  const d=await extrairDadosTicketIA({mime:'image/jpeg',base64:'dGVzdA=='},'ton');
-  assert.equal(calls,1);
-  assert.equal(d.numero_ticket,'72416');
-  assert.equal(d.peso_liquido_kg,38470);
-  assert.equal(d.pesagem_inicial_kg,17230);
-  assert.equal(d.pesagem_final_kg,55700);
-  assert.equal(d.placa_veiculo,'NZE8I52');
-  assert.equal(d.placa_carreta,'MQX5F98');
-  assert.equal(d.transportadora,'GIZELE APARECIDA DA ROCHA GARCIA');
-  assert.equal(d.operadora,'LOG CONSULTING');
-  assert.equal(d.navio,'BELISLAND');
- } finally {
-  globalThis.fetch=fetchBefore;
-  if(modelBefore===undefined) delete process.env.OPENAI_OCR_MODEL; else process.env.OPENAI_OCR_MODEL=modelBefore;
- }
-});
-
-test('OpenAI-only ticket build excludes Tesseract and local OCR fallback', () => {
- const pkg=JSON.parse(readFileSync(path.join(source,'package.json'),'utf8'));
- assert.equal(pkg.dependencies?.['tesseract.js'],undefined);
- const motorista=readFileSync(path.join(source,'src/routes/motorista.tsx'),'utf8');
- const api=readFileSync(path.join(source,'src/routes/api/ler-ticket.ts'),'utf8');
- assert.doesNotMatch(motorista,/tesseract\.js|ocrTicketLocal|interpretarOcrTicketLocal/i);
- assert.doesNotMatch(api,/ocrText|SALOMAO_LOCAL_OCR|aguardando_ocr_local/i);
- assert.match(api,/engine:\s*"openai-vision"/);
- assert.match(api,/localOcrFallback:\s*false/);
 });
 
 test('requires explicit review and rejects malformed/non-integer/negative weights', () => {
@@ -230,9 +100,8 @@ test('non-ton modes keep ticket metadata but never persist weight', async () => 
  const result=await saveTicket(sql,data);
  const report=(await pg.query("select tons,freight_mode,status from reports where id=$1",[result.reportId])).rows[0];
  assert.equal(Number(report.tons),0); assert.equal(report.freight_mode,'caixinha'); assert.equal(report.status,'pendente');
- const ticket=(await pg.query("select peso_liquido_kg,transportadora,destinatario,freight_mode,ticket_data from tickets_balanca where report_id=$1",[result.reportId])).rows[0];
+ const ticket=(await pg.query("select peso_liquido_kg,transportadora,destinatario,freight_mode from tickets_balanca where report_id=$1",[result.reportId])).rows[0];
  assert.equal(ticket.peso_liquido_kg,null); assert.equal(ticket.transportadora,'Trans Salomão'); assert.equal(ticket.destinatario,'Cliente destino'); assert.equal(ticket.freight_mode,'caixinha');
- assert.equal(ticket.ticket_data.operadora,'LOG CONSULTING'); assert.equal(ticket.ticket_data.contratante,'Empresa contratante');
 });
 
 test('a report insert failure rolls back the ticket automatically', async () => {
