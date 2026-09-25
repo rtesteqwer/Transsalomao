@@ -1,0 +1,37 @@
+name: Validate Ticket Photo API
+
+on:
+  pull_request:
+    paths:
+      - 'render-overrides/**'
+      - 'tests/tickets.test.mjs'
+      - 'bootstrap.mjs'
+      - 'bootstrap.original.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  ticket-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Reconstruct patched production source
+        run: TRANS_SOURCE_DUMP="$PWD/.tmp-app" node bootstrap.mjs
+
+      - name: Install reconstructed app dependencies
+        working-directory: .tmp-app
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Build reconstructed app
+        working-directory: .tmp-app
+        run: npm run build:dev
+
+      - name: Run ticket tests
+        run: TRANS_TEST_APP="$PWD/.tmp-app" node --test tests/tickets.test.mjs
