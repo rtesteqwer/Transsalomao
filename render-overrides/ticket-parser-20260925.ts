@@ -41,7 +41,7 @@ function plateSeenApproximately(raw: string, expected: string | null) {
         candidate += chunks[end].replace(/[^A-Z0-9]/g, "");
         if (candidate.length < 5) continue;
         if (candidate.length > 9) break;
-        if (candidate[0] !== expected[0] || candidate.slice(-2) !== expected.slice(-2)) continue;
+        if (candidate.slice(0, 3) !== expected.slice(0, 3)) continue;
         if (editDistance(candidate, expected) <= 2) return true;
       }
     }
@@ -64,7 +64,7 @@ export function finishTicketReading(value: unknown, mode: TicketFreightMode, fle
   const detected = d.placas_detectadas || [];
   const tractor = plate(fleet.tractorPlate), trailer = plate(fleet.trailerPlate);
   const near = (candidate: string | null, expected: string | null, max = 2) =>
-    !!candidate && !!expected && candidate[0] === expected[0] && candidate.slice(-2) === expected.slice(-2) && editDistance(candidate, expected) <= max;
+    !!candidate && !!expected && candidate.slice(0, 3) === expected.slice(0, 3) && editDistance(candidate, expected) <= max;
 
   if (tractor && near(d.placa_veiculo, tractor, 2) && d.placa_veiculo !== tractor) {
     d.placa_veiculo = tractor;
@@ -123,9 +123,9 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   const joined = folded(lines.join("\n"));
   const model = /MULTIL[IA]FT/.test(joined) ? "multilift"
     : /ADUBOS\s+REAL|ADR[- ]DIV[- ]004|TARA[\s\S]{0,180}BRUTO[\s\S]{0,180}LIQUIDO/.test(joined) ? "adubos_real"
-    : /PLACA\s+DO\s+VEICULO|PESO\s+LIQUIDO\s+DE\s+ENTRADA|LOG\s+CONSULTING/.test(joined) ? "log_consulting"
-    : /TICKET\s+AGEND|BERCO|VPORTS[\s\S]{0,100}TIQUET/.test(joined) ? "vports_recibo"
+    : /TICKET\s+AGEND|BERCO|VPORTS[\s\S]{0,140}TIQUET/.test(joined) ? "vports_recibo"
     : /NUMERO\s*(?:\n|\s)+(?:DO\s+)?TICKET|PLACA\s*(?:\n|\s)+CARRETA|PESO\s+ORIGEM[\s\S]{0,400}DESTINATARIO/.test(joined) ? "vports_relatorio"
+    : /PLACA\s+DO\s+VEICULO|PESO\s+LIQUIDO\s+DE\s+ENTRADA|RODOVIA\s+DARLY/.test(joined) ? "log_consulting"
     : "desconhecido";
   const separator = "[\\s.:#=º°°_—–-]*";
   const labels = "(?:PLACA|CARRETA|VEIC|MOTORISTA|OPERACAO|TRANSPORTADORA|EMPRESA|DESTINATARIO|REMETENTE|PRODUTO|NOTA FISCAL|PESO|PESAGEM|TARA|BRUTO|LIQUIDO|STATUS|NAVIO|BERCO|CNPJ|RAZAO SOCIAL|EMISSOR|ITEM|DATA|HORA|SETOR|OPERADOR|TICKET|TIQUETE)";
@@ -244,13 +244,13 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   if (!vehicleFromOcr && tractorFromEvidence && plateSeenApproximately(raw, tractorFromEvidence)) vehicleFromOcr = tractorFromEvidence;
   if (!trailerFromOcr && trailerFromEvidence && plateSeenApproximately(raw, trailerFromEvidence)) trailerFromOcr = trailerFromEvidence;
   const contextualPlateAlerts: string[] = [];
-  if (model === "multilift" && trailerFromOcr && trailerFromEvidence && trailerFromOcr === trailerFromEvidence && !vehicleFromOcr && tractorFromEvidence) {
+  if (trailerFromOcr && trailerFromEvidence && trailerFromOcr === trailerFromEvidence && !vehicleFromOcr && tractorFromEvidence) {
     vehicleFromOcr = tractorFromEvidence;
-    contextualPlateAlerts.push("Placa do veículo confirmada pelo conjunto selecionado após a carreta ser reconhecida no ticket.");
+    contextualPlateAlerts.push("Placa do veículo completada pelo conjunto selecionado após a carreta ser reconhecida no OCR.");
   }
-  if (model === "multilift" && vehicleFromOcr && tractorFromEvidence && vehicleFromOcr === tractorFromEvidence && !trailerFromOcr && trailerFromEvidence) {
+  if (vehicleFromOcr && tractorFromEvidence && vehicleFromOcr === tractorFromEvidence && !trailerFromOcr && trailerFromEvidence) {
     trailerFromOcr = trailerFromEvidence;
-    contextualPlateAlerts.push("Placa da carreta confirmada pelo conjunto selecionado após o veículo ser reconhecido no ticket.");
+    contextualPlateAlerts.push("Placa da carreta completada pelo conjunto selecionado após o veículo ser reconhecido no OCR.");
   }
   const data = {
     numero_ticket: numero, model_type: model,
@@ -292,7 +292,9 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     }
   }
   if (model === "adubos_real" && !data.destinatario) data.destinatario = data.empresa_documento;
-  if (model === "log_consulting" && (!data.contratante || /HERINGER/i.test(joined))) {
+  if (model === "log_consulting" && /HERINGER[\s\S]{0,40}MANH/i.test(joined)) {
+    data.contratante = "HERINGER MANHUACU - MG";
+  } else if (model === "log_consulting" && !data.contratante) {
     const heringer = lines.find(line => /HERINGER/i.test(folded(line)));
     if (heringer) data.contratante = heringer.replace(/^.*?HERINGER/i, "HERINGER").trim().slice(0, 200);
   }
