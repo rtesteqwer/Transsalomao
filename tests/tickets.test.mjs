@@ -19,12 +19,10 @@ function compile(name, imports = {}) {
   writeFileSync(path.join(tmp, name + '.mjs'), js);
 }
 compile('ticket-core');
-compile('ticket-provider.server', { '@/lib/ticket-core': './ticket-core.mjs' });
 writeFileSync(path.join(tmp, 'sessions.mjs'), 'export const managementSession = () => null; export const klebersomSession = () => null;');
 compile('ticket-auth.server', { '@/lib/ticket-core': './ticket-core.mjs', '@/lib/management-auth.server': './sessions.mjs', '@/lib/klebersom-access.server': './sessions.mjs' });
 const { normalizeTicket, validateSave, validateImage, saveTicket, TicketError } = await import(pathToFileURL(path.join(tmp, 'ticket-core.mjs')));
 const { ticketAccess, allowTicketRead } = await import(pathToFileURL(path.join(tmp, 'ticket-auth.server.mjs')));
-const { readWithProvider } = await import(pathToFileURL(path.join(tmp, 'ticket-provider.server.mjs')));
 const pg = new PGlite();
 await pg.exec(`create table drivers(id text primary key, name text, status text);
 create table fleets(id text primary key, status text);
@@ -66,7 +64,7 @@ test('refuses unauthenticated same-origin headers and unset/incorrect tokens', (
  delete process.env.TICKET_TOKEN;
 });
 
-test('rejects malformed, oversized and mismatched images before calling AI', () => {
+test('rejects malformed, oversized and mismatched image payloads', () => {
  assert.throws(()=>validateImage({imagem:'invalid'}),expectStatus(400));
  assert.throws(()=>validateImage({imagem:'a'.repeat(3500004)}),expectStatus(413));
  assert.throws(()=>validateImage({imagem:Buffer.from('not an image at all').toString('base64')}),expectStatus(415));
@@ -117,47 +115,4 @@ test('rate limit is shared through the database and resets after one minute', as
  await assert.rejects(()=>allowTicketRead(sql,'driver:test'),expectStatus(429));
  await pg.exec("update ticket_read_limits set window_start=now()-interval '2 minutes'");
  await allowTicketRead(sql,'driver:test');
-});
-
-test('prefers configured OpenAI Responses vision and falls back to Anthropic in auto mode', async () => {
- const fetchBefore=globalThis.fetch;
- const before={OPENAI_API_KEY:process.env.OPENAI_API_KEY,ANTHROPIC_API_KEY:process.env.ANTHROPIC_API_KEY,TICKET_AI_PROVIDER:process.env.TICKET_AI_PROVIDER,TICKET_OPENAI_MODEL:process.env.TICKET_OPENAI_MODEL,OPENAI_ASSISTANT_MODEL:process.env.OPENAI_ASSISTANT_MODEL};
- try {
-  process.env.OPENAI_API_KEY='test-openai';
-  process.env.ANTHROPIC_API_KEY='test-claude';
-  delete process.env.TICKET_AI_PROVIDER;
-  process.env.TICKET_OPENAI_MODEL='gpt-5.6-sol';
-  let calls=0;
-  globalThis.fetch=async (url,options)=>{
-    calls++;
-    assert.equal(url,'https://api.openai.com/v1/responses');
-    const b=JSON.parse(options.body);
-    assert.equal(b.store,false);
-    assert.equal(b.model,'gpt-5.6-sol');
-    assert.equal(options.headers.Authorization,'Bearer test-openai');
-    return Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(input('0024090',{placa_veiculo:'QWS3E13',placa_carreta:'FYWRJ05',transportadora:'RAS TRANSPORTES E SERVICOS LTDA',destinatario:'VPORTS AUTORIDADE PORTUARIA'}))}]}]});
-  };
-  const read=await readWithProvider({mime:'image/jpeg',base64:'test'},'ton');
-  assert.equal(read.numero_ticket,'0024090');
-  assert.equal(read.peso_liquido_kg,35810);
-  assert.equal(read.placa_veiculo,'QWS3E13');
-  assert.equal(calls,1);
-
-  globalThis.fetch=async (url,options)=>{
-    if(url==='https://api.openai.com/v1/responses') return Response.json({error:{code:'insufficient_quota',message:'billing'}},{status:429});
-    assert.equal(url,'https://api.anthropic.com/v1/messages');
-    assert.equal(options.headers['x-api-key'],'test-claude');
-    return Response.json({stop_reason:'end_turn',content:[{type:'text',text:JSON.stringify(input('OCR-FALLBACK'))}]});
-  };
-  assert.equal((await readWithProvider({mime:'image/jpeg',base64:'test'},'ton')).numero_ticket,'OCR-FALLBACK');
-
-  globalThis.fetch=async (url)=>{
-    if(url==='https://api.openai.com/v1/responses') return Response.json({error:{message:'secret=test-openai'}},{status:401});
-    return Response.json({error:{message:'secret=test-claude'}},{status:401});
-  };
-  await assert.rejects(()=>readWithProvider({mime:'image/jpeg',base64:'test'},'ton'), e=>e.status===503 && !e.message.includes('test-openai') && !e.message.includes('test-claude'));
- } finally {
-  globalThis.fetch=fetchBefore;
-  for(const [key,value] of Object.entries(before)) { if(value===undefined) delete process.env[key]; else process.env[key]=value; }
- }
 });

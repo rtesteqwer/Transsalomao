@@ -3,8 +3,8 @@
                 <p className="text-sm font-semibold">Foto do ticket / documento da viagem</p>
                 <p className="mt-1 text-xs text-muted">
                   {freightMode === "ton"
-                    ? "A IA lê número do ticket, peso líquido, placas, transportadora, operadora e destinatário."
-                    : "Neste modo a IA guarda número do ticket, placas, transportadora e destinatário; pesos e pesagens são ignorados."}
+                    ? "O OCR lê número do ticket, peso líquido, placas, transportadora, operadora e destinatário."
+                    : "Neste modo o OCR lê número do ticket, placas, transportadora e destinatário; pesos e pesagens são ignorados."}
                 </p>
               </div>
 

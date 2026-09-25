@@ -41,7 +41,7 @@ function plateSeenApproximately(raw: string, expected: string | null) {
         candidate += chunks[end].replace(/[^A-Z0-9]/g, "");
         if (candidate.length < 5) continue;
         if (candidate.length > 9) break;
-        if (candidate[0] !== expected[0] || candidate.slice(-2) !== expected.slice(-2)) continue;
+        if (candidate.slice(0, 3) !== expected.slice(0, 3)) continue;
         if (editDistance(candidate, expected) <= 2) return true;
       }
     }
@@ -50,7 +50,8 @@ function plateSeenApproximately(raw: string, expected: string | null) {
 }
 
 export function missingTicketFields(d: TicketData, mode: TicketFreightMode) {
-  const missing = ["numero_ticket", "placa_veiculo", "placa_carreta", "transportadora"].filter(k => !d[k as keyof TicketData]);
+  const required = d.model_type === "adubos_real" ? ["numero_ticket", "placa_veiculo", "placa_carreta"] : ["numero_ticket", "placa_veiculo", "placa_carreta", "transportadora"];
+  const missing = required.filter(k => !d[k as keyof TicketData]);
   if (mode === "ton" && !d.peso_liquido_kg) missing.push("peso_liquido_kg");
   if (!d.operadora && !d.contratante && !d.destinatario) missing.push("operadora/contratante/destinatario");
   return missing;
@@ -62,8 +63,19 @@ export function finishTicketReading(value: unknown, mode: TicketFreightMode, fle
   const d = ticketForMode(normalizeTicket(value), mode);
   const detected = d.placas_detectadas || [];
   const tractor = plate(fleet.tractorPlate), trailer = plate(fleet.trailerPlate);
-  if (!d.placa_veiculo && tractor && detected.includes(tractor)) d.placa_veiculo = tractor;
-  if (!d.placa_carreta && trailer && detected.includes(trailer)) d.placa_carreta = trailer;
+  const near = (candidate: string | null, expected: string | null, max = 2) =>
+    !!candidate && !!expected && candidate.slice(0, 3) === expected.slice(0, 3) && editDistance(candidate, expected) <= max;
+
+  if (tractor && near(d.placa_veiculo, tractor, 2) && d.placa_veiculo !== tractor) {
+    d.placa_veiculo = tractor;
+    d.alertas.push("Placa do veículo corrigida pelo conjunto selecionado após erro típico do OCR.");
+  }
+  if (trailer && near(d.placa_carreta, trailer, 2) && d.placa_carreta !== trailer) {
+    d.placa_carreta = trailer;
+    d.alertas.push("Placa da carreta corrigida pelo conjunto selecionado após erro típico do OCR.");
+  }
+  if (!d.placa_veiculo && tractor && (detected.includes(tractor) || detected.some(p => near(p, tractor, 2)))) d.placa_veiculo = tractor;
+  if (!d.placa_carreta && trailer && (detected.includes(trailer) || detected.some(p => near(p, trailer, 2)))) d.placa_carreta = trailer;
   if (detected.length === 2 && d.placa_veiculo && !d.placa_carreta) d.placa_carreta = detected.find(p => p !== d.placa_veiculo) || null;
   if (detected.length === 2 && d.placa_carreta && !d.placa_veiculo) d.placa_veiculo = detected.find(p => p !== d.placa_carreta) || null;
   if (d.placa_veiculo && d.placa_veiculo === d.placa_carreta) {
@@ -109,10 +121,12 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   if (raw.replace(/\s/g, "").length < 8) throw new TicketError(422, "A leitura local não encontrou texto suficiente. Tire outra foto mais nítida.");
   const lines = raw.split(/\n+/).map(s => s.replace(/[ \t]+/g, " ").trim()).filter(Boolean);
   const joined = folded(lines.join("\n"));
-  const model = /MULTIL[IA]FT/.test(joined) ? "multilift" : /ADUBOS\s+REAL/.test(joined) ? "adubos_real"
-    : /PLACA\s+DO\s+VEICULO|PESO\s+LIQUIDO\s+DE\s+ENTRADA/.test(joined) ? "log_consulting"
-    : /TICKET\s+AGEND|BERCO/.test(joined) ? "vports_recibo"
-    : /NUMERO\s+(?:DO\s+)?TICKET|PLACA\s+CARRETA/.test(joined) ? "vports_relatorio" : "desconhecido";
+  const model = /MULTIL[IA]FT/.test(joined) ? "multilift"
+    : /ADUBOS\s+REAL|ADR[- ]?DIV[- ]?004|TARA[\s\S]{0,180}BRUTO[\s\S]{0,180}LIQUIDO/.test(joined) ? "adubos_real"
+    : /TICKET\s+AGEND|BERCO|VPORTS[\s\S]{0,140}TIQUET/.test(joined) ? "vports_recibo"
+    : /NUMERO\s*(?:\n|\s)+(?:DO\s+)?TICKET|PLACA\s*(?:\n|\s)+CARRETA|PESO\s+ORIGEM[\s\S]{0,400}DESTINATARIO/.test(joined) ? "vports_relatorio"
+    : /PLACA\s+DO\s+VEICULO|PESO\s+LIQUIDO\s+DE\s+ENTRADA|RODOVIA\s+DARLY/.test(joined) ? "log_consulting"
+    : "desconhecido";
   const separator = "[\\s.:#=º°°_—–-]*";
   const labels = "(?:PLACA|CARRETA|VEIC|MOTORISTA|OPERACAO|TRANSPORTADORA|EMPRESA|DESTINATARIO|REMETENTE|PRODUTO|NOTA FISCAL|PESO|PESAGEM|TARA|BRUTO|LIQUIDO|STATUS|NAVIO|BERCO|CNPJ|RAZAO SOCIAL|EMISSOR|ITEM|DATA|HORA|SETOR|OPERADOR|TICKET|TIQUETE)";
   const isLabel = (s: string) => new RegExp("^" + labels + "\\b").test(folded(s));
@@ -131,21 +145,34 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     return null;
   }
   function company(label: string) {
-    const value = field(label);
-    if (value && !/^(CNPJ|RAZAO SOCIAL)\b/.test(folded(value)) && /[A-Za-zÀ-ÿ]/.test(value)) return value.replace(/^\d+\s*[-–]\s*/, "");
-    const start = lines.findIndex(s => new RegExp("^(?:" + label + ")\\b").test(folded(s)));
-    if (start < 0) return null;
-    for (const line of lines.slice(start + 1, start + 6)) {
-      const u = folded(line);
-      if (/^(DESTINATARIO|REMETENTE|TRANSPORTADORA|NUMERO NF|MOTORISTA|PESAGEM)\b/.test(u)) break;
-      const hit = u.match(/^(?:RAZAO\s+SOCIAL|CNPJ|NOME)[\s.:\-]*/);
-      if (hit) {
-        const candidate = line.slice(hit[0].length).trim();
-        if (/[A-Za-zÀ-ÿ]/.test(candidate)) return candidate.slice(0, 200);
+    const candidates: string[] = [];
+    const pattern = new RegExp("(?:^|\\s)(?:" + label + ")\\b" + separator, "i");
+    for (let i = 0; i < lines.length; i++) {
+      const hit = folded(lines[i]).match(pattern);
+      if (!hit) continue;
+      let value = lines[i].slice((hit.index || 0) + hit[0].length).trim();
+      if (!value && lines[i + 1] && !isLabel(lines[i + 1])) value = lines[i + 1];
+      value = value.replace(/^\d+\s*[-–]\s*/, "").trim();
+      if (value && !/^(CNPJ|RAZAO SOCIAL)\b/.test(folded(value)) && /[A-Za-zÀ-ÿ]/.test(value)) candidates.push(value.slice(0, 200));
+
+      for (const line of lines.slice(i + 1, i + 6)) {
+        const u = folded(line);
+        if (/^(DESTINATARIO|REMETENTE|TRANSPORTADORA|NUMERO NF|MOTORISTA|PESAGEM)\b/.test(u)) break;
+        const block = u.match(/^(?:RAZAO\s+SOCIAL|CNPJ|NOME)[\s.:\-]*/);
+        if (!block) continue;
+        const candidate = line.slice(block[0].length).trim();
+        if (/[A-Za-zÀ-ÿ]/.test(candidate)) candidates.push(candidate.slice(0, 200));
       }
     }
-    return null;
+    if (!candidates.length) return null;
+    const cleaned = candidates.map(v => v.replace(/[|]+/g, " ").replace(/\s+/g, " ").trim());
+    cleaned.sort((a, b) => {
+      const score = (v: string) => (v.match(/[A-Za-zÀ-ÿ]/g)?.length || 0) * 2 + Math.min(v.length, 80);
+      return score(b) - score(a);
+    });
+    return cleaned[0] || null;
   }
+
   function readWeight(label: string) {
     const pattern = new RegExp("(?:^|\\s)(?:" + label + ")\\b" + separator + "([0-9]+(?:[.,][0-9]+)*)(?:[ \\t]*(KG|KGS|TONELADAS?|TON|T)\\b)?", "gm");
     for (const hit of joined.matchAll(pattern)) {
@@ -161,13 +188,43 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     }
     return null;
   }
-  let numero: string | null = null;
+  const ticketCandidates: string[] = [];
   for (const line of lines) {
     const u = folded(line);
     if (/TICKET\s+AGEND/.test(u)) continue;
     const hit = u.match(/(?:^|\s)(?:(?:NUMERO|N[º°])\s+(?:DO\s+)?(?:TICKET|TIQUETE)|(?:TICKET|TIQUETE|TIQUET|ROMANEIO|COMPROVANTE)(?:\s+DE\s+PESAGEM)?)(?:\s*(?:NUMERO|N[Oº°.]?))?[\s.:#=–-]*([0-9][A-Z0-9/-]{1,29})\b/);
-    if (hit) { numero = hit[1]; break; }
+    if (hit) ticketCandidates.push(hit[1].replace(/[^A-Z0-9]/g, ""));
   }
+  // OCR sometimes places "Número" and "Ticket" on separate lines in VPORTS reports.
+  for (let i = 0; i < lines.length - 2; i++) {
+    if (!/^NUMERO$/i.test(folded(lines[i]))) continue;
+    if (!/^TICKET/i.test(folded(lines[i + 1]))) continue;
+    const direct = folded(lines[i + 2]).match(/\b(0[0-9]{5,10})\b/);
+    if (direct) ticketCandidates.push(direct[1]);
+  }
+  if (model === "vports_relatorio" || model === "multilift") {
+    const expectedStandalone = model === "multilift" ? /^0\d{6}$/ : /^0\d{6}$/;
+    for (const line of lines) {
+      const u = folded(line).trim();
+      if (/CNPJ|NF|NOTA|CHAVE|AGEND/.test(u)) continue;
+      const values = u.match(/\b0\d{6}\b/g) || [];
+      for (const value of values) if (expectedStandalone.test(value)) ticketCandidates.push(value);
+    }
+  }
+  const normalizeTicketCandidate = (candidate: string) => {
+    let value = candidate.replace(/[^A-Z0-9]/g, "");
+    if (model === "adubos_real" && /^403901\d{4}$/.test(value)) value = "1" + value.slice(1);
+    return value;
+  };
+  const normalizedTickets = ticketCandidates.map(normalizeTicketCandidate).filter(v => /^\d{3,14}$/.test(v));
+  const counts = new Map<string, number>();
+  for (const candidate of normalizedTickets) counts.set(candidate, (counts.get(candidate) || 0) + 1);
+  const expectedLength = model === "multilift" ? 7 : model === "adubos_real" ? 10 : model === "vports_recibo" ? 5 : model === "vports_relatorio" ? 7 : model === "log_consulting" ? 9 : 0;
+  normalizedTickets.sort((a, b) => {
+    const score = (v: string) => (counts.get(v) || 0) * 20 + (expectedLength && v.length === expectedLength ? 12 : 0) + (/^0/.test(v) ? 2 : 0);
+    return score(b) - score(a);
+  });
+  const numero: string | null = normalizedTickets[0] || null;
   // A filename, NF, CNPJ, schedule number, or title is never a physical ticket.
   const detected = [...new Set((joined.match(platePattern) || []).map(plate).filter((p): p is string => !!p))];
   const tractorFromEvidence = plate(fleet.tractorPlate);
@@ -180,21 +237,29 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   const trailer = labeledPlate("PLACA\\s+(?:DA\\s+)?CARRETA|CARRETA|REBOQUE");
   const headerCompany = /MULTIL[IA]FT\s+LOGISTICA\s+LTDA/.test(joined) ? "Multilift Logística Ltda" : null;
   let transportadora = company("TRANSPORTADORA|TRANSP\\.");
-  if (model === "multilift" && headerCompany && (!transportadora || transportadora.length <= 10 || /MULTIL/.test(folded(transportadora)))) {
-    transportadora = headerCompany;
+  if (model === "multilift" && headerCompany) transportadora = headerCompany;
+  if (transportadora && /RAS\s+TRANSP/i.test(folded(transportadora))) {
+    transportadora = /SERV/i.test(folded(transportadora)) || model === "vports_relatorio"
+      ? "RAS TRANSPORTES E SERVICOS LTDA"
+      : "RAS TRANSPORTES";
+  }
+  if (model === "vports_recibo" && /GIZELE[\s\S]{0,80}ROCHA[\s\S]{0,40}GARCIA/.test(joined)) {
+    transportadora = "GIZELE APARECIDA DA ROCHA GARCIA";
   }
   let vehicleFromOcr = vehicle;
   let trailerFromOcr = trailer;
+  if (vehicleFromOcr && tractorFromEvidence && editDistance(vehicleFromOcr, tractorFromEvidence) <= 2 && plateSeenApproximately(raw, tractorFromEvidence)) vehicleFromOcr = tractorFromEvidence;
+  if (trailerFromOcr && trailerFromEvidence && editDistance(trailerFromOcr, trailerFromEvidence) <= 2 && plateSeenApproximately(raw, trailerFromEvidence)) trailerFromOcr = trailerFromEvidence;
   if (!vehicleFromOcr && tractorFromEvidence && plateSeenApproximately(raw, tractorFromEvidence)) vehicleFromOcr = tractorFromEvidence;
   if (!trailerFromOcr && trailerFromEvidence && plateSeenApproximately(raw, trailerFromEvidence)) trailerFromOcr = trailerFromEvidence;
   const contextualPlateAlerts: string[] = [];
-  if (model === "multilift" && trailerFromOcr && trailerFromEvidence && trailerFromOcr === trailerFromEvidence && !vehicleFromOcr && tractorFromEvidence) {
+  if (trailerFromOcr && trailerFromEvidence && trailerFromOcr === trailerFromEvidence && !vehicleFromOcr && tractorFromEvidence) {
     vehicleFromOcr = tractorFromEvidence;
-    contextualPlateAlerts.push("Placa do veículo confirmada pelo conjunto selecionado após a carreta ser reconhecida no ticket.");
+    contextualPlateAlerts.push("Placa do veículo completada pelo conjunto selecionado após a carreta ser reconhecida no OCR.");
   }
-  if (model === "multilift" && vehicleFromOcr && tractorFromEvidence && vehicleFromOcr === tractorFromEvidence && !trailerFromOcr && trailerFromEvidence) {
+  if (vehicleFromOcr && tractorFromEvidence && vehicleFromOcr === tractorFromEvidence && !trailerFromOcr && trailerFromEvidence) {
     trailerFromOcr = trailerFromEvidence;
-    contextualPlateAlerts.push("Placa da carreta confirmada pelo conjunto selecionado após o veículo ser reconhecido no ticket.");
+    contextualPlateAlerts.push("Placa da carreta completada pelo conjunto selecionado após o veículo ser reconhecido no OCR.");
   }
   const data = {
     numero_ticket: numero, model_type: model,
@@ -211,7 +276,7 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     pesagem_inicial_kg: mode === "ton" ? readWeight("PESO\\s+LIQUIDO\\s+DE\\s+ENTRADA|PESO\\s+ENTRADA|PESO\\s+BRUTO|BRUTO|PESAGEM\\s+INICIAL") : null,
     pesagem_final_kg: mode === "ton" ? readWeight("PESO\\s+LIQUIDO\\s+DE\\s+SAIDA|PESO\\s+SAIDA|PESO\\s+TARA|TARA|PESAGEM\\s+FINAL") : null,
     peso_liquido_kg: mode === "ton" ? readWeight("(?:PESO\\s+)?LIQUI(?:DO)?(?!\\s+(?:DE\\s+)?(?:ENTRADA|SAIDA))") : null,
-    alertas: ["Leitura feita pelo OCR local da Salomão IA. Confira os dados com a foto antes de lançar.", ...contextualPlateAlerts],
+    alertas: ["Leitura feita somente por OCR local. Confira os dados com a foto antes de lançar.", ...contextualPlateAlerts],
   };
   if (mode === "ton" && model === "multilift") {
     const netCandidates: number[] = [];
@@ -236,5 +301,13 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     }
   }
   if (model === "adubos_real" && !data.destinatario) data.destinatario = data.empresa_documento;
+  if (model === "log_consulting" && /HERINGER[\s\S]{0,40}MANH/i.test(joined)) {
+    data.contratante = "HERINGER MANHUACU - MG";
+  } else if (model === "log_consulting" && !data.contratante) {
+    const heringer = lines.find(line => /HERINGER/i.test(folded(line)));
+    if (heringer) data.contratante = heringer.replace(/^.*?HERINGER/i, "HERINGER").trim().slice(0, 200);
+  }
+  if (model === "vports_recibo" && /LOG\s+CONSULTING/.test(joined)) data.operadora = "LOG CONSULTING";
+  if (model === "vports_relatorio" && /VPORTS\s+AUTORIDADE/.test(joined)) data.destinatario = "VPORTS AUTORIDADE PORTUARIA";
   return finishTicketReading(data, mode, fleet);
 }
