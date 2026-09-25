@@ -22,7 +22,7 @@ Número do ticket, data das pesagens, placas do cavalo e carreta, pesos, produto
 - Placas normalizadas para maiúsculas e sem hífen.
 - Campos ausentes permanecem `null`; a IA não deve inventar.
 - Segunda leitura automática quando faltam placas/empresas/peso prioritário.
-- OCR local com Tesseract como fallback quando a visão avançada não estiver disponível.
+- A leitura automática usa somente OpenAI Vision; não existe fallback Tesseract/OCR local.
 - Ticket duplicado é recusado no salvamento.
 - Fotos enviadas ao leitor são arquivadas privadamente.
 
@@ -48,4 +48,9 @@ Há regras específicas e fallback genérico para Multilift Logística, VPORTS/L
 
 ### Observação
 
-A integração usa a API Responses diretamente, sem adicionar o pacote `openai` ao bundle. Isso mantém o build atual menor e evita uma dependência desnecessária.
+A integração usa a API OpenAI Responses diretamente com imagem em alta resolução e modelo `gpt-4o-mini` por padrão. O SDK `openai` não é necessário no bundle porque a chamada HTTPS é feita no servidor. Se a OpenAI estiver indisponível, o sistema informa o erro e não tenta OCR tradicional.
+
+
+## Regressão VPORTS 72416
+
+O caso VPORTS usado para regressão deve retornar: ticket 72416, peso líquido 38470 kg, placa do veículo NZE8I52, placa da carreta MQX5F98, transportadora GIZELE APARECIDA DA ROCHA GARCIA, operadora LOG CONSULTING e navio BELISLAND.
