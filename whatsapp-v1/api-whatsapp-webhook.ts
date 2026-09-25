@@ -393,13 +393,51 @@ function configuredGroupDriver(groupId: string | null) {
   return "";
 }
 
+async function findDriverForGroup(groupId: string | null) {
+  if (!groupId) return null;
+  const sql = await getSql();
+  const rows = await sql<Row>`
+    select d.*
+    from whatsapp_group_drivers g
+    join drivers d on d.id=g.driver_id
+    where g.group_id=${groupId} and d.status='ativo'
+    limit 1
+  `;
+  return rows[0] || null;
+}
+
+async function bindGroupToDriver(groupId: string, driver: Row, source: string) {
+  const sql = await getSql();
+  await sql`
+    insert into whatsapp_group_drivers(group_id,driver_id,source)
+    values(${groupId},${driver.id},${source})
+    on conflict (group_id) do nothing
+  `;
+}
+
 async function resolveDriverForMessage(item: any) {
-  const configured = configuredGroupDriver(item.groupId || null);
+  const groupId = item.groupId || null;
+
+  // Once a group is bound, every ticket in that group belongs to that driver,
+  // regardless of which authorized participant forwards the photo.
+  const persisted = await findDriverForGroup(groupId);
+  if (persisted) return persisted;
+
+  // Explicit environment mapping has priority for first-time group setup.
+  const configured = configuredGroupDriver(groupId);
   if (configured) {
     const byName = await findDriverByName(configured);
-    if (byName) return byName;
+    if (byName) {
+      if (groupId) await bindGroupToDriver(groupId, byName, "configured");
+      return byName;
+    }
   }
-  return findDriverByPhone(item.from);
+
+  // Safe auto-learning: bind only when the actual sender phone matches exactly
+  // one active driver. Never bind a group merely from a contact/profile name.
+  const byPhone = await findDriverByPhone(item.from);
+  if (byPhone && groupId) await bindGroupToDriver(groupId, byPhone, "sender_phone");
+  return byPhone;
 }
 
 async function findFleet(parsed: Parsed, driverId: string | null) {
