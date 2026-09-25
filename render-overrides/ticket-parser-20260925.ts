@@ -239,8 +239,19 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   const headerCompany = /MULTIL[IA]FT\s+LOGISTICA\s+LTDA/.test(joined) ? "Multilift Logística Ltda" : null;
   let transportadora = company("TRANSPORTADORA|TRANSP\\.");
   if (model === "multilift" && headerCompany) transportadora = headerCompany;
-  if (transportadora && /RAS\s+TRANSP/i.test(folded(transportadora))) {
-    transportadora = /SERV/i.test(folded(transportadora)) || model === "vports_relatorio"
+
+  // RAS is frequently fragmented by local OCR (for example "RAS RANS P( RTES").
+  // Normalize only when there is explicit RAS + transport evidence in the document.
+  const rasEvidence = lines.find((line) => {
+    const compact = folded(line).replace(/[^A-Z]/g, "");
+    return compact.startsWith("RAS") && (
+      compact.includes("TRANSP") ||
+      (compact.includes("RANS") && compact.includes("RTES"))
+    );
+  }) || null;
+  if ((transportadora && /^RAS\b/.test(folded(transportadora))) || rasEvidence) {
+    const evidence = folded((transportadora || "") + " " + (rasEvidence || ""));
+    transportadora = /SERV/.test(evidence) || model === "vports_relatorio"
       ? "RAS TRANSPORTES E SERVICOS LTDA"
       : "RAS TRANSPORTES";
   }
@@ -262,18 +273,69 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     trailerFromOcr = trailerFromEvidence;
     contextualPlateAlerts.push("Placa da carreta completada pelo conjunto selecionado após o veículo ser reconhecido no OCR.");
   }
+  let destinatario = company("DESTINATARIO|RECEBEDOR");
+  let contratante = company("EMPRESA\\s+CONTRATANTE|CONTRATANTE|TOMADOR|EMPRESA");
+  const operadora = model === "multilift" ? null : company("OPERADORA|OPERADOR");
+
+  // A broken transportadora line must never leak into "Empresa contratante".
+  if (contratante && /^RAS\b/.test(folded(contratante)) && (transportadora?.startsWith("RAS ") || rasEvidence)) {
+    contratante = null;
+  }
+
+  // LOG CONSULTING tickets for this route commonly print HERINGER with a truncated city.
+  // Prefer explicit HERINGER evidence over a misaligned "Empresa" column.
+  if (model === "log_consulting") {
+    const heringerLine = lines.find(line => /HERINGER/i.test(folded(line)));
+    if (/HERINGER[\\s\\S]{0,120}(?:MANH|MANHUACU|MG)/.test(joined) || heringerLine) {
+      const h = folded(heringerLine || "");
+      if (/MANH|MANHUACU/.test(h) || /HERINGER[\\s\\S]{0,120}MANH/.test(joined)) {
+        contratante = "HERINGER MANHUACU - MG";
+      }
+    }
+  }
+
+  const looksLikeLabelValue = (value: string | null) => {
+    if (!value) return true;
+    const u = folded(value).replace(/[.:;,_-]+/g, " ").replace(/\\s+/g, " ").trim();
+    return /^(NOTA\\s*FISC|NOTA\\s+FISCAL|NUMERO\\s+NF|NF\\b|TRANSPORTADORA\\b|EMPRESA\\b|DESTINATARIO\\b|OPERADORA\\b|PRODUTO\\b)/.test(u);
+  };
+
+  let produto = field("PRODUTO|MERCADORIA|ITEM");
+  if (looksLikeLabelValue(produto)) {
+    const productLine = lines.find(line => {
+      const u = folded(line);
+      return /\\b(NPK|KCL|UREIA|FERTILIZANTE|ADUBO)\\b/.test(u) && !/^(PRODUTO|NOTA\\s*FISC)/.test(u);
+    });
+    if (productLine) {
+      produto = productLine.replace(/^\\s*(?:PRODUTO|MERCADORIA|ITEM)\\s*[:.=-]*\\s*/i, "").trim().slice(0, 200) || null;
+    } else {
+      produto = null;
+    }
+  }
+
+  const cleanInvoice = (value: string | null) => {
+    if (!value) return null;
+    const match = folded(value).match(/\\b(\\d{4,}(?:[-/]\\d{1,6})?)\\b/);
+    return match ? match[1] : null;
+  };
+  let numeroNf = cleanInvoice(field("NUMERO\\s+NF|NOTA\\s+FISCAL|NF-E|NFE"));
+  if (!numeroNf) {
+    const direct = joined.match(/(?:NUMERO\\s+NF|NOTA\\s+FISCAL|NF-E|NFE|NRO\\s+NOTA)[\\s.:#=–-]{0,20}(?:NRO\\s+NOTA[\\s.:#=–-]*)?(\\d{4,}(?:[-/]\\d{1,6})?)/);
+    numeroNf = direct?.[1] || null;
+  }
+
   const data = {
     numero_ticket: numero, model_type: model,
     status: field("STATUS"), placa_veiculo: vehicleFromOcr, placa_carreta: trailerFromOcr, placas_detectadas: detected,
-    produto: field("PRODUTO|MERCADORIA|ITEM"), motorista: field("MOTORISTA"),
+    produto, motorista: field("MOTORISTA"),
     transportadora,
-    destinatario: company("DESTINATARIO|RECEBEDOR"), contratante: company("EMPRESA\\s+CONTRATANTE|CONTRATANTE|TOMADOR|EMPRESA"),
-    operadora: model === "multilift" ? null : company("OPERADORA|OPERADOR"),
+    destinatario, contratante,
+    operadora,
     operador_pesagem: model === "multilift" ? field("OPERADOR") : null,
     remetente: company("REMETENTE"), cliente: company("CLIENTE"),
     empresa_documento: model === "adubos_real" ? "ADUBOS REAL S.A." : model === "multilift" ? headerCompany : null,
     navio: field("NAVIO(?!\\s+(?:ORIGEM|DESTINO))"), navio_origem: field("NAVIO\\s+ORIGEM"), navio_destino: field("NAVIO\\s+DESTINO"),
-    emissor: field("EMISSOR"), numero_nf: field("NUMERO\\s+NF|NOTA\\s+FISCAL|NF-E|NFE"),
+    emissor: field("EMISSOR"), numero_nf: numeroNf,
     pesagem_inicial_kg: mode === "ton" ? readWeight("PESO\\s+LIQUIDO\\s+DE\\s+ENTRADA|PESO\\s+ENTRADA|PESO\\s+BRUTO|BRUTO|PESAGEM\\s+INICIAL") : null,
     pesagem_final_kg: mode === "ton" ? readWeight("PESO\\s+LIQUIDO\\s+DE\\s+SAIDA|PESO\\s+SAIDA|PESO\\s+TARA|TARA|PESAGEM\\s+FINAL") : null,
     peso_liquido_kg: mode === "ton" ? readWeight("(?:PESO\\s+)?LIQUI(?:DO)?(?!\\s+(?:DE\\s+)?(?:ENTRADA|SAIDA))") : null,
