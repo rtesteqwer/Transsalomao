@@ -3,8 +3,8 @@
                 <p className="text-sm font-semibold">Foto do ticket / documento da viagem</p>
                 <p className="mt-1 text-xs text-muted">
                   {freightMode === "ton"
-                    ? "O OCR lê número do ticket, peso líquido, placas, transportadora, operadora e destinatário."
-                    : "Neste modo o OCR lê número do ticket, placas, transportadora e destinatário; pesos e pesagens são ignorados."}
+                    ? "O OCR lê número do ticket, peso líquido, placas, transportadora, operadora, destinatário, data e horário quando estiverem no ticket."
+                    : "Neste modo o OCR lê número do ticket, placas, transportadora, destinatário, data e horário; pesos e pesagens são ignorados."}
                 </p>
               </div>
 
@@ -81,7 +81,7 @@
                       ["placa_veiculo", "Placa do veículo"], ["placa_carreta", "Placa da carreta"],
                       ["transportadora", "Transportadora"], ["operadora", "Operadora"],
                       ["contratante", "Empresa contratante"], ["destinatario", "Destinatário / recebedor"],
-                      ["produto", "Produto"], ["numero_nf", "Nota fiscal"],
+                      ["produto", "Produto"], ["data_ticket", "Data do ticket"], ["hora_ticket", "Horário do ticket"],
                     ] as const).map(([key, label]) => (
                       <Field key={key} label={label} hint={!ticketData[key] ? "Não identificado — confira na foto" : undefined}>
                         <Input value={ticketData[key] ?? ""}
