@@ -96,3 +96,6 @@ Publish verified ticket reader and operational fixes 2026-09-25
 - Preserve company roles, exact kg, editable review and Caixa metadata
 - Restore individual trip deletion and billing PDF fueling details
 - Gate publication on 21 ticket and database regression tests
+
+Restore current production pipeline after legacy-workflow rollback — 2026-09-25
+Includes Multilift OCR fix commit 24128a51fe9ecad2b548a7393e1493f5f44fb6da
