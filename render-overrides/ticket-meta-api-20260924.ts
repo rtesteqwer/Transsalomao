@@ -32,6 +32,8 @@ export const Route = createFileRoute("/api/ticket-meta")({
           freightMode: row.freight_mode,
           operadora: (row.ticket_data as Record<string, unknown> | null)?.operadora || null,
           contratante: (row.ticket_data as Record<string, unknown> | null)?.contratante || null,
+          dataTicket: (row.ticket_data as Record<string, unknown> | null)?.data_ticket || null,
+          horaTicket: (row.ticket_data as Record<string, unknown> | null)?.hora_ticket || null,
         },
       });
     },
