@@ -81,7 +81,8 @@ async function readTicketWithChatGPT(
       produto: nullableString,
       pesagem_inicial_data: nullableString,
       pesagem_final_data: nullableString,
-      numero_nf: nullableString,
+      data_ticket: nullableString,
+      hora_ticket: nullableString,
       transportadora: nullableString,
       motorista: nullableString,
       cliente: nullableString,
@@ -108,7 +109,7 @@ async function readTicketWithChatGPT(
     },
     required: [
       "numero_ticket","status","placa_veiculo","placa_carreta","produto",
-      "pesagem_inicial_data","pesagem_final_data","numero_nf","transportadora",
+      "pesagem_inicial_data","pesagem_final_data","data_ticket","hora_ticket","transportadora",
       "motorista","cliente","destinatario","anotacoes_manuscritas","operadora",
       "contratante","remetente","empresa_documento","transportadora_cnpj",
       "destinatario_cnpj","navio","navio_origem","navio_destino",
@@ -132,13 +133,15 @@ REGRAS CRÍTICAS:
 3. Se peso líquido não estiver legível, mas bruto e tara estiverem claramente legíveis, pode calcular a diferença e escrever um alerta informando que foi calculado.
 4. placa_veiculo = cavalo/veículo; placa_carreta = carreta/reboque. Normalize placa brasileira para 7 caracteres sem hífen. Não troque as duas.
 5. transportadora, operadora, empresa contratante, destinatário/recebedor e produto são papéis diferentes. Não coloque rótulos ("Nota Fiscal", "Produto", "Empresa") como valores.
-6. numero_nf só pode conter número/código de nota fiscal realmente visível. Texto como "MICRO", "Nota Fisc" ou nome de produto não é NF.
-7. Preserve nomes de empresas de forma legível quando a foto permitir. Ex.: RAS TRANSPORTES, LOG CONSULTING, HERINGER, MULTILIFT, ADUBOS REAL, VPORTS.
-8. model_type pode ser "multilift", "adubos_real", "vports_recibo", "vports_relatorio", "log_consulting" ou "desconhecido".
-9. placas_detectadas deve listar todas as placas plausíveis vistas na foto.
-10. Em modo diferente de "ton", ainda leia metadados do ticket, mas os pesos serão descartados pelo servidor.
-11. Conjunto selecionado: ${selectedFleetText || "nenhum"}. Use isso somente para desambiguar um caractere que esteja VISIVELMENTE muito próximo na foto; nunca preencha uma placa que não apareça.
-12. Se algum campo estiver incerto, use null e inclua um alerta curto. É melhor deixar vazio do que adivinhar.
+6. Não extraia nem devolva número de Nota Fiscal. Nota fiscal não faz mais parte dos dados da Trans Salomão.
+7. data_ticket = data impressa no ticket/documento. Se houver várias datas, prefira a data de fechamento/saída/pesagem final; se houver apenas uma, use essa. Normalize para DD/MM/AAAA quando for inequívoco.
+8. hora_ticket = horário correspondente à data escolhida. Se houver vários horários, prefira fechamento/saída/pesagem final. Use HH:MM ou HH:MM:SS conforme estiver legível. Se data ou hora não estiverem visíveis com segurança, use null.
+9. Preserve nomes de empresas de forma legível quando a foto permitir. Ex.: RAS TRANSPORTES, LOG CONSULTING, HERINGER, MULTILIFT, ADUBOS REAL, VPORTS.
+10. model_type pode ser "multilift", "adubos_real", "vports_recibo", "vports_relatorio", "log_consulting" ou "desconhecido".
+11. placas_detectadas deve listar todas as placas plausíveis vistas na foto.
+12. Em modo diferente de "ton", ainda leia metadados do ticket, incluindo data e horário, mas os pesos serão descartados pelo servidor.
+13. Conjunto selecionado: ${selectedFleetText || "nenhum"}. Use isso somente para desambiguar um caractere que esteja VISIVELMENTE muito próximo na foto; nunca preencha uma placa que não apareça.
+14. Se algum campo estiver incerto, use null e inclua um alerta curto. É melhor deixar vazio do que adivinhar.
 
 Modo atual da viagem: ${freightMode}.`;
 
