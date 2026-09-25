@@ -2,11 +2,20 @@ import { TicketError, normalizeTicket, ticketForMode, type TicketData, type Tick
 
 export type FleetPlates = { tractorPlate?: string; trailerPlate?: string };
 const folded = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+const ocrDigit = (ch: string) => ({
+  O: "0", Q: "0", D: "0", I: "1", L: "1", Z: "2", S: "5", G: "6", B: "8",
+} as Record<string, string>)[ch] || ch;
 const plate = (s: unknown) => {
   const p = typeof s === "string" ? folded(s).replace(/[^A-Z0-9]/g, "") : "";
-  return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(p) ? p : null;
+  if (p.length !== 7 || !/^[A-Z]{3}[A-Z0-9]{4}$/.test(p)) return null;
+  const chars = p.split("");
+  chars[3] = ocrDigit(chars[3]);
+  chars[5] = ocrDigit(chars[5]);
+  chars[6] = ocrDigit(chars[6]);
+  const corrected = chars.join("");
+  return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(corrected) ? corrected : null;
 };
-const platePattern = /\b[A-Z]{3}[ -]*[0-9][A-Z0-9][0-9]{2}\b|\b[A-Z]\s+[A-Z]\s+[A-Z]\s+[0-9]\s+[A-Z0-9]\s+[0-9]\s+[0-9]\b/g;
+const platePattern = /\b[A-Z]{3}[ -]*[0-9OQILSZGB][A-Z0-9][0-9OQILSZGB]{2}\b|\b[A-Z]\s+[A-Z]\s+[A-Z]\s+[0-9OQILSZGB]\s+[A-Z0-9]\s+[0-9OQILSZGB]\s+[0-9OQILSZGB]\b/g;
 
 function editDistance(a: string, b: string) {
   const row = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -204,15 +213,26 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     peso_liquido_kg: mode === "ton" ? readWeight("(?:PESO\\s+)?LIQUI(?:DO)?(?!\\s+(?:DE\\s+)?(?:ENTRADA|SAIDA))") : null,
     alertas: ["Leitura feita pelo OCR local da Salomão IA. Confira os dados com a foto antes de lançar.", ...contextualPlateAlerts],
   };
-  if (mode === "ton" && model === "multilift" && data.peso_liquido_kg == null) {
-    const netIndex = lines.findIndex(line => /^PESO\s+LIQ/i.test(folded(line)) || /^LIQ/i.test(folded(line)));
-    if (netIndex >= 0) {
-      for (const line of lines.slice(netIndex, netIndex + 4)) {
-        const hit = folded(line).match(/(?:^|[^0-9])([0-9]{1,3}(?:[.,][0-9]{3})|[0-9]{4,6})\s*(KG|KGS|T|TON)?\b/);
-        if (!hit) continue;
-        const n = weightNumber(hit[1], hit[2] || "KG");
-        if (n != null && n >= 1000) { data.peso_liquido_kg = n; break; }
+  if (mode === "ton" && model === "multilift") {
+    const netCandidates: number[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (!/^PESO\s+LIQ/i.test(folded(lines[i])) && !/^LIQ/i.test(folded(lines[i]))) continue;
+      for (const line of lines.slice(i, i + 4)) {
+        for (const hit of folded(line).matchAll(/(?:^|[^0-9])([0-9]{1,3}(?:[.,][0-9]{3})|[0-9]{4,6})\s*(KG|KGS|T|TON)?\b/g)) {
+          const n = weightNumber(hit[1], hit[2] || "KG");
+          if (n != null && n >= 1000 && n <= 100000) netCandidates.push(n);
+        }
       }
+    }
+    const uniqueNet = [...new Set(netCandidates)];
+    const difference = data.pesagem_inicial_kg != null && data.pesagem_final_kg != null
+      ? Math.abs(data.pesagem_inicial_kg - data.pesagem_final_kg) : null;
+    if (difference != null && difference >= 1000 && difference <= 100000 && uniqueNet.includes(difference)) {
+      data.peso_liquido_kg = difference;
+    } else if (uniqueNet.length && (data.peso_liquido_kg == null || data.peso_liquido_kg > 100000)) {
+      data.peso_liquido_kg = uniqueNet[0];
+    } else if (data.peso_liquido_kg != null && data.peso_liquido_kg > 100000 && difference != null && difference >= 1000 && difference <= 100000) {
+      data.peso_liquido_kg = difference;
     }
   }
   if (model === "adubos_real" && !data.destinatario) data.destinatario = data.empresa_documento;
