@@ -7,6 +7,8 @@ type Row = Record<string, any>;
 type Parsed = {
   kind: "trip" | "fueling" | "expense" | "unknown";
   confidence: number;
+  is_weighing_ticket: boolean;
+  ticket_number: string | null;
   driver: string | null;
   fleet: string | null;
   tractor_plate: string | null;
@@ -15,8 +17,15 @@ type Parsed = {
   client: string | null;
   origin: string | null;
   destination: string | null;
+  carrier: string | null;
+  operator: string | null;
+  contractor: string | null;
+  recipient: string | null;
+  product: string | null;
+  invoice_number: string | null;
   freight_mode: "ton" | "trip" | "cegonha" | "caixinha" | null;
   net_weight: number | null;
+  net_weight_kg: number | null;
   gross_weight: number | null;
   loaded_tons: number | null;
   price_per_ton: number | null;
@@ -272,7 +281,11 @@ async function processMessage(item: any, fullPayload: any) {
     return { ok: true, status: "pending_review", id: auditId, parsed };
   }
 
-  const imageGroupTrip = !!item.groupId && item.type === "image" && parsed.kind === "trip";
+  const imageGroupTrip =
+    !!item.groupId &&
+    item.type === "image" &&
+    parsed.kind === "trip" &&
+    parsed.is_weighing_ticket === true;
   if (!imageGroupTrip && !autoCommit) {
     await markPending(auditId, "pending_review");
     return { ok: true, status: "pending_review", id: auditId, parsed };
@@ -292,7 +305,10 @@ async function processMessage(item: any, fullPayload: any) {
   // Assim o peso líquido é capturado automaticamente sem adivinhar preço por tonelada.
   if (imageGroupTrip) {
     try {
-      const created = await createImageReport(parsed, matchedDriver, fleet, item.id);
+      const created = await createImageReport(parsed, matchedDriver, fleet, item.id, imageDataUrl);
+      if (process.env.WHATSAPP_SEND_CONFIRMATIONS === "1") {
+        await sendWhatsAppText(item.groupId, "Trans Salomão: " + created.summary, true);
+      }
       return { ok: true, status: "committed", id: auditId, created };
     } catch (error: any) {
       const msg = String(error?.message || error).slice(0, 1000);
