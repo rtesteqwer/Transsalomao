@@ -6,7 +6,7 @@ A integração usa as rotas TanStack Start existentes `/api/ler-ticket` e `/api/
 
 Em `/motorista`, a foto pode ser usada em qualquer modo. Em **Por tonelada**, a leitura usa número do ticket, peso líquido, placas, transportadora e destinatário. Em **Diária, Cegonha e Caixinha**, pesos/pesagens são ignorados e somente os demais dados do documento são gravados. Depois da conferência, o lançamento entra como pendente no Caixa da Gerência. Um motorista autenticado só pode usar seu próprio cadastro. A gerência pode selecionar o motorista. O lançamento fica pendente na Caixa para o fechamento normal pela gerência.
 
-O peso líquido é dividido por 1000 sem arredondamento em toneladas. Pesos bruto e de origem não substituem o líquido. As anotações manuscritas ficam separadas. Campos ilegíveis ficam vazios e geram alertas. A foto em si é enviada à IA para leitura; esta rota salva os dados extraídos e conferidos, não arquiva a imagem. O arquivo de fotos da gerência continua no fluxo existente.
+O peso líquido é dividido por 1000 sem arredondamento em toneladas. Pesos bruto e de origem não substituem o líquido. As anotações manuscritas ficam separadas. Campos ilegíveis ficam vazios e geram alertas. A leitura continua 100% por OCR local no aparelho, sem IA. Depois da conferência, a foto é comprimida no navegador e enviada junto ao `/api/salvar-ticket`; o servidor grava o ticket, o lançamento pendente no Caixa e a foto vinculada ao mesmo `report_id`. A imagem passa a aparecer automaticamente no arquivo **Fotos de Tickets** da Gerência.
 
 ## Configuração do servidor
 
@@ -17,9 +17,9 @@ O peso líquido é dividido por 1000 sem arredondamento em toneladas. Pesos brut
 - `TICKET_TOKEN`: opcional para integrações entre servidores, com pelo menos 32 caracteres aleatórios. É enviado em `x-app-token`. **Nunca colocar este token no JavaScript do navegador.**
 - O navegador usa a sessão HttpOnly do login existente. A sessão administrativa usa `MANAGEMENT_SESSION_SECRET` ou, na ausência, o segredo de `DATABASE_URL`; o segredo público de testes foi removido. Sessões antigas assinadas pelo segredo de testes exigem novo login.
 
-O POST de gravação exige `conferido: true`, `driverId`, `fleetId`, `numero_ticket`, `freightMode` e `km_carreta` inteiro não negativo. `peso_liquido_kg` é obrigatório somente em `freightMode="ton"`; nos demais modos ele é descartado antes da gravação. A gravação de ticket e relatório acontece em uma única instrução SQL atômica. Número já registrado retorna HTTP 409. Falhas externas não retornam chaves nem detalhes internos. O limite de leitura é de 20 requisições por minuto por identidade, compartilhado no banco entre instâncias.
+O POST de gravação exige `conferido: true`, `driverId`, `fleetId`, `numero_ticket`, `freightMode` e `km_carreta` inteiro não negativo. Quando o lançamento veio de foto, também recebe `imagem` (Data URL JPG/PNG/WebP, até cerca de 3 MB após compressão) e `fileName`; a imagem é validada no servidor antes de ser arquivada. `peso_liquido_kg` é obrigatório somente em `freightMode="ton"`; nos demais modos ele é descartado antes da gravação. A gravação de ticket e relatório acontece em uma única instrução SQL atômica. Número já registrado retorna HTTP 409. Falhas externas não retornam chaves nem detalhes internos. O limite de leitura é de 20 requisições por minuto por identidade, compartilhado no banco entre instâncias.
 
-A migração adicional `0015_ticket_safety.sql` apenas cria a tabela de limite de leituras e acrescenta `ticket_data` aos tickets; não modifica viagens existentes.
+A migração `0017_driver_ticket_photos.sql` cria somente o arquivo de fotos (`trip_ticket_photos`) e seus índices; não modifica viagens existentes. A `0015_ticket_safety.sql` continua responsável apenas pelo limite de leituras e por `ticket_data`.
 
 ## Validação local
 
