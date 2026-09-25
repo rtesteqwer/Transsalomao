@@ -33,6 +33,7 @@ insert into fleets values ('f1','ativo');`);
 await pg.exec(readFileSync(path.join(source, 'migrations/0012_ticket_reader.sql'), 'utf8'));
 await pg.exec(readFileSync(path.join(source, 'migrations/0015_ticket_safety.sql'), 'utf8'));
 await pg.exec(readFileSync(path.join(source, 'migrations/0016_ticket_modes_metadata.sql'), 'utf8'));
+await pg.exec(readFileSync(path.join(source, 'migrations/0017_driver_ticket_photos.sql'), 'utf8'));
 const sql = async (strings, ...values) => (await pg.query(strings.reduce((text, part, i) => text + (i ? '$' + i : '') + part, ''), values)).rows;
 const input = (ticket, other = {}) => ({ numero_ticket: ticket, peso_liquido_kg: 35810, pesagem_inicial_kg: 57810, pesagem_final_kg: 22000, transportadora:'Trans Salomão', destinatario:'Cliente destino', driverId:'d1', fleetId:'f1', km_carreta:123456, conferido:true, freightMode:'ton', dailyValue:0, ...other });
 const expectStatus = status => error => error instanceof TicketError && error.status === status;
@@ -78,6 +79,23 @@ test('writes exact tons and creates a single pending Caixa report', async () => 
  await assert.rejects(()=>saveTicket(sql,validateSave(input(' t-100 '))),expectStatus(409));
 });
 
+test('archives the driver ticket photo with the same pending report', async () => {
+ const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+ const data=validateSave(input('T-PHOTO',{imagem:'data:image/png;base64,'+png,fileName:'ticket motorista.png'}));
+ assert.equal(data.photo?.mime,'image/png');
+ const result=await saveTicket(sql,data,{createdBy:'motorista-teste'});
+ assert.ok(result.photoId);
+ const rows=(await pg.query("select relation_type,relation_id,trip_code,file_name,mime_type,image_data,created_by from trip_ticket_photos where id=$1",[result.photoId])).rows;
+ assert.equal(rows.length,1);
+ assert.equal(rows[0].relation_type,'report');
+ assert.equal(rows[0].relation_id,result.reportId);
+ assert.equal(rows[0].trip_code,'T-PHOTO');
+ assert.equal(rows[0].file_name,'ticket motorista.png');
+ assert.equal(rows[0].mime_type,'image/png');
+ assert.ok(String(rows[0].image_data).startsWith('data:image/png;base64,'));
+ assert.equal(rows[0].created_by,'motorista-teste');
+});
+
 test('concurrent duplicate submissions create exactly one ticket and report', async () => {
  const results=await Promise.allSettled(Array.from({length:5},()=>saveTicket(sql,validateSave(input('T-101')))));
  assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
@@ -102,10 +120,12 @@ test('non-ton modes keep ticket metadata but never persist weight', async () => 
  assert.equal(ticket.peso_liquido_kg,null); assert.equal(ticket.transportadora,'Trans Salomão'); assert.equal(ticket.destinatario,'Cliente destino'); assert.equal(ticket.freight_mode,'caixinha');
 });
 
-test('a report insert failure rolls back the ticket automatically', async () => {
+test('a report insert failure rolls back the ticket and photo automatically', async () => {
+ const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
  await pg.exec("alter table reports add constraint test_failure check (ticket <> 'T-FAIL')");
- await assert.rejects(()=>saveTicket(sql,validateSave(input('T-FAIL'))));
+ await assert.rejects(()=>saveTicket(sql,validateSave(input('T-FAIL',{imagem:'data:image/png;base64,'+png,fileName:'rollback.png'}))));
  assert.equal(Number((await pg.query("select count(*) from tickets_balanca where numero_ticket='T-FAIL'")).rows[0].count),0);
+ assert.equal(Number((await pg.query("select count(*) from trip_ticket_photos where trip_code='T-FAIL'")).rows[0].count),0);
  await pg.exec('alter table reports drop constraint test_failure');
  assert.equal((await saveTicket(sql,validateSave(input('T-FAIL')))).ok,true);
 });

@@ -26,6 +26,7 @@ copy("render-overrides/ticket-save-api-20260924.ts", "src/routes/api/salvar-tick
 copy("render-overrides/0012_ticket_reader.sql", "migrations/0012_ticket_reader.sql");
 copy("render-overrides/0015_ticket_safety.sql", "migrations/0015_ticket_safety.sql");
 copy("render-overrides/0016_ticket_modes_metadata.sql", "migrations/0016_ticket_modes_metadata.sql");
+copy("render-overrides/0017_driver_ticket_photos.sql", "migrations/0017_driver_ticket_photos.sql");
 copy("render-overrides/ticket-core-20260924.ts", "src/lib/ticket-core.ts");
 copy("render-overrides/ticket-auth-20260924.server.ts", "src/lib/ticket-auth.server.ts");
 copy("render-overrides/ticket-photo-access-20260924.tsx", "src/components/ticket-photo-access.tsx");
@@ -79,6 +80,7 @@ writeTarget(authPath, replaceRequired(readTarget(authPath),
     '  const [ticketData, setTicketData] = useState<TicketData | null>(null);\n' +
     '  const [ticketReading, setTicketReading] = useState(false);\n' +
     '  const [ticketFileName, setTicketFileName] = useState("");\n' +
+    '  const [ticketImage, setTicketImage] = useState<string | null>(null);\n' +
     '  const [kmCarreta, setKmCarreta] = useState("");\n' +
     '  const [ticketReadError, setTicketReadError] = useState("");\n';
   s = replaceRequired(s, stateMarker, states, "states");

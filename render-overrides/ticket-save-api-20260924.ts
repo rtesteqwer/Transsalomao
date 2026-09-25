@@ -8,9 +8,9 @@ export const Route = createFileRoute("/api/salvar-ticket")({
     POST: async ({ request }) => {
       try {
         const access = ticketAccess(request);
-        const data = validateSave(await readBody(request, 32_000));
+        const data = validateSave(await readBody(request));
         if (access.driverId && access.driverId !== data.driverId) throw new TicketError(403, "Use o motorista vinculado ao seu login.");
-        return json(await saveTicket(await getSql(), data), 201);
+        return json(await saveTicket(await getSql(), data, { createdBy: access.username }), 201);
       } catch (error) { return ticketErrorResponse(error); }
     },
   } },

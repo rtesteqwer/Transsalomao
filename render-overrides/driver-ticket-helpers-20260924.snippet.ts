@@ -105,6 +105,48 @@ async function ocrTicketLocal(file: File) {
   }
 }
 
+async function ticketImageToDataUrl(file: File) {
+  if (!file.type.startsWith("image/")) throw new Error("Selecione uma foto válida.");
+  if (file.size > 15_000_000) throw new Error("A foto é grande demais.");
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxSide = 1400;
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Não foi possível preparar a foto para arquivamento.");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+
+    let quality = 0.78;
+    let out = canvas.toDataURL("image/jpeg", quality);
+    while (out.length > 3_000_000 && quality > 0.48) {
+      quality -= 0.08;
+      out = canvas.toDataURL("image/jpeg", quality);
+    }
+    if (out.length > 3_000_000) throw new Error("A foto ficou grande demais para arquivar. Tire outra foto mais perto do ticket.");
+    return out;
+  } catch (error) {
+    if (error instanceof Error && /grande demais|preparar/.test(error.message)) throw error;
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Não foi possível preparar a foto para arquivamento."));
+      reader.onload = () => {
+        const value = String(reader.result || "");
+        if (!value.startsWith("data:image/")) reject(new Error("Selecione uma foto válida."));
+        else if (value.length > 3_000_000) reject(new Error("A foto é grande demais. Use outra foto mais próxima do ticket."));
+        else resolve(value);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+}
+
 async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "caixinha", selectedFleet?: { tractorPlate: string; trailerPlate: string }): Promise<TicketData> {
   // OCR-only: a foto nunca é enviada para um provedor de IA.
   const ocrText = await ocrTicketLocal(file);
@@ -127,6 +169,8 @@ async function salvarTicket(dados: TicketData & {
   conferido: true;
   freightMode: "ton" | "trip" | "cegonha" | "caixinha";
   dailyValue: number;
+  imagem?: string;
+  fileName?: string;
 }) {
   const response = await fetch("/api/salvar-ticket", {
     method: "POST",
@@ -137,5 +181,5 @@ async function salvarTicket(dados: TicketData & {
   });
   const result = await response.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
   if (!response.ok) throw new Error(result?.erro || "Falha ao salvar o ticket");
-  return result as { ok: true; id: number; reportId: string; ticket: string; tons: number; freightMode: string };
+  return result as { ok: true; id: number; reportId: string; ticket: string; tons: number; freightMode: string; photoId: string | null };
 }
