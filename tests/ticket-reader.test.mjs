@@ -161,6 +161,38 @@ Peso liquido..: 33860 kg`;
   assert.equal(d.contratante, 'HERINGER MANHUACU - MG');
 });
 
+test('LOG CONSULTING garbled OCR keeps RAS in transportadora and rejects label garbage', () => {
+  const ocr = `LOG CONSULTING
+RODOVIA DARLY SANTOS, S/N - VILA VELHA - ES
+Tiquete 000024847
+Placa do Veiculo QWS3E13
+Placa da Carreta FYW7J05
+Motorista KLEBERSON DUTRA
+Transportadora
+RAS RANS P( RTES
+Empresa
+RAS RANS P( RTES
+HERINGER MANH
+Produto
+Nota Fisc
+NPK 19-04-19 + MICROS
+Nota Fiscal
+,,, MICRO
+Peso liquido de entrada 52500 kg
+Peso liquido de Saida 18640 kg
+Peso liquido 33860 kg`;
+  const d = parseTicketOcr(ocr, 'ton', { tractorPlate: 'QWS3E13', trailerPlate: 'FYW7J05' });
+  assert.equal(d.model_type, 'log_consulting');
+  assert.equal(d.numero_ticket, '000024847');
+  assert.equal(d.peso_liquido_kg, 33860);
+  assert.equal(d.placa_veiculo, 'QWS3E13');
+  assert.equal(d.placa_carreta, 'FYW7J05');
+  assert.equal(d.transportadora, 'RAS TRANSPORTES');
+  assert.equal(d.contratante, 'HERINGER MANHUACU - MG');
+  assert.equal(d.produto, 'NPK 19-04-19 + MICROS');
+  assert.equal(d.numero_nf, null);
+});
+
 test('second ADUBOS REAL model keeps exact printed kg', () => {
   const ocr = `Ticket n° 1039013373
 Operação: Entrada
