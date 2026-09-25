@@ -7,3 +7,4 @@ fix-log-ticket-regex-escaping-2026-09-25
 chatgpt-ticket-whatsapp-2026-09-25
 backfill-whatsapp-group-drivers-2026-09-25
 authorize-explicit-whatsapp-group-2026-09-25
+bind-murillo-group-inside-vercel-2026-09-25
