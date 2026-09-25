@@ -50,7 +50,8 @@ function plateSeenApproximately(raw: string, expected: string | null) {
 }
 
 export function missingTicketFields(d: TicketData, mode: TicketFreightMode) {
-  const required = d.model_type === "adubos_real" ? ["numero_ticket", "placa_veiculo", "placa_carreta"] : ["numero_ticket", "placa_veiculo", "placa_carreta", "transportadora"];\n  const missing = required.filter(k => !d[k as keyof TicketData]);
+  const required = d.model_type === "adubos_real" ? ["numero_ticket", "placa_veiculo", "placa_carreta"] : ["numero_ticket", "placa_veiculo", "placa_carreta", "transportadora"];
+  const missing = required.filter(k => !d[k as keyof TicketData]);
   if (mode === "ton" && !d.peso_liquido_kg) missing.push("peso_liquido_kg");
   if (!d.operadora && !d.contratante && !d.destinatario) missing.push("operadora/contratante/destinatario");
   return missing;
@@ -191,22 +192,22 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   for (const line of lines) {
     const u = folded(line);
     if (/TICKET\s+AGEND/.test(u)) continue;
-    const hit = u.match(/(?:^|\\s)(?:(?:NUMERO|N[º°])\\s+(?:DO\\s+)?(?:TICKET|TIQUETE)|(?:TICKET|TIQUETE|TIQUET|ROMANEIO|COMPROVANTE)(?:\\s+DE\\s+PESAGEM)?)(?:\\s*(?:NUMERO|N[Oº°.]?))?[\\s.:#=–-]*([0-9][A-Z0-9/-]{1,29})\\b/);
+    const hit = u.match(/(?:^|\s)(?:(?:NUMERO|N[º°])\s+(?:DO\s+)?(?:TICKET|TIQUETE)|(?:TICKET|TIQUETE|TIQUET|ROMANEIO|COMPROVANTE)(?:\s+DE\s+PESAGEM)?)(?:\s*(?:NUMERO|N[Oº°.]?))?[\s.:#=–-]*([0-9][A-Z0-9/-]{1,29})\b/);
     if (hit) ticketCandidates.push(hit[1].replace(/[^A-Z0-9]/g, ""));
   }
   // OCR sometimes places "Número" and "Ticket" on separate lines in VPORTS reports.
   for (let i = 0; i < lines.length - 2; i++) {
     if (!/^NUMERO$/i.test(folded(lines[i]))) continue;
     if (!/^TICKET/i.test(folded(lines[i + 1]))) continue;
-    const direct = folded(lines[i + 2]).match(/\\b(0[0-9]{5,10})\\b/);
+    const direct = folded(lines[i + 2]).match(/\b(0[0-9]{5,10})\b/);
     if (direct) ticketCandidates.push(direct[1]);
   }
   const normalizeTicketCandidate = (candidate: string) => {
     let value = candidate.replace(/[^A-Z0-9]/g, "");
-    if (model === "adubos_real" && /^403901\\d{4}$/.test(value)) value = "1" + value.slice(1);
+    if (model === "adubos_real" && /^403901\d{4}$/.test(value)) value = "1" + value.slice(1);
     return value;
   };
-  const normalizedTickets = ticketCandidates.map(normalizeTicketCandidate).filter(v => /^\\d{3,14}$/.test(v));
+  const normalizedTickets = ticketCandidates.map(normalizeTicketCandidate).filter(v => /^\d{3,14}$/.test(v));
   const counts = new Map<string, number>();
   for (const candidate of normalizedTickets) counts.set(candidate, (counts.get(candidate) || 0) + 1);
   const expectedLength = model === "multilift" ? 7 : model === "adubos_real" ? 10 : model === "vports_recibo" ? 5 : model === "vports_relatorio" ? 7 : model === "log_consulting" ? 9 : 0;
@@ -228,12 +229,12 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   const headerCompany = /MULTIL[IA]FT\s+LOGISTICA\s+LTDA/.test(joined) ? "Multilift Logística Ltda" : null;
   let transportadora = company("TRANSPORTADORA|TRANSP\\.");
   if (model === "multilift" && headerCompany) transportadora = headerCompany;
-  if (transportadora && /RAS\\s+TRANSP/i.test(folded(transportadora))) {
+  if (transportadora && /RAS\s+TRANSP/i.test(folded(transportadora))) {
     transportadora = /SERV/i.test(folded(transportadora)) || model === "vports_relatorio"
       ? "RAS TRANSPORTES E SERVICOS LTDA"
       : "RAS TRANSPORTES";
   }
-  if (model === "vports_recibo" && /GIZELE[\\s\\S]{0,80}ROCHA[\\s\\S]{0,40}GARCIA/.test(joined)) {
+  if (model === "vports_recibo" && /GIZELE[\s\S]{0,80}ROCHA[\s\S]{0,40}GARCIA/.test(joined)) {
     transportadora = "GIZELE APARECIDA DA ROCHA GARCIA";
   }
   let vehicleFromOcr = vehicle;
@@ -295,7 +296,7 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     const heringer = lines.find(line => /HERINGER/i.test(folded(line)));
     if (heringer) data.contratante = heringer.replace(/^.*?HERINGER/i, "HERINGER").trim().slice(0, 200);
   }
-  if (model === "vports_recibo" && /LOG\\s+CONSULTING/.test(joined)) data.operadora = "LOG CONSULTING";
-  if (model === "vports_relatorio" && /VPORTS\\s+AUTORIDADE/.test(joined)) data.destinatario = "VPORTS AUTORIDADE PORTUARIA";
+  if (model === "vports_recibo" && /LOG\s+CONSULTING/.test(joined)) data.operadora = "LOG CONSULTING";
+  if (model === "vports_relatorio" && /VPORTS\s+AUTORIDADE/.test(joined)) data.destinatario = "VPORTS AUTORIDADE PORTUARIA";
   return finishTicketReading(data, mode, fleet);
 }
