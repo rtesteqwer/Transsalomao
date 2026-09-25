@@ -23,8 +23,8 @@ const chronologicalBlock = (sheetName, tripSource) => `
       : mode === "trip"
         ? { label: "DIÁRIA", fill: "D9EAF7", accent: "3D85C6", order: 2 }
         : mode === "cegonha"
-          ? { label: "CEGONHA (AGRUPADA)", fill: "FCE5CD", accent: "E69138", order: 3 }
-          : { label: "CAIXINHA (AGRUPADA)", fill: "EADCF8", accent: "8E7CC3", order: 4 };
+          ? { label: "CEGONHA", fill: "FCE5CD", accent: "E69138", order: 3 }
+          : { label: "CAIXINHA", fill: "EADCF8", accent: "8E7CC3", order: 4 };
     const excelDateKey = (value: any) => {
       const raw = String(value ?? "").trim();
       const iso = raw.match(/^(\\d{4}-\\d{2}-\\d{2})/); if (iso) return iso[1];
@@ -42,9 +42,9 @@ const chronologicalBlock = (sheetName, tripSource) => `
       const mode = String(trip.freightMode ?? "ton");
       const date = excelDateKey(trip.date);
       if (mode === "cegonha" || mode === "caixinha") {
-        const key = [trip.driverId, mode, date, trip.client, trip.origin, trip.destination].map((x) => String(x ?? "")).join("|");
-        const item = excelSpecial.get(key) ?? { kind: "group", mode, date, driverName: trip.driverName, items: [], count: 0, freight: 0, commission: 0, after: 0, result: 0 };
-        item.items.push(trip); item.count += 1; item.freight += Number(trip.freight ?? 0); item.commission += Number(trip.commissionValue ?? trip.commission ?? 0); item.after += Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))); item.result += Number(trip.grossResult ?? 0); excelSpecial.set(key, item);
+        const key = [trip.driverId, mode].map((x) => String(x ?? "")).join("|");
+        const item = excelSpecial.get(key) ?? { kind: "group", mode, date, firstDate: date, lastDate: date, driverName: trip.driverName, items: [], count: 0, freight: 0, commission: 0, after: 0, result: 0 };
+        item.items.push(trip); item.count += 1; if (date && (!item.firstDate || date < item.firstDate)) item.firstDate = date; if (date && (!item.lastDate || date > item.lastDate)) item.lastDate = date; item.date = item.firstDate || date; item.freight += Number(trip.freight ?? 0); item.commission += Number(trip.commissionValue ?? trip.commission ?? 0); item.after += Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))); item.result += Number(trip.grossResult ?? 0); excelSpecial.set(key, item);
       } else excelChronological.push({ kind: "single", mode, date, driverName: trip.driverName, trip });
     });
     excelSpecial.forEach((item) => excelChronological.push(item));
@@ -55,14 +55,15 @@ const chronologicalBlock = (sheetName, tripSource) => `
     ${sheetName}.getCell(excelTripTitle.number, 1).font = { bold: true, size: 14, color: { argb: "111111" } };
     ${sheetName}.getCell(excelTripTitle.number, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "DCE6EF" } };
     ${sheetName}.getCell(excelTripTitle.number, 1).alignment = { horizontal: "center", vertical: "middle" };
-    const excelLegend = ${sheetName}.addRow(["LEGENDA", "POR TONELADA", "DIÁRIA", "CEGONHA (AGRUPADA)", "CAIXINHA (AGRUPADA)"]);
+    const excelLegend = ${sheetName}.addRow(["LEGENDA", "POR TONELADA", "DIÁRIA", "CEGONHA", "CAIXINHA"]);
     [2,3,4,5].forEach((col, i) => { const info = excelModeInfo(["ton","trip","cegonha","caixinha"][i]); const cell = excelLegend.getCell(col); cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.font = { bold: true, color: { argb: "111111" } }; cell.alignment = { horizontal: "center" }; });
     const excelTripHeader = ${sheetName}.addRow(["Data", "Ticket / Grupo", "Motorista", "Modalidade", "Qtd.", "Cliente", "Origem", "Destino", "Peso líquido (t)", "Faturamento", "Comissão", "Total líquido", "Resultado bruto"]);
     excelTripHeader.height = 30;
     excelTripHeader.eachCell((cell: any) => { cell.font = { bold: true, color: { argb: "111111" }, size: 11 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "C9D7E5" } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; });
     excelChronological.forEach((item: any) => {
       const info = excelModeInfo(item.mode), grouped = item.kind === "group", trip = item.trip;
-      const row = ${sheetName}.addRow(grouped ? [formatDate(item.date), item.count + " viagens agrupadas", item.driverName ?? "Sem motorista", info.label, item.count, excelSame(item.items, "client"), excelSame(item.items, "origin"), excelSame(item.items, "destination"), item.items.reduce((sum: number, x: any) => sum + Number(x.netWeight ?? 0), 0), item.freight, item.commission, item.after, item.result] : [formatDate(item.date), String(trip.code ?? "—"), String(trip.driverName ?? "Sem motorista"), info.label, 1, String(trip.client ?? "—"), String(trip.origin ?? "—"), String(trip.destination ?? "—"), Number(trip.netWeight ?? 0), Number(trip.freight ?? 0), Number(trip.commissionValue ?? trip.commission ?? 0), Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))), Number(trip.grossResult ?? 0)]);
+      const groupDate = item.firstDate === item.lastDate ? formatDate(item.firstDate) : formatDate(item.firstDate) + " a " + formatDate(item.lastDate);
+      const row = ${sheetName}.addRow(grouped ? [groupDate, item.count + " viagens", item.driverName ?? "Sem motorista", info.label, item.count, excelSame(item.items, "client"), excelSame(item.items, "origin"), excelSame(item.items, "destination"), item.items.reduce((sum: number, x: any) => sum + Number(x.netWeight ?? 0), 0), item.freight, item.commission, item.after, item.result] : [formatDate(item.date), String(trip.code ?? "—"), String(trip.driverName ?? "Sem motorista"), info.label, 1, String(trip.client ?? "—"), String(trip.origin ?? "—"), String(trip.destination ?? "—"), Number(trip.netWeight ?? 0), Number(trip.freight ?? 0), Number(trip.commissionValue ?? trip.commission ?? 0), Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))), Number(trip.grossResult ?? 0)]);
       row.eachCell((cell: any) => { cell.font = { color: { argb: "111111" }, size: 11, bold: grouped }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } }; cell.alignment = { vertical: "middle", wrapText: true }; });
       row.getCell(4).font = { bold: true, color: { argb: "111111" }, size: 11 };
       row.getCell(9).numFmt = '0.000 "t"'; [10,11,12,13].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; });
@@ -81,6 +82,7 @@ patch("src/routes/dono/viagens.tsx", (s) => {
     '[14, 20, 28, 24, 9, 24, 22, 22, 18, 18, 18, 18, 18].forEach((w, i) => { sheet.getColumn(i + 1).width = w; }); sheet.printArea = `A1:M${Math.max(5, sheet.rowCount)}`;',
     "Viagens widths",
   );
+  s = s.replaceAll('    const buffer = await workbook.xlsx.writeBuffer();', '    workbook.eachSheet((excelSheet: any) => { excelSheet.eachRow({ includeEmpty: true }, (excelRow: any) => { excelRow.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } }; }); }); });\n    const buffer = await workbook.xlsx.writeBuffer();');
   return s;
 });
 
@@ -106,12 +108,12 @@ patch("src/routes/dono/totais.tsx", (s) => {
       excelTrips.filter((trip: any) => { const mode = String(trip.freightMode ?? "ton"); return mode === "cegonha" || mode === "caixinha"; }).forEach((trip: any) => {
         const mode = String(trip.freightMode ?? "ton");
         const date = String(trip.date ?? "").slice(0, 10);
-        const key = [mode, date, trip.client, trip.origin, trip.destination].map((x) => String(x ?? "")).join("|");
+        const key = mode;
         const group = groupedModeMap.get(key) ?? { mode, date, firstDate: date, lastDate: date, items: [], count: 0, freight: 0, commission: 0, after: 0, result: 0 };
-        group.items.push(trip); group.count += 1; group.freight += Number(trip.freight ?? 0); group.commission += Number(trip.commissionValue ?? trip.commission ?? 0); group.after += Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))); group.result += Number(trip.grossResult ?? 0); groupedModeMap.set(key, group);
+        group.items.push(trip); group.count += 1; if (date && (!group.firstDate || date < group.firstDate)) group.firstDate = date; if (date && (!group.lastDate || date > group.lastDate)) group.lastDate = date; group.date = group.firstDate || date; group.freight += Number(trip.freight ?? 0); group.commission += Number(trip.commissionValue ?? trip.commission ?? 0); group.after += Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))); group.result += Number(trip.grossResult ?? 0); groupedModeMap.set(key, group);
       });
       const groupedModes = Array.from(groupedModeMap.values()).sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)) || String(a.mode).localeCompare(String(b.mode)));
-      const driverModeInfo = (mode: string) => mode === "ton" ? { label: "POR TONELADA", fill: "D9EAD3", accent: "6AA84F", order: 1 } : mode === "trip" ? { label: "DIÁRIA", fill: "D9EAF7", accent: "3D85C6", order: 2 } : mode === "cegonha" ? { label: "CEGONHA (AGRUPADA)", fill: "FCE5CD", accent: "E69138", order: 3 } : { label: "CAIXINHA (AGRUPADA)", fill: "EADCF8", accent: "8E7CC3", order: 4 };
+      const driverModeInfo = (mode: string) => mode === "ton" ? { label: "POR TONELADA", fill: "D9EAD3", accent: "6AA84F", order: 1 } : mode === "trip" ? { label: "DIÁRIA", fill: "D9EAF7", accent: "3D85C6", order: 2 } : mode === "cegonha" ? { label: "CEGONHA", fill: "FCE5CD", accent: "E69138", order: 3 } : { label: "CAIXINHA", fill: "EADCF8", accent: "8E7CC3", order: 4 };
       const orderedDriverRows = [
         ...detailedTrips.map((trip: any) => ({ kind: "trip", mode: String(trip.freightMode ?? "ton"), date: String(trip.date ?? "").slice(0, 10), trip })),
         ...groupedModes.map((group: any) => ({ kind: "group", mode: group.mode, date: group.date, group })),
@@ -126,7 +128,8 @@ patch("src/routes/dono/totais.tsx", (s) => {
           if (item.kind === "group") {
             const group = item.group;
             const values = (key: string) => { const list = [...new Set(group.items.map((x: any) => String(x?.[key] ?? "").trim()).filter(Boolean))]; return list.length === 1 ? list[0] : list.length > 1 ? "Vários" : ""; };
-            const row = tonSheet.addRow([formatDate(group.date), String(group.count) + " viagens agrupadas", values("client"), values("origin"), values("destination"), driverScope.name, values("fleetName"), info.label, "", "", "", "", group.freight, "", group.commission, group.after, group.result]);
+            const groupDate = group.firstDate === group.lastDate ? formatDate(group.firstDate) : formatDate(group.firstDate) + " a " + formatDate(group.lastDate);
+            const row = tonSheet.addRow([groupDate, String(group.count) + " viagens", values("client"), values("origin"), values("destination"), driverScope.name, values("fleetName"), info.label, "", "", "", "", group.freight, "", group.commission, group.after, group.result]);
             row.height = 24;
             row.eachCell((cell: any) => { cell.font = { bold: true, color: { argb: "111111" }, size: 12 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.alignment = { vertical: "middle", wrapText: false }; cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } }; });
             [13, 15, 16, 17].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; });
@@ -144,6 +147,7 @@ patch("src/routes/dono/totais.tsx", (s) => {
   s = s.slice(0, rowsStart) + combinedRows + s.slice(rowsEnd);
   s = s.replace('"Modalidade",\n          "Peso carregado (t)"', '"Modalidade (tipo de viagem)",\n          "Peso carregado (t)"');
   s = s.replace('tonSheet.getCell("A4").value =\n          "Viagens: " + excelTrips.length +', 'tonSheet.getCell("A4").value =\n          "VIAGENS EM ORDEM DE DATA • Viagens: " + excelTrips.length +');
+  s = s.replaceAll('    const buffer = await workbook.xlsx.writeBuffer();', '    workbook.eachSheet((excelSheet: any) => { excelSheet.eachRow({ includeEmpty: true }, (excelRow: any) => { excelRow.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } }; }); }); });\n    const buffer = await workbook.xlsx.writeBuffer();');
   return s;
 });
 
