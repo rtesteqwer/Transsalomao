@@ -1,104 +1,103 @@
 import type { TicketData } from "@/lib/ticket-core";
 
-async function reduzirImagemTicket(file: File, maxLado = 2600, qualidade = 0.90) {
+async function ocrTicketLocal(file: File) {
   if (!file.type.startsWith("image/")) throw new Error("Selecione uma foto válida.");
   if (file.size > 15_000_000) throw new Error("A foto é grande demais.");
 
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error("Não foi possível abrir esta foto. Use JPG ou PNG."));
-      image.src = url;
-    });
-    const escala = Math.min(1, maxLado / Math.max(img.naturalWidth, img.naturalHeight));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
-    canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Não foi possível preparar a foto.");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    let imagem = canvas.toDataURL("image/jpeg", qualidade).split(",")[1] || "";
-    if (imagem.length > 3_500_000) imagem = canvas.toDataURL("image/jpeg", 0.65).split(",")[1] || "";
-    if (!imagem || imagem.length > 3_500_000) throw new Error("A foto é grande demais. Escolha outra imagem.");
-    return { imagem, tipo: "image/jpeg" };
-  } finally { URL.revokeObjectURL(url); }
-}
-
-async function ocrTicketLocal(file: File) {
   const tesseract = await import("tesseract.js");
   const createWorker = tesseract.createWorker;
   if (typeof createWorker !== "function") throw new Error("OCR local indisponível neste navegador.");
+
   let worker;
   try {
-    worker = await createWorker("por");
-  } catch {
-    worker = await createWorker("eng");
-  }
-  try {
-    const result = await worker.recognize(file);
-    let text = String(result?.data?.text || "").trim();
-    // A second full-page pass helps small text and shadows without depending on
-    // fixed crop coordinates or omitting another part of the document.
+    try {
+      worker = await createWorker(["por", "eng"]);
+    } catch {
+      try { worker = await createWorker("por"); }
+      catch { worker = await createWorker("eng"); }
+    }
+
+    const pieces: string[] = [];
+    const add = (value: unknown) => {
+      const text = String(value || "").trim();
+      if (text) pieces.push(text);
+    };
+
+    // 1) Preserve one reading from the original file.
+    await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.AUTO });
+    add((await worker.recognize(file))?.data?.text);
+
     const url = URL.createObjectURL(file);
     try {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = url;
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("Não foi possível abrir a foto para o OCR."));
+        image.src = url;
       });
-      const scale = Math.min(3, 3200 / Math.max(img.naturalWidth, img.naturalHeight));
+
+      const scale = Math.min(3.2, 3200 / Math.max(img.naturalWidth, img.naturalHeight));
       const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.naturalWidth * scale); canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
       const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.filter = "grayscale(1) contrast(1.8)";
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        // Receipts with boxed fields (Multilift/VPORTS/LOG) are much more reliable
-        // as one enhanced text block than with sparse-text segmentation alone.
-        await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.SINGLE_BLOCK });
-        const block = await worker.recognize(canvas);
-        text += "\n" + String(block?.data?.text || "");
+      if (!ctx) throw new Error("Não foi possível preparar a foto para o OCR.");
 
-        // Long weigh tickets often keep the small plate row near the top and
-        // the net-weight box in the lower half. Whole-page OCR can see the labels
-        // but miss the values, so run two broad overlapping bands at higher scale.
-        // These are intentionally wide bands, not vendor-specific pixel crops.
-        if (img.naturalHeight > img.naturalWidth * 1.15) {
-          const recognizeBand = async (topRatio: number, bottomRatio: number) => {
-            const sy = Math.max(0, Math.floor(img.naturalHeight * topRatio));
-            const sh = Math.max(1, Math.floor(img.naturalHeight * (bottomRatio - topRatio)));
-            const sourceWidth = img.naturalWidth;
-            const scaleBand = Math.min(3.2, 2600 / Math.max(1, sourceWidth));
-            const band = document.createElement("canvas");
-            band.width = Math.max(1, Math.round(sourceWidth * scaleBand));
-            band.height = Math.max(1, Math.round(sh * scaleBand));
-            const bctx = band.getContext("2d");
-            if (!bctx) return "";
-            bctx.fillStyle = "#fff";
-            bctx.fillRect(0, 0, band.width, band.height);
-            bctx.filter = "grayscale(1) contrast(2)";
-            bctx.drawImage(img, 0, sy, sourceWidth, sh, 0, 0, band.width, band.height);
-            await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.SINGLE_BLOCK });
-            const bandResult = await worker.recognize(band);
-            return String(bandResult?.data?.text || "");
-          };
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.filter = "grayscale(1) contrast(1.85)";
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-          text += "\n" + await recognizeBand(0.00, 0.52);
-          text += "\n" + await recognizeBand(0.36, 0.82);
-        }
+      // 2) Layout automático: melhor para tickets tabulares/relatórios.
+      await worker.setParameters({
+        tessedit_pageseg_mode: tesseract.PSM.AUTO,
+        preserve_interword_spaces: "1",
+      });
+      add((await worker.recognize(canvas))?.data?.text);
 
-        const cues = (text.match(/(?:TICKET|TIQUETE|PESO|LIQ|PLACA|CARRETA|VEIC|TRANSPORTADORA)/gi) || []).length;
-        if (cues < 5) {
-          await worker.setParameters({ tessedit_pageseg_mode: tesseract.PSM.SPARSE_TEXT });
-          const sparse = await worker.recognize(canvas);
-          text += "\n" + String(sparse?.data?.text || "");
-        }
+      // 3) Texto esparso: essencial para campos isolados, números grandes,
+      // placas em caixas e pesos que o AUTO deixa escapar.
+      await worker.setParameters({
+        tessedit_pageseg_mode: tesseract.PSM.SPARSE_TEXT,
+        preserve_interword_spaces: "1",
+      });
+      add((await worker.recognize(canvas))?.data?.text);
+
+      // 4) Tickets verticais (Multilift/VPORTS) ganham duas leituras amplas
+      // sobrepostas. Não são recortes por fornecedor: servem para qualquer
+      // comprovante alto com cabeçalho/placas em cima e pesos mais abaixo.
+      if (img.naturalHeight > img.naturalWidth * 1.12) {
+        const recognizeBand = async (topRatio: number, bottomRatio: number) => {
+          const sy = Math.max(0, Math.floor(img.naturalHeight * topRatio));
+          const sh = Math.max(1, Math.floor(img.naturalHeight * (bottomRatio - topRatio)));
+          const bandScale = Math.min(3.4, 2800 / Math.max(1, img.naturalWidth));
+          const band = document.createElement("canvas");
+          band.width = Math.max(1, Math.round(img.naturalWidth * bandScale));
+          band.height = Math.max(1, Math.round(sh * bandScale));
+          const bctx = band.getContext("2d");
+          if (!bctx) return;
+          bctx.fillStyle = "#fff";
+          bctx.fillRect(0, 0, band.width, band.height);
+          bctx.filter = "grayscale(1) contrast(2)";
+          bctx.drawImage(img, 0, sy, img.naturalWidth, sh, 0, 0, band.width, band.height);
+
+          await worker.setParameters({
+            tessedit_pageseg_mode: tesseract.PSM.SPARSE_TEXT,
+            preserve_interword_spaces: "1",
+          });
+          add((await worker.recognize(band))?.data?.text);
+        };
+
+        await recognizeBand(0.00, 0.55);
+        await recognizeBand(0.32, 0.84);
       }
-    } catch { /* Preserve the first reading if image enhancement is unavailable. */ }
-    finally { URL.revokeObjectURL(url); }
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+
+    const text = pieces.join("\n--- OCR PASS ---\n");
     if (text.replace(/\s/g, "").length < 8) {
-      throw new Error("A Salomão IA não encontrou texto suficiente. Tire outra foto mais nítida.");
+      throw new Error("O OCR não encontrou texto suficiente. Tire outra foto mais nítida.");
     }
     return text;
   } finally {
@@ -107,33 +106,18 @@ async function ocrTicketLocal(file: File) {
 }
 
 async function lerTicket(file: File, freightMode: "ton" | "trip" | "cegonha" | "caixinha", selectedFleet?: { tractorPlate: string; trailerPlate: string }): Promise<TicketData> {
-  const payload = await reduzirImagemTicket(file);
+  // OCR-only: a foto nunca é enviada para um provedor de IA.
+  const ocrText = await ocrTicketLocal(file);
   const response = await fetch("/api/ler-ticket", {
     method: "POST",
-    signal: AbortSignal.timeout(50_000),
+    signal: AbortSignal.timeout(25_000),
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...payload, freightMode, fileName: file.name, selectedFleet }),
+    body: JSON.stringify({ ocrText, freightMode, fileName: file.name, selectedFleet }),
   });
   const result = await response.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
-
-  if (response.ok) return result as TicketData;
-
-  if (response.status === 503 && result?.ocrFallback) {
-    const ocrText = await ocrTicketLocal(file);
-    const localResponse = await fetch("/api/ler-ticket", {
-      method: "POST",
-      signal: AbortSignal.timeout(20_000),
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ocrText, freightMode, fileName: file.name, selectedFleet }),
-    });
-    const localResult = await localResponse.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
-    if (!localResponse.ok) throw new Error(localResult?.erro || "A Salomão IA não conseguiu interpretar o OCR.");
-    return localResult as TicketData;
-  }
-
-  throw new Error(result?.erro || "Falha ao ler o ticket");
+  if (!response.ok) throw new Error(result?.erro || "O OCR não conseguiu interpretar o ticket.");
+  return result as TicketData;
 }
 
 async function salvarTicket(dados: TicketData & {
