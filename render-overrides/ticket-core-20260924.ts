@@ -85,6 +85,11 @@ export function normalizeTicket(value: unknown): TicketData {
   }
   result.placas_detectadas = Array.isArray(source.placas_detectadas)
     ? [...new Set(source.placas_detectadas.filter((x): x is string => typeof x === "string").map(x => x.toUpperCase().replace(/[^A-Z0-9]/g, "")).filter(x => /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(x)))].slice(0, 8) : [];
+  // Keep labeled OCR plate evidence available for selected-fleet correction even
+  // when the generic plate scanner did not add it to placas_detectadas.
+  for (const p of [result.placa_veiculo, result.placa_carreta]) {
+    if (p && !result.placas_detectadas.includes(p)) result.placas_detectadas.push(p);
+  }
   for (const key of weightFields) result[key] = kilograms(source[key]);
   result.alertas = Array.isArray(source.alertas) ? source.alertas.filter((x): x is string => typeof x === "string").slice(0, 20).map(x => x.slice(0, 500)) : [];
   const { pesagem_inicial_kg: ini, pesagem_final_kg: fim, peso_liquido_kg: liq } = result;
