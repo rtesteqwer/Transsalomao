@@ -124,7 +124,7 @@ function closeText(a: unknown, b: unknown) {
   return x === y || (x.length >= 5 && y.length >= 5 && (x.includes(y) || y.includes(x)));
 }
 
-async function inferHistoricalTonPrice(sql: any, current: Row, td: Row) {
+async function inferHistoricalTonPrice(sql: Awaited<ReturnType<typeof getSql>>, current: Row, td: Row) {
   const history = await sql<Row>`
     select tb.id, tb.numero_ticket, tb.driver_id, tb.fleet_id, tb.transportadora,
            tb.destinatario, tb.ticket_data,
