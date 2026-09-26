@@ -42,6 +42,7 @@ function LancamentosPage() {
   const [editingForClose, setEditingForClose] = useState(false);
   const [closingTicketMeta, setClosingTicketMeta] = useState<PendingTicketMetadata | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   const modeOrder: Record<string, number> = { caixinha: 0, cegonha: 1, trip: 2, ton: 3 };
   const driverName = (report: DriverReport) => data?.drivers.find((driver) => driver.id === report.driverId)?.name ?? "Sem motorista";
@@ -170,6 +171,37 @@ function LancamentosPage() {
     }
   }
 
+  async function deleteSelected() {
+    const reports = [...selectedPending];
+    if (reports.length === 0 || deletingSelected) return;
+    const label = reports.length === 1 ? "o lançamento selecionado" : `os ${reports.length} lançamentos selecionados`;
+    if (!window.confirm(`Excluir ${label}? Esta ação não pode ser desfeita.`)) return;
+
+    const deletedIds: string[] = [];
+    setDeletingSelected(true);
+    try {
+      for (const report of reports) {
+        await removeReport.mutateAsync(report.id);
+        deletedIds.push(report.id);
+      }
+      setSelected((current) => {
+        const next = new Set(current);
+        deletedIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      toast.success(`${deletedIds.length} lançamento${deletedIds.length === 1 ? "" : "s"} excluído${deletedIds.length === 1 ? "" : "s"}.`);
+    } catch (err) {
+      setSelected((current) => {
+        const next = new Set(current);
+        deletedIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      toast.error(err instanceof Error ? err.message : "Não foi possível excluir todos os lançamentos selecionados.");
+    } finally {
+      setDeletingSelected(false);
+    }
+  }
+
   async function handleDeleteReport(report: DriverReport) {
     if (!window.confirm(`Excluir o lançamento ${report.ticket}?`)) return;
     try {
@@ -220,8 +252,17 @@ function LancamentosPage() {
                   {selectedCount} selecionada{selectedCount === 1 ? "" : "s"}
                 </span>
                 <Button
+                  variant="ghost"
+                  className="text-danger"
+                  onClick={deleteSelected}
+                  disabled={selectedCount === 0 || deletingSelected || removeReport.isPending}
+                >
+                  <Trash2 className="size-4" />
+                  {deletingSelected ? "Excluindo..." : "Excluir selecionadas"}
+                </Button>
+                <Button
                   onClick={acceptSelected}
-                  disabled={selectedCount === 0 || acceptMany.isPending}
+                  disabled={selectedCount === 0 || acceptMany.isPending || deletingSelected}
                 >
                   <CheckCheck className="size-4" />
                   {acceptMany.isPending ? "Aceitando..." : "Aceitar selecionadas"}
