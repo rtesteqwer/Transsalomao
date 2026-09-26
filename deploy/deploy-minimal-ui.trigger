@@ -19,3 +19,4 @@ salomao-web-pc=1
 2026-09-26 unmatched-ticket-to-caixa
 
 salomao-autonomous-agent=1
+2026-09-26 driver-batch-sequential-auto-caixa
