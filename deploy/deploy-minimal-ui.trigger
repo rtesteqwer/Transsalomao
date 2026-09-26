@@ -29,3 +29,5 @@ salomao-developer-pipeline=1
 2026-09-26 driver-fueling-total-pdf-excel
 
 2026-09-26 driver-photo-batch-ton-price
+
+salomao-oidc-proxy=1
