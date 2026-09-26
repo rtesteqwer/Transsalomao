@@ -59,36 +59,52 @@ function modeLabel(value: string | null | undefined) {
 }
 
 async function imageToDataUrl(file: File) {
-  if (!file.type.startsWith("image/")) throw new Error("Selecione uma foto válida.");
-  if (file.size > 12_000_000) throw new Error("A foto deve ter no máximo 12 MB.");
+  const looksLikeImage = file.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || "");
+  if (!looksLikeImage) throw new Error("Selecione uma foto válida.");
+  if (file.size > 30_000_000) throw new Error("A foto deve ter no máximo 30 MB.");
+
+  const encode = (source: CanvasImageSource, width: number, height: number) => {
+    const maxSides = [1600, 1400, 1200, 1000, 800];
+    for (const maxSide of maxSides) {
+      const scale = Math.min(1, maxSide / Math.max(width, height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.84, 0.76, 0.68, 0.60, 0.52, 0.44]) {
+        const out = canvas.toDataURL("image/jpeg", quality);
+        if (out.length <= 2_700_000) return out;
+      }
+    }
+    throw new Error("Não foi possível reduzir a foto para envio.");
+  };
 
   try {
-    const bitmap = await createImageBitmap(file);
-    const maxSide = 1400;
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Não foi possível preparar a imagem.");
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
+    if (typeof createImageBitmap === "function") {
+      const bitmap = await createImageBitmap(file);
+      try {
+        return encode(bitmap, bitmap.width, bitmap.height);
+      } finally {
+        bitmap.close();
+      }
+    }
+  } catch {}
 
-    const out = canvas.toDataURL("image/jpeg", 0.76);
-    if (out.length > 3_000_000) throw new Error("A foto ficou grande demais. Tire a foto mais perto do ticket.");
-    return out;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("grande demais")) throw error;
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("Não foi possível ler a foto."));
-      reader.onload = () => {
-        const value = String(reader.result || "");
-        if (value.length > 3_000_000) reject(new Error("A foto é grande demais. Use JPG ou reduza o tamanho."));
-        else resolve(value);
-      };
-      reader.readAsDataURL(file);
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Não foi possível abrir esta foto no celular."));
+      image.src = objectUrl;
     });
+    return encode(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
 }
 
