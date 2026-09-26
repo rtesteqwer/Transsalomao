@@ -166,6 +166,17 @@ if (!original.includes("apply-fixed-photo-batch-20260925.mjs")) {
   original = original.replace(dailyMarker, `const fixedPhotoBatch = path.join(repo, 'render-overrides', 'apply-fixed-photo-batch-20260925.mjs');\nif (!fs.existsSync(fixedPhotoBatch)) throw new Error('Missing fixed photo batch patch');\nexecFileSync(process.execPath, [fixedPhotoBatch, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Upload múltiplo de tickets: ChatGPT em lote na Gerência e no modo Motorista.
+if (!original.includes("apply-batch-photo-management-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do lote de tickets da Gerência não encontrado');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-batch-photo-management-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
+if (!original.includes("apply-batch-photo-driver-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do lote de tickets do Motorista não encontrado');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-batch-photo-driver-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 // Approved minimal interface; applied after the existing functional layers.
 // Baseline hashes reject stale overlays instead of overwriting future functional changes.
 if (installOwnerShare && !original.includes("apply-minimal-ui-20260926.mjs")) {
