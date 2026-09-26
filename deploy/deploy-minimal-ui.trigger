@@ -1,1 +1,2 @@
-2026-09-26 07:xx BRT: Publish report fixes. Excel rebalanced with compact proportional rows/columns and logo at upper-left matching header height. PDF Android flow avoids direct blob download interception by using native share/viewer fallback. Preserve registered operational data; UI-only deploy; no database migrations.
+2026-09-26 07:34 BRT: Publish report fixes. Excel rebalanced with compact proportional rows/columns and logo at upper-left matching header height. PDF Android flow avoids direct blob download interception by using native share/viewer fallback. Preserve registered operational data; UI-only deploy; no database migrations.
+retry=1
