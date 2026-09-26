@@ -211,6 +211,13 @@ if (!original.includes("apply-driver-ton-price-batch-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-driver-ton-price-batch-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Memória persistente de rotas: aplica por último para usar os metadados já lidos
+// e preencher origem, destino e preço/t no fechamento do Caixa.
+if (!original.includes("apply-route-memory-caixa-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing route memory Caixa insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-route-memory-caixa-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });

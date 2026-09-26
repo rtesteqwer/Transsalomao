@@ -48,17 +48,88 @@ export const Route = createFileRoute("/api/ler-ticket")({
 
         const image = validateImage(body);
         const dataUrl = `data:${image.mime};base64,${image.base64}`;
-        const result = await readTicketWithChatGPT(dataUrl, freightMode, fleet);
-        return json(finishTicketReading(result, freightMode, fleet));
+        const routeMemories = await loadTicketRouteMemories(sql);
+        const result = await readTicketWithChatGPT(dataUrl, freightMode, fleet, routeMemories);
+        const ticket = finishTicketReading(result, freightMode, fleet);
+        const routeKey = typeof result?.route_key === "string" ? result.route_key.trim() : "";
+        const routeConfidence = Number(result?.route_confidence);
+        const route = Number.isFinite(routeConfidence) && routeConfidence >= 0.85
+          ? routeMemories.find((item) => item.route_key === routeKey)
+          : undefined;
+        if (route) {
+          ticket.route_group = route.route_name;
+          ticket.route_origin = route.origin;
+          ticket.route_destination = route.destination;
+          ticket.route_price_per_ton = Number(route.price_per_ton);
+          ticket.route_confidence = routeConfidence;
+          ticket.alertas = ticket.alertas.filter((alerta) => !/rota não identificada/i.test(alerta));
+        }
+        return json(ticket);
       } catch (error) { return ticketErrorResponse(error); }
     },
   } },
 });
 
+type RouteMemory = {
+  route_key: string;
+  route_name: string;
+  origin: string | null;
+  destination: string | null;
+  price_per_ton: number | string;
+  match_hints: string;
+};
+
+async function loadTicketRouteMemories(sql: Awaited<ReturnType<typeof getSql>>): Promise<RouteMemory[]> {
+  await sql`
+    create table if not exists ticket_route_memory (
+      route_key text primary key,
+      route_name text not null,
+      origin text,
+      destination text,
+      price_per_ton numeric not null,
+      match_hints text not null default '',
+      source text,
+      active boolean not null default true,
+      updated_at timestamptz not null default now()
+    )
+  `;
+  await sql`
+    insert into ticket_route_memory
+      (route_key, route_name, origin, destination, price_per_ton, match_hints, source, active, updated_at)
+    values
+      ('sportos-eco-festipar', 'Sportos - Eco x Festipar', 'Sportos - Eco', 'Festipar', 40,
+       'SPORTOS;ECO;FESTIPAR;FERTIPAR', 'motorista_confirmado_2026-09-26', true, now())
+    on conflict (route_key) do update set
+      route_name=excluded.route_name,
+      origin=excluded.origin,
+      destination=excluded.destination,
+      price_per_ton=excluded.price_per_ton,
+      match_hints=excluded.match_hints,
+      source=excluded.source,
+      active=true,
+      updated_at=now()
+  `;
+  return await sql<RouteMemory>`
+    select route_key, route_name, origin, destination, price_per_ton, match_hints
+    from ticket_route_memory
+    where active=true
+    order by updated_at desc
+    limit 20
+  `;
+}
+
+function routeMemoryInstructions(routes: RouteMemory[]) {
+  if (!routes.length) return "Nenhuma rota conhecida cadastrada.";
+  return routes.map((route) =>
+    `- ${route.route_key}: ${route.route_name}; origem=${route.origin || "não definida"}; destino=${route.destination || "não definido"}; preço/t=${route.price_per_ton}; pistas=${route.match_hints || "nenhuma"}`
+  ).join("\n");
+}
+
 async function readTicketWithChatGPT(
   imageDataUrl: string,
   freightMode: "ton" | "trip" | "cegonha" | "caixinha",
   fleet: { tractorPlate?: string; trailerPlate?: string },
+  routeMemories: RouteMemory[],
 ) {
   const key = process.env.OPENAI_API_KEY?.trim() || "";
   if (!key) throw new TicketError(503, "Leitor ChatGPT não configurado. Falta OPENAI_API_KEY.");
@@ -100,6 +171,8 @@ async function readTicketWithChatGPT(
       operador_pesagem: nullableString,
       emissor: nullableString,
       model_type: nullableString,
+      route_key: nullableString,
+      route_confidence: { type: ["number", "null"], minimum: 0, maximum: 1 },
       pesagem_inicial_kg: nullableInteger,
       pesagem_final_kg: nullableInteger,
       peso_liquido_kg: nullableInteger,
@@ -113,7 +186,7 @@ async function readTicketWithChatGPT(
       "motorista","cliente","destinatario","anotacoes_manuscritas","operadora",
       "contratante","remetente","empresa_documento","transportadora_cnpj",
       "destinatario_cnpj","navio","navio_origem","navio_destino",
-      "operador_pesagem","emissor","model_type","pesagem_inicial_kg",
+      "operador_pesagem","emissor","model_type","route_key","route_confidence","pesagem_inicial_kg",
       "pesagem_final_kg","peso_liquido_kg","peso_origem_kg",
       "placas_detectadas","alertas"
     ],
@@ -123,6 +196,7 @@ async function readTicketWithChatGPT(
     fleet.tractorPlate ? `cavalo selecionado=${fleet.tractorPlate}` : "",
     fleet.trailerPlate ? `carreta selecionada=${fleet.trailerPlate}` : "",
   ].filter(Boolean).join("; ");
+  const knownRoutesText = routeMemoryInstructions(routeMemories);
 
   const instructions = `Você é o leitor de tickets de pesagem da Trans Salomão.
 Analise SOMENTE o que está visível na foto e devolva os campos pelo schema. Não invente dados.
@@ -142,6 +216,11 @@ REGRAS CRÍTICAS:
 12. Em modo diferente de "ton", ainda leia metadados do ticket, incluindo data e horário, mas os pesos serão descartados pelo servidor.
 13. Conjunto selecionado: ${selectedFleetText || "nenhum"}. Use isso somente para desambiguar um caractere que esteja VISIVELMENTE muito próximo na foto; nunca preencha uma placa que não apareça.
 14. Se algum campo estiver incerto, use null e inclua um alerta curto. É melhor deixar vazio do que adivinhar.
+15. route_key só pode ser uma das chaves da lista de rotas conhecidas abaixo. Classifique apenas quando houver evidência VISÍVEL no ticket compatível com a rota; nunca escolha rota só pelo preço, motorista ou conjunto. Se não houver evidência suficiente, use null.
+16. route_confidence deve ser de 0 a 1. Só use 0,85 ou mais quando a identificação da rota estiver realmente clara. Caso contrário, use null.
+
+ROTAS CONHECIDAS NO BANCO:
+${knownRoutesText}
 
 Modo atual da viagem: ${freightMode}.`;
 

@@ -41,6 +41,11 @@ export const Route = createFileRoute("/api/ticket-meta")({
           empresaDocumento: (row.ticket_data as Record<string, unknown> | null)?.empresa_documento || null,
           dataTicket: (row.ticket_data as Record<string, unknown> | null)?.data_ticket || null,
           horaTicket: (row.ticket_data as Record<string, unknown> | null)?.hora_ticket || null,
+          routeGroup: (row.ticket_data as Record<string, unknown> | null)?.route_group || null,
+          routeOrigin: (row.ticket_data as Record<string, unknown> | null)?.route_origin || null,
+          routeDestination: (row.ticket_data as Record<string, unknown> | null)?.route_destination || null,
+          routePricePerTon: (row.ticket_data as Record<string, unknown> | null)?.route_price_per_ton ?? null,
+          routeConfidence: (row.ticket_data as Record<string, unknown> | null)?.route_confidence ?? null,
         },
       });
     },

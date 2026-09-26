@@ -108,7 +108,11 @@ export function DriverTonPriceBatch({ available, upload, read, save, link, onBus
           }
           if (!data) throw new Error("A leitura não retornou dados. Tente novamente.");
           unreadImages.current.delete(item.id);
-          update(item.id, { data, photoId, status: "ready", error: "" });
+          const learnedPrice = Number(data.route_price_per_ton);
+          const learnedPriceText = Number.isFinite(learnedPrice) && learnedPrice > 0
+            ? String(learnedPrice).replace(".", ",")
+            : item.price;
+          update(item.id, { data, photoId, price: learnedPriceText, status: "ready", error: "" });
           readCount += 1;
         } catch (error) {
           update(item.id, { photoId, status: "error", error: (error instanceof Error ? error.message : "Não foi possível ler esta foto.") + (photoId ? " A foto está salva; tente ler novamente." : " Tente enviar novamente.") });
@@ -216,6 +220,10 @@ export function DriverTonPriceBatch({ available, upload, read, save, link, onBus
             </div>
             <Field label="Preço desta viagem (R$/t)"><Input aria-label={"Preço da foto " + (index + 1)} inputMode="decimal" placeholder="Aplique o preço do grupo" value={photo.price} disabled={busy || !!photo.saved} onChange={event => update(photo.id, { price: event.target.value })} /></Field>
             {photo.data.peso_liquido_kg && validPrice(photo.price) != null ? <p className="text-sm font-semibold">{new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(photo.data.peso_liquido_kg / 1000)} t × {tonPriceFormat.format(validPrice(photo.price)!)} = {brl(photo.data.peso_liquido_kg / 1000 * validPrice(photo.price)!)}</p> : null}
+            {photo.data.route_group ? <div className="rounded-lg border border-accent/30 bg-accent/5 p-2 text-xs">
+              <p className="font-semibold text-fg">Rota identificada: {photo.data.route_group}</p>
+              <p className="text-muted">{photo.data.route_origin || "—"} → {photo.data.route_destination || "—"}{photo.data.route_price_per_ton ? " · " + tonPriceFormat.format(photo.data.route_price_per_ton) + "/t" : ""}</p>
+            </div> : null}
             {photo.data.placa_veiculo ? <p className="text-xs text-muted">Cavalo: {photo.data.placa_veiculo} · Carreta: {photo.data.placa_carreta || "—"}</p> : null}
             {photo.data.alertas?.length && !finished(photo) ? <ul className="list-disc space-y-1 pl-4 text-xs text-warn">{photo.data.alertas.map((alert, i) => <li key={i}>{alert}</li>)}</ul> : null}
           </div> : null}
