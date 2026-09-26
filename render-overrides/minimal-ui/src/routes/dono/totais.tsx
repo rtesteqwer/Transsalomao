@@ -2,6 +2,7 @@ import { REPORT_LOGO_JPEG } from "@/lib/report-logo";
 import { createFileRoute } from "@tanstack/react-router";
 import { Calendar, CalendarDays, CalendarRange, FileDown, FileSpreadsheet, FileText, Files, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { enrichTrip, fuelingConsumptionRows, fuelingConsumptionStats, inPeriod, totalsByDriver, totalsByFleet } from "@/lib/calc";
@@ -20,6 +21,7 @@ import {
 import { downloadDriverReportPdf, type ReportFueling } from "@/lib/pdf";
 import type { PeriodKey } from "@/lib/types";
 import { useFleet } from "@/lib/use-fleet";
+import { downloadFleetExcel } from "@/lib/excel-report";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/dono/totais")({ component: TotaisPage });
@@ -36,6 +38,7 @@ function TotaisPage() {
   const [tab, setTab] = useState<"motoristas" | "conjuntos" | "diesel">("motoristas");
   const [period, setPeriod] = useState<PeriodKey>("month");
   const [driverFilter, setDriverFilter] = useState("all");
+  const [excelExporting, setExcelExporting] = useState<string | null>(null);
 
   const computed = useMemo(() => {
     if (!data) return [];
@@ -196,8 +199,22 @@ function TotaisPage() {
   }
 
   async function exportExcelColorido(driverScope?: { id: string; name: string }) {
-    const { downloadFleetExcel } = await import("@/lib/excel-report");
-    return downloadFleetExcel({ data, computed, fuelings, period, driverScope });
+    if (!data) {
+      toast.error("Os dados ainda estão carregando. Tente novamente em alguns segundos.");
+      return;
+    }
+    const exportKey = driverScope ? "driver:" + driverScope.id : "general";
+    setExcelExporting(exportKey);
+    toast.info(driverScope ? "Gerando Excel do motorista…" : "Gerando Planilha Geral…");
+    try {
+      await downloadFleetExcel({ data, computed, fuelings, period, driverScope });
+      toast.success("Excel gerado. Verifique seus downloads.");
+    } catch (error) {
+      console.error("[excel-report]", error);
+      toast.error(error instanceof Error ? "Não foi possível gerar o Excel: " + error.message : "Não foi possível gerar o Excel.");
+    } finally {
+      setExcelExporting(null);
+    }
   }
 
   return (
@@ -231,7 +248,16 @@ function TotaisPage() {
               <UsersRound className="size-4" /> PDF motorista
             </Button>
           ) : null}
-          <button type="button" onClick={() => void exportExcelColorido()} className="h-11 rounded-md border border-accent bg-bg px-4 text-sm font-semibold text-fg hover:bg-surface-2" title="Baixar Excel colorido">Planilha Geral</button>
+          <button
+            type="button"
+            onClick={() => void exportExcelColorido()}
+            disabled={!data || excelExporting !== null}
+            className="h-11 rounded-md border border-accent bg-bg px-4 text-sm font-semibold text-fg hover:bg-surface-2 disabled:cursor-wait disabled:opacity-60"
+            title="Baixar Excel colorido"
+          >
+            <FileSpreadsheet className="mr-2 inline size-4" />
+            {excelExporting === "general" ? "Gerando Excel…" : "Planilha Geral"}
+          </button>
         </div>
       </div>
 
@@ -316,9 +342,11 @@ function TotaisPage() {
                     size="sm"
                     variant="ghost"
                     title={`Gerar Excel de ${d.driverName}`}
+                    disabled={excelExporting !== null}
                     onClick={() => void exportExcelColorido({ id: d.driverId, name: d.driverName })}
                   >
-                    <FileSpreadsheet className="size-4" /> Excel
+                    <FileSpreadsheet className="size-4" />
+                    {excelExporting === "driver:" + d.driverId ? "Gerando…" : "Excel"}
                   </Button>
                 </div>
               </div>
