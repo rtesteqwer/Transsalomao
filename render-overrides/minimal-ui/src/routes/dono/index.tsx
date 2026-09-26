@@ -152,28 +152,6 @@ function PainelPage() {
     return totalsByFleet(allPeriodTrips, data.fleets);
   }, [data, period, driverFilter]);
 
-  function exportBillingPdf() {
-    const advances = (data?.expenses ?? [])
-      .filter((expense) => expense.category === "Adiantamento" && !!expense.driverId)
-      .map((expense) => ({
-        driverId: expense.driverId,
-        driverName: data?.drivers.find((driver) => driver.id === expense.driverId)?.name ?? "Motorista",
-        date: expense.date,
-        amount: expense.amount,
-        description: expense.description,
-      }));
-    void downloadDriverReportPdf({
-      driverName: driverFilter === "all" ? "Todos os motoristas" : data?.drivers.find((driver) => driver.id === driverFilter)?.name ?? "Motorista",
-      trips: computed,
-      fuelings,
-      advances,
-      periodLabel: PERIODS.find((item) => item.key === period)?.label ?? "Período selecionado",
-      sourceLabel: "Painel",
-      reportTitle: "FATURAMENTO",
-
-    });
-  }
-
   const periodLabel = PERIODS.find((item) => item.key === period)?.label ?? "Este mês";
   const summaryRows = driverTotals.map((driver) => {
     const driverFuelings = fuelings.filter((f) => f.driverId === driver.driverId);
