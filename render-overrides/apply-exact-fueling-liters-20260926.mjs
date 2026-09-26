@@ -32,7 +32,7 @@ const helper = `const exactLiters = (value: unknown) => {
   if (!Number.isFinite(numeric)) return "0 L";
   return new Intl.NumberFormat("pt-BR", {
     useGrouping: true,
-    maximumFractionDigits: 20,
+    maximumFractionDigits: 3,
   }).format(numeric) + " L";
 };
 
