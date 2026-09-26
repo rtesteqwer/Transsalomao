@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Camera, ExternalLink, ImagePlus, Link2, LoaderCircle, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Camera, ImagePlus, Link2, LoaderCircle, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -100,6 +100,7 @@ function FotosTicketsPage() {
   const [busy, setBusy] = useState(false);
   const [loadingSaved, setLoadingSaved] = useState(true);
   const [savedPhotos, setSavedPhotos] = useState<SavedPhoto[]>([]);
+  const [viewerPhoto, setViewerPhoto] = useState<SavedPhoto | null>(null);
 
   const sources = useMemo<SourceItem[]>(() => {
     if (!data) return [];
@@ -384,9 +385,9 @@ function FotosTicketsPage() {
                       type="button"
                       size="sm"
                       variant="secondary"
-                      onClick={() => window.open("/api/photo-intake?id=" + encodeURIComponent(photo.id), "_blank")}
+                      onClick={() => setViewerPhoto(photo)}
                     >
-                      <ExternalLink className="size-4" /> Ver foto
+                      <ZoomIn className="size-4" /> Ver foto
                     </Button>
                     <Button type="button" size="sm" variant="ghost" className="text-danger" onClick={() => void deletePhoto(photo)}>
                       <Trash2 className="size-4" /> Excluir
@@ -398,6 +399,140 @@ function FotosTicketsPage() {
           </div>
         )}
       </section>
+
+      {viewerPhoto ? <PhotoViewer photo={viewerPhoto} onClose={() => setViewerPhoto(null)} /> : null}
+    </div>
+  );
+}
+
+
+function PhotoViewer({ photo, onClose }: { photo: SavedPhoto; onClose: () => void }) {
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const gesture = useRef<{ distance: number; x: number; y: number }>({ distance: 0, x: 0, y: 0 });
+  const scaleRef = useRef(1);
+
+  const clampScale = (value: number) => Math.min(6, Math.max(1, value));
+
+  function applyScale(next: number) {
+    const value = clampScale(next);
+    scaleRef.current = value;
+    setScale(value);
+    if (value === 1) setOffset({ x: 0, y: 0 });
+  }
+
+  function reset() {
+    scaleRef.current = 1;
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  }
+
+  function distance(touches: React.TouchList) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  }
+
+  function onTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    if (event.touches.length === 2) {
+      gesture.current = {
+        distance: distance(event.touches),
+        x: (event.touches[0].clientX + event.touches[1].clientX) / 2,
+        y: (event.touches[0].clientY + event.touches[1].clientY) / 2,
+      };
+      return;
+    }
+    if (event.touches.length === 1) {
+      gesture.current = { distance: 0, x: event.touches[0].clientX, y: event.touches[0].clientY };
+    }
+  }
+
+  function onTouchMove(event: React.TouchEvent<HTMLDivElement>) {
+    if (event.touches.length === 2) {
+      event.preventDefault();
+      const nextDistance = distance(event.touches);
+      const previousDistance = gesture.current.distance || nextDistance;
+      const ratio = nextDistance / previousDistance;
+      applyScale(scaleRef.current * ratio);
+      gesture.current = {
+        distance: nextDistance,
+        x: (event.touches[0].clientX + event.touches[1].clientX) / 2,
+        y: (event.touches[0].clientY + event.touches[1].clientY) / 2,
+      };
+      return;
+    }
+
+    if (event.touches.length === 1 && scaleRef.current > 1) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      const dx = touch.clientX - gesture.current.x;
+      const dy = touch.clientY - gesture.current.y;
+      setOffset((current) => ({ x: current.x + dx, y: current.y + dy }));
+      gesture.current = { distance: 0, x: touch.clientX, y: touch.clientY };
+    }
+  }
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col bg-black/95" role="dialog" aria-modal="true" aria-label={"Foto do ticket " + photo.tripCode}>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/15 px-3 py-3 text-white sm:px-5">
+        <div className="min-w-0">
+          <strong className="block truncate">Ticket/viagem {photo.tripCode}</strong>
+          <span className="block truncate text-xs text-white/65">Use dois dedos para ampliar ou reduzir · arraste quando estiver ampliado</span>
+        </div>
+        <Button type="button" size="sm" variant="secondary" onClick={onClose} aria-label="Fechar foto">
+          <X className="size-4" /> Fechar
+        </Button>
+      </div>
+
+      <div
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2 sm:p-4"
+        style={{ touchAction: "none" }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={() => { gesture.current.distance = 0; }}
+        onWheel={(event) => {
+          event.preventDefault();
+          applyScale(scaleRef.current + (event.deltaY < 0 ? 0.25 : -0.25));
+        }}
+      >
+        <img
+          src={"/api/photo-intake?id=" + encodeURIComponent(photo.id)}
+          alt={"Foto do ticket " + photo.tripCode}
+          draggable={false}
+          className="max-h-full max-w-full select-none object-contain will-change-transform"
+          style={{
+            transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
+            transformOrigin: "center center",
+          }}
+          onDoubleClick={() => applyScale(scaleRef.current > 1 ? 1 : 2)}
+        />
+      </div>
+
+      <div className="flex shrink-0 items-center justify-center gap-2 border-t border-white/15 px-3 py-3">
+        <Button type="button" size="sm" variant="secondary" onClick={() => applyScale(scaleRef.current - 0.5)} disabled={scale <= 1}>
+          <ZoomOut className="size-4" /> Reduzir
+        </Button>
+        <span className="min-w-16 text-center text-sm font-semibold text-white">{Math.round(scale * 100)}%</span>
+        <Button type="button" size="sm" variant="secondary" onClick={() => applyScale(scaleRef.current + 0.5)} disabled={scale >= 6}>
+          <ZoomIn className="size-4" /> Ampliar
+        </Button>
+        <Button type="button" size="sm" variant="secondary" onClick={reset}>
+          <RotateCcw className="size-4" /> Ajustar
+        </Button>
+      </div>
     </div>
   );
 }
