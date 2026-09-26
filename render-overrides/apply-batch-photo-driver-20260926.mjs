@@ -223,4 +223,4 @@ s = s.replace(
 );
 
 fs.writeFileSync(p, s);
-console.log("[batch-photo-driver] all modes now support multi-photo ChatGPT extraction");
+console.log("[batch-photo-driver] sequential queue + automatic Caixa submission verified");
