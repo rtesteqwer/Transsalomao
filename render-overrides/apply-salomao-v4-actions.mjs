@@ -12,6 +12,7 @@ const copies = [
   ['assistant-v4/api-assistant-auth.ts', 'src/routes/api/assistant/auth.ts'],
   ['assistant-v4/api-assistant.ts', 'src/routes/api/assistant.ts'],
   ['assistant-v4/api-assistant-status.ts', 'src/routes/api/assistant/status.ts'],
+  ['assistant-v4/api-document-intake.ts', 'src/routes/api/assistant/document-intake.ts'],
   ['assistant-v4/0012_management_users_assistant_sessions.sql', 'migrations/0012_management_users_assistant_sessions.sql'],
 ];
 for (const [srcRel, dstRel] of copies) {
