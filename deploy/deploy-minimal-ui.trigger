@@ -1,1 +1,1 @@
-2026-09-26: Re-run approved minimal white/blue interface deployment. Preserve registered data; enforce TRANS_UI_ONLY_DEPLOY=1 and verify the generated build script contains no db:migrate. Production database secrets are not pulled into GitHub Actions.
+2026-09-26 05:47 BRT: Fix mobile Mais menu clipping and make Faturamento open Relatórios. UI-only production deploy; keep TRANS_UI_ONLY_DEPLOY=1 and do not run database migrations.
