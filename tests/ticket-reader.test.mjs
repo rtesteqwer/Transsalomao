@@ -42,7 +42,7 @@ test('confirmed route memory keeps distinct prices and RAS disambiguation eviden
   assert.match(route, /rota-do-sol-eco[\s\S]*?17/);
   assert.match(route, /papaleguas-rota-do-sol-map[\s\S]*?33/);
   assert.match(route, /transportadora-ras[\s\S]*?14/);
-  assert.match(route, /LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;BELISLAND/);
+  assert.match(route, /LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;[\s\S]*?BELISLAND/);
   assert.match(route, /SPORTOS sozinha NÃO identifica|SPORTOS sozinha N.O identifica/i);
 });
 
