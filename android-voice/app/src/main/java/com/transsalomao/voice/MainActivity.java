@@ -25,6 +25,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.WindowInsets;
+import android.view.WindowInsetsAnimation;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -99,9 +101,15 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setSoftInputMode(
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-                        | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            getWindow().setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                            | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        } else {
+            getWindow().setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                            | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        }
         memory = new AssistantMemory(this);
         tokenStore = new SecureTokenStore(this);
         assistantToken = tokenStore.load();
@@ -140,6 +148,59 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         if (!showingSite) checkServerState();
     }
 
+    private void installSystemAndKeyboardInsets(View root) {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            root.setOnApplyWindowInsetsListener((v, insets) -> {
+                applySystemAndKeyboardInsets(v, insets);
+                return insets;
+            });
+
+            root.setWindowInsetsAnimationCallback(new WindowInsetsAnimation.Callback(
+                    WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+                @Override
+                public WindowInsets onProgress(
+                        WindowInsets insets,
+                        java.util.List<WindowInsetsAnimation> runningAnimations) {
+                    applySystemAndKeyboardInsets(root, insets);
+                    return insets;
+                }
+
+                @Override
+                public void onEnd(WindowInsetsAnimation animation) {
+                    super.onEnd(animation);
+                    if (input != null && input.hasFocus()) {
+                        handler.postDelayed(() -> {
+                            if (chatScroll != null) scrollBottom();
+                        }, 40);
+                    }
+                }
+            });
+            root.post(root::requestApplyInsets);
+        } else {
+            // Android 8–10: adjustResize from the window remains the fallback.
+            int statusId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            int statusTop = statusId > 0 ? getResources().getDimensionPixelSize(statusId) : 0;
+            root.setPadding(0, statusTop, 0, 0);
+        }
+    }
+
+    private void applySystemAndKeyboardInsets(View root, WindowInsets insets) {
+        if (android.os.Build.VERSION.SDK_INT < 30 || insets == null) return;
+
+        android.graphics.Insets system = insets.getInsets(
+                WindowInsets.Type.statusBars()
+                        | WindowInsets.Type.navigationBars()
+                        | WindowInsets.Type.displayCutout());
+        android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+
+        int top = Math.max(0, system.top);
+        int bottom = Math.max(system.bottom, ime.bottom);
+
+        if (root.getPaddingTop() != top || root.getPaddingBottom() != bottom) {
+            root.setPadding(0, top, 0, bottom);
+        }
+    }
+
     private void buildUi() {
         getWindow().setStatusBarColor(0xFF0B141A);
         getWindow().setNavigationBarColor(0xFF0B141A);
@@ -147,6 +208,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xFF0B141A);
+        installSystemAndKeyboardInsets(root);
 
         // Cabeçalho inspirado no WhatsApp: avatar, nome, estado online e acesso rápido.
         LinearLayout header = new LinearLayout(this);
@@ -405,7 +467,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.2.1");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.2.2");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -1057,7 +1119,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v521");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v522");
     }
 
     @Override
