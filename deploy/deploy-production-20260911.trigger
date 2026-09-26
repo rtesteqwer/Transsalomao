@@ -16,3 +16,4 @@ excel-date-mode-style-2026-09-25
 fix-reports-excel-click-2026-09-25
 fixed-photo-batch-cegonha-caixinha-2026-09-25
 excel-group-all-black-2026-09-25
+security-hardening-2026-09-25
