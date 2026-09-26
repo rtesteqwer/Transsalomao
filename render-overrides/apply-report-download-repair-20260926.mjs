@@ -16,8 +16,8 @@ function write(rel, value) {
   fs.writeFileSync(path.join(target, rel), value);
 }
 
-// Some historical records can have an empty date. The report formatters must not
-// call .split() directly on undefined/null values.
+// Registros históricos podem ter data vazia. Nenhum relatório deve quebrar
+// tentando executar .split() em undefined/null.
 {
   const rel = "src/lib/format.ts";
   const before = read(rel);
@@ -32,29 +32,61 @@ function write(rel, value) {
   write(rel, after);
 }
 
-// Android/WebView may start a Blob download asynchronously. Revoking the URL
-// immediately makes PDF downloads fail with "Erro ao salvar relatório".
+// PDF: no Android/WebView, download de URL blob: pode ser interceptado pelo
+// gerenciador nativo e falhar. Preferimos Web Share com arquivo PDF; quando a
+// API não existe, abrimos o PDF no visualizador. Desktop usa jsPDF.save().
 {
   const rel = "src/lib/pdf.ts";
   const before = read(rel);
-  let after = before;
 
-  after = after.replace(
-    /URL\.revokeObjectURL\(url\);/g,
-    "window.setTimeout(() => URL.revokeObjectURL(url), 60_000);",
-  );
+  const downloadBlock =
+    /const blob = ([A-Za-z_$][A-Za-z0-9_$]*)\.output\("blob"\);\s*const url = URL\.createObjectURL\(blob\);\s*const link = document\.createElement\("a"\);\s*link\.href = url;\s*link\.download = ([^;]+);\s*document\.body\.appendChild\(link\);\s*link\.click\(\);\s*(?:link\.remove\(\);|window\.setTimeout\(\(\) => link\.remove\(\), 60_000\);)\s*(?:URL\.revokeObjectURL\(url\);|window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\);)/m;
 
-  if (after.includes("link.click();") && after.includes("link.remove();")) {
-    after = after.replace(
-      /link\.click\(\);\s*link\.remove\(\);/g,
-      "link.click();\n  window.setTimeout(() => link.remove(), 60_000);",
-    );
+  const match = before.match(downloadBlock);
+  if (!match) {
+    if (!before.includes("navigator.canShare") || !before.includes('output("bloburl")')) {
+      throw new Error("report-download-repair: PDF download block not found");
+    }
+  } else {
+    const docVar = match[1];
+    const fileNameExpr = match[2];
+    const replacement = `const fileName = ${fileNameExpr};
+  const blob = ${docVar}.output("blob");
+  const pdfFile = new File([blob], fileName, { type: "application/pdf" });
+  const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
+  const canSharePdf =
+    isAndroid &&
+    typeof navigator.share === "function" &&
+    typeof navigator.canShare === "function" &&
+    navigator.canShare({ files: [pdfFile] });
+
+  if (canSharePdf) {
+    try {
+      await navigator.share({
+        files: [pdfFile],
+        title: fileName,
+        text: "Relatório Trans Salomão",
+      });
+    } catch (shareError) {
+      const errorName = shareError instanceof Error ? shareError.name : "";
+      if (errorName !== "AbortError") {
+        const viewerUrl = ${docVar}.output("bloburl");
+        const viewer = window.open(viewerUrl, "_blank");
+        if (!viewer) window.location.href = viewerUrl;
+        window.setTimeout(() => URL.revokeObjectURL(viewerUrl), 120_000);
+      }
+    }
+  } else if (isAndroid) {
+    const viewerUrl = ${docVar}.output("bloburl");
+    const viewer = window.open(viewerUrl, "_blank");
+    if (!viewer) window.location.href = viewerUrl;
+    window.setTimeout(() => URL.revokeObjectURL(viewerUrl), 120_000);
+  } else {
+    ${docVar}.save(fileName);
+  }`;
+
+    write(rel, before.replace(downloadBlock, replacement));
   }
-
-  if (after === before && !before.includes("60_000")) {
-    throw new Error("report-download-repair: PDF Blob cleanup pattern not found");
-  }
-  write(rel, after);
 }
 
-console.log("[report-download-repair] safe dates + Android PDF download handoff applied");
+console.log("[report-download-repair] safe dates + Android PDF share/viewer fallback applied");
