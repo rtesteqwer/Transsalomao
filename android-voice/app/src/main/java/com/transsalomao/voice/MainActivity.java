@@ -114,10 +114,10 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().setSoftInputMode(
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                         | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         if (android.os.Build.VERSION.SDK_INT >= 30) {
-            getWindow().setDecorFitsSystemWindows(true);
+            getWindow().setDecorFitsSystemWindows(false);
         }
         memory = new AssistantMemory(this);
         tokenStore = new SecureTokenStore(this);
@@ -168,11 +168,32 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void installSystemAndKeyboardInsets(View root) {
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             root.setOnApplyWindowInsetsListener((v, insets) -> {
-                android.graphics.Insets topInsets = insets.getInsets(
+                android.graphics.Insets statusInsets = insets.getInsets(
                         WindowInsets.Type.statusBars() | WindowInsets.Type.displayCutout());
-                int top = Math.max(0, topInsets.top);
+                android.graphics.Insets navigationInsets = insets.getInsets(
+                        WindowInsets.Type.navigationBars());
+                android.graphics.Insets imeInsets = insets.getInsets(
+                        WindowInsets.Type.ime());
+
+                int top = Math.max(0, statusInsets.top);
                 if (v.getPaddingTop() != top) {
                     v.setPadding(0, top, 0, 0);
+                }
+
+                if (composer != null) {
+                    int bottom = Math.max(navigationInsets.bottom, imeInsets.bottom);
+                    ViewGroup.LayoutParams raw = composer.getLayoutParams();
+                    if (raw instanceof LinearLayout.LayoutParams) {
+                        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) raw;
+                        if (lp.bottomMargin != bottom) {
+                            lp.bottomMargin = bottom;
+                            composer.setLayoutParams(lp);
+                            composer.requestLayout();
+                            if (input != null && input.hasFocus() && imeInsets.bottom > 0) {
+                                handler.postDelayed(MainActivity.this::scrollBottom, 80);
+                            }
+                        }
+                    }
                 }
                 return insets;
             });
@@ -773,7 +794,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.4.0");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.4.1");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -1425,7 +1446,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v540");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v541");
     }
 
     @Override
