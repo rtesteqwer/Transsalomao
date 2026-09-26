@@ -155,6 +155,60 @@ function applySalomaoRoute(ticket: TicketData, route: SalomaoRouteMemory, confid
   }
   ticket.inference_confidence = Math.max(ticket.inference_confidence ?? 0, confidence);
 }
+function applyKnownSalomaoOcrVariables(ticket: TicketData, text: string) {
+  const u = String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  const has = (pattern: RegExp) => pattern.test(u);
+  const explicit = Number(ticket.inferred_price);
+  const explicitBasis = String(ticket.inferred_price_basis || "");
+  const keepExplicit = Number.isFinite(explicit) && explicit > 0 && /manuscrit|anotacao|anotação|explicito|explícito/i.test(explicitBasis);
+  const apply = (route_key: string, route_name: string, price: number, confidence: number) => {
+    ticket.route_group = route_name;
+    ticket.route_price_per_ton = price;
+    ticket.route_confidence = confidence;
+    ticket.inferred_freight_mode ||= "ton";
+    if (!keepExplicit) {
+      ticket.inferred_price = price;
+      ticket.inferred_price_basis = "preço aprendido da rota identificada";
+    } else if (Math.abs(explicit - price) > 0.001) {
+      ticket.alertas.push("Preço manuscrito difere da memória da rota; foi mantido o valor escrito no ticket.");
+    }
+    ticket.inference_confidence = Math.max(ticket.inference_confidence ?? 0, confidence);
+    return route_key;
+  };
+
+  // Proteção: LOG Consulting + RAS + Heringer Manhuaçu ainda não tem preço confirmado.
+  if (has(/LOG\s+CONSULTING/) && has(/RAS\s+TRANSPORTES/) && has(/HERINGER/)) return ticket;
+  if (
+    has(/RAS\s+TRANSPORTES(?:\s+E\s+SERVICOS)?|49544417000104/) &&
+    has(/PESO\s+ORIGEM|BALANCA\s+(?:ENTRADA|SAIDA)|PC2(?:\.1)?/) &&
+    has(/\bKCL\b|\bMAP\b|VPORTS\s+AUTORIDADE|27316538000409/)
+  ) {
+    apply("ras-vports-26", "RAS - VPORTS", 26, 0.99);
+    ticket.route_destination = "VPORTS Autoridade Portuária";
+    return ticket;
+  }
+  if (has(/LOG\s+CONSULTING/) && has(/SPORTOS/) && has(/YARA\s+VIX\s*1/) && has(/NITRABOR|CAN\s*27|YARAMILA|MDS\s+ARIADNE|BELISLAND/)) {
+    apply("transportadora-ras", "Transportadora - RAS", 14, 0.99);
+    return ticket;
+  }
+  if (has(/ECOLOGISTICS|ECO\s*LOGISTICS/) && has(/BOLETIM\s+DE\s+PESAGEM|OPATEM/)) {
+    apply("rota-do-sol-eco", "Rota do Sol - Eco", 17, 0.97);
+    return ticket;
+  }
+  if (has(/ADUBOS\s+REAL/) && has(/ROTA\s+DO\s+SOL|\bMAP\b|FOSFATO\s+MONOAMONICO/)) {
+    apply("papaleguas-rota-do-sol-map", "Papaléguas / Rota do Sol - MAP", 33, 0.96);
+    return ticket;
+  }
+  if (has(/ADUBOS\s+REAL/) && has(/UREIA|PAPALEGUAS/)) {
+    apply("papaleguas-ureia-adubos-real", "Papaléguas - Uréia (Adubos Real)", 35, 0.95);
+    return ticket;
+  }
+  if (has(/SPORTOS/) && has(/ECO/) && has(/FESTIPAR|FERTIPAR/)) {
+    apply("sportos-eco-festipar", "Sportos - Eco x Festipar", 40, 0.96);
+    return ticket;
+  }
+  return ticket;
+}
 export class SalomaoVisionUnavailable extends TicketError {
   readonly ocrFallback = true;
 }
@@ -302,5 +356,6 @@ export async function readTicketWithSalomaoIA(
 }
 
 export function readTicketFromSalomaoOcr(text: string, requestedMode: TicketFreightMode, _fileName = "", fleet: FleetPlates = {}): TicketData {
-  return parseTicketOcr(text, normalizeFreightMode(requestedMode), fleet);
+  const ticket = parseTicketOcr(text, normalizeFreightMode(requestedMode), fleet);
+  return applyKnownSalomaoOcrVariables(ticket, text);
 }
