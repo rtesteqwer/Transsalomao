@@ -1,1 +1,1 @@
-2026-09-26 07:09 BRT: Repair Relatórios exports. Accept legacy rows with empty dates in all report formatters and delay PDF Blob cleanup for Android/WebView downloads. Preserve all registered data; UI-only deploy; no database migrations.
+2026-09-26 07:xx BRT: Publish report fixes. Excel rebalanced with compact proportional rows/columns and logo at upper-left matching header height. PDF Android flow avoids direct blob download interception by using native share/viewer fallback. Preserve registered operational data; UI-only deploy; no database migrations.
