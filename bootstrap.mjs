@@ -286,7 +286,7 @@ console.log('[serverfn-json-prebuild] patching TanStack client transport before 
   console.log('[serverfn-json-prebuild] files patched=' + changed);
 }
 `;
-  original = original.replace(npmMarker, npmMarker + "\\n" + prebuildPatch);
+  original = original.replace(npmMarker, npmMarker + "\n" + prebuildPatch);
 }
 
 fs.writeFileSync(originalPath, original);
