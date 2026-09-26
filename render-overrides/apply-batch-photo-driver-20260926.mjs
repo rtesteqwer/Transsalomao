@@ -99,7 +99,7 @@ const fn = [
 '    }',
 '  }',
 ].join("\n");
-
+s = s.slice(0, fnStart) + fn + s.slice(fnEnd);
 
 must(
   '    if (batchMode && batchPhotos.length === 0 && (!Number.isInteger(tripCountN) || tripCountN < 1 || tripCountN > 100)) {\n      return toast.error("Selecione uma ou mais fotos, ou informe uma quantidade entre 1 e 100.");\n    }\n    if (ticketBusy.current) return;\n    if (!batchMode && ticketFileName && !ticketData) return toast.error("A foto foi selecionada, mas não foi lida. Tente ler novamente ou remova a foto para lançar manualmente.");\n    if (!batchMode && ticketData && !ticketImage) return toast.error("A foto foi lida, mas não ficou pronta para arquivamento. Selecione a foto novamente.");\n    if (!batchMode && ticketData && !ticketConfirmed) return toast.error("Confirme a conferência dos dados do ticket.");',
