@@ -279,10 +279,15 @@ function buildRouting(r: DocResult) {
 
   if (r.category === "viagem") {
     target = "Viagens / Caixa";
-    if (!r.driver_name) missing.push("motorista");
-    if (!r.tractor_plate && !r.trailer_plate) missing.push("conjunto/placa");
     if (!r.freight_mode) missing.push("modalidade");
-    if (r.freight_mode === "ton" && !r.net_weight_kg) missing.push("peso líquido");
+    if (r.freight_mode === "ton") {
+      // Regra operacional Trans Salomão: por tonelada, somente peso líquido bloqueia o lançamento.
+      if (!r.net_weight_kg) missing.push("peso líquido");
+    } else {
+      // Nos demais modos, motorista/conjunto continuam sendo dados de vínculo quando disponíveis.
+      if (!r.driver_name) missing.push("motorista");
+      if (!r.tractor_plate && !r.trailer_plate) missing.push("conjunto/placa");
+    }
   } else if (r.category === "abastecimento") {
     target = "Abastecimentos";
     if (!r.tractor_plate && !r.trailer_plate) missing.push("conjunto/placa");
