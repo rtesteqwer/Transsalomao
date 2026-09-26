@@ -388,3 +388,19 @@ test('Sportos Yara hints include CAN 27 and Yaramila family', () => {
   const route = readFileSync(path.join(source, 'src/routes/api/ler-ticket.ts'), 'utf8');
   assert.match(route, /YARA VIX 1;NITRABOR;CAN 27;YARAMILA;MDS ARIADNE/);
 });
+
+
+test('handwritten route price is considered valid and preferred over route memory', () => {
+  const route = readFileSync(path.join(source, 'src/routes/api/ler-ticket.ts'), 'utf8');
+  assert.match(route, /PREÇO MANUSCRITO/);
+  assert.match(route, /tem prioridade sobre o preço memorizado da rota/);
+  assert.match(route, /hasExplicitTicketPrice/);
+
+  const d = parseTicketOcr(
+    'ADUBOS REAL S.A.\nTicket 1039013373\nLiquido 24080 kg\nRota do Sol 33,00',
+    'ton'
+  );
+  assert.equal(d.inferred_freight_mode, 'ton');
+  assert.equal(d.inferred_price, 33);
+  assert.match(d.inferred_price_basis || '', /anotação|manuscrita|explícito/i);
+});
