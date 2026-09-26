@@ -40,6 +40,7 @@ export async function analyzeOperationalImport(input: {
   selectedFleetName?: string | null;
   tractorPlate?: string | null;
   trailerPlate?: string | null;
+  contextText?: string | null;
 }): Promise<ImportAnalysis> {
   const keys = await getSalomaoOpenAIKeys();
   if (!keys.length) throw new Error("A Salomão IA precisa da API OpenAI ativa para ler o arquivo.");
@@ -146,6 +147,9 @@ async function analyzeWithKey(key: string, input: Parameters<typeof analyzeOpera
   const content: any[] = [
     { type: "input_text", text: "Extraia os fatos operacionais deste arquivo para o Trans Salomão." },
   ];
+  if (input.contextText && input.contextText.trim()) {
+    content.push({ type: "input_text", text: "CONTEXTO PRÓXIMO NA CONVERSA DO WHATSAPP:\n" + input.contextText.slice(0, 12000) });
+  }
   if (input.text && input.text.trim()) {
     content.push({ type: "input_text", text: input.text.slice(0, 180000) });
   } else if ((input.mime || "").startsWith("image/")) {
