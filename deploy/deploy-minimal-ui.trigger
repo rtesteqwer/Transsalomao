@@ -1,1 +1,1 @@
-2026-09-26: Fix Relatórios Excel button on Android/mobile. Preload Excel generator, show progress/errors, and keep Blob download URL alive for 60s. UI-only deploy; no database migrations.
+2026-09-26 07:09 BRT: Repair Relatórios exports. Accept legacy rows with empty dates in all report formatters and delay PDF Blob cleanup for Android/WebView downloads. Preserve all registered data; UI-only deploy; no database migrations.
