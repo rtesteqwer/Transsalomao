@@ -916,7 +916,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         JSONObject body = new JSONObject();
         body.put("message", message);
         JSONArray history = new JSONArray();
-        int start = Math.max(0, prior.size() - 18);
+        int start = Math.max(0, prior.size() - 30);
         for (int i = start; i < prior.size(); i++) {
             AssistantMemory.ChatMessage m = prior.get(i);
             JSONObject row = new JSONObject();
