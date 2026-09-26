@@ -29,7 +29,7 @@ jobs:
           set -euo pipefail
           TRANS_SOURCE_DUMP="$TRANS_TEST_APP" node bootstrap.mjs
           npm --prefix "$TRANS_TEST_APP" install --ignore-scripts --no-audit --no-fund
-          node --test tests/ticket-reader.test.mjs tests/tickets.test.mjs
+          node --test tests/ticket-reader.test.mjs tests/tickets.test.mjs tests/driver-ton-price-flow.test.mjs
           node -e 'const p=require(process.env.TRANS_TEST_APP+"/package.json"); if (/db:migrate/.test(String(p.scripts?.build||""))) { throw new Error("UI-only build still contains db:migrate"); } console.log("UI_ONLY_BUILD_GUARD_OK")'
           git restore bootstrap.original.mjs
       - name: Link existing production project

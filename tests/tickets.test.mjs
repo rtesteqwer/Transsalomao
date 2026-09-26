@@ -83,6 +83,33 @@ test('writes exact tons and reuses the existing report for same ticket + same ne
  await assert.rejects(()=>saveTicket(sql,validateSave(input('T-100',{peso_liquido_kg:35820}))),expectStatus(409));
 });
 
+test('validates optional ton prices without affecting legacy or fixed-mode tickets', () => {
+ assert.equal(validateSave(input('PRICE-LEGACY')).pricePerTon,null);
+ assert.equal(validateSave(input('PRICE-OK',{pricePerTon:14.125})).pricePerTon,14.125);
+ for (const price of [0,-1,NaN,Infinity,100000001,'14,00',true]) {
+  assert.throws(()=>validateSave(input('PRICE-BAD',{pricePerTon:price})),expectStatus(400));
+ }
+ assert.equal(validateSave(input('PRICE-FIXED',{freightMode:'caixinha',pricePerTon:14})).pricePerTon,null);
+});
+
+test('five photo trips retain exact individual weights and a common price; duplicate never overwrites the original price', async () => {
+ const weights=[41340,42520,41960,42400,43660];
+ for (const [index,weight] of weights.entries()) {
+  await saveTicket(sql,validateSave(input('BATCH-PRICE-'+index,{peso_liquido_kg:weight,pricePerTon:14.125})));
+ }
+ const rows=(await pg.query("select t.numero_ticket,t.ticket_data,r.tons,r.status from tickets_balanca t join reports r on r.id=t.report_id where t.numero_ticket like 'BATCH-PRICE-%' order by t.numero_ticket")).rows;
+ assert.equal(rows.length,5);
+ rows.forEach((row,index)=>{
+  assert.equal(Number(row.tons),weights[index]/1000);
+  assert.equal(row.ticket_data.price_per_ton,14.125);
+  assert.equal(row.status,'pendente');
+ });
+ const duplicate=await saveTicket(sql,validateSave(input('BATCH-PRICE-0',{peso_liquido_kg:weights[0],pricePerTon:99})));
+ assert.equal(duplicate.linkedExisting,true);
+ assert.equal((await pg.query("select ticket_data from tickets_balanca where numero_ticket='BATCH-PRICE-0'")).rows[0].ticket_data.price_per_ton,14.125);
+ assert.equal(Number((await pg.query("select count(*) from reports where ticket like 'BATCH-PRICE-%'")).rows[0].count),5);
+});
+
 test('archives driver photos and links a later exact duplicate photo to the original report', async () => {
  const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
  const data=validateSave(input('T-PHOTO',{imagem:'data:image/png;base64,'+png,fileName:'ticket motorista.png'}));

@@ -205,6 +205,12 @@ if (!original.includes("apply-driver-fueling-cost-sync-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-driver-fueling-cost-sync-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Por tonelada: conferência de fotos, preço em lote e preço preservado até o Caixa.
+if (!original.includes("apply-driver-ton-price-batch-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing driver ton price batch insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-driver-ton-price-batch-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
