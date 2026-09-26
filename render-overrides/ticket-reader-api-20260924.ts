@@ -98,7 +98,15 @@ async function loadTicketRouteMemories(sql: Awaited<ReturnType<typeof getSql>>):
       (route_key, route_name, origin, destination, price_per_ton, match_hints, source, active, updated_at)
     values
       ('sportos-eco-festipar', 'Sportos - Eco x Festipar', 'Sportos - Eco', 'Festipar', 40,
-       'SPORTOS;ECO;FESTIPAR;FERTIPAR', 'motorista_confirmado_2026-09-26', true, now())
+       'SPORTOS;ECO;FESTIPAR;FERTIPAR', 'motorista_confirmado_2026-09-26', true, now()),
+      ('papaleguas-ureia-adubos-real', 'Papaléguas - Uréia (Adubos Real)', null, null, 35,
+       'ADUBOS REAL;UREIA;URÉIA;PAPALEGUAS;PAPALÉGUAS', 'motorista_confirmado_2026-09-26', true, now()),
+      ('rota-do-sol-eco', 'Rota do Sol - Eco', null, null, 17,
+       'ECOLOGISTICS;ECO LOGISTICS;ROTA DO SOL;ECO;OPATEM', 'motorista_confirmado_2026-09-26', true, now()),
+      ('papaleguas-rota-do-sol-map', 'Papaléguas / Rota do Sol - MAP', null, null, 33,
+       'ADUBOS REAL;MAP;FOSFATO MONOAMONICO;FOSFATO MONOAMÔNICO;PAPALEGUAS;PAPALÉGUAS;ROTA DO SOL', 'motorista_confirmado_2026-09-26', true, now()),
+      ('transportadora-ras', 'Transportadora - RAS', null, null, 14,
+       'LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;BELISLAND RECEPCAO;BELISLAND RECEPÇÃO', 'motorista_confirmado_2026-09-26', true, now())
     on conflict (route_key) do update set
       route_name=excluded.route_name,
       origin=excluded.origin,
@@ -218,6 +226,8 @@ REGRAS CRÍTICAS:
 14. Se algum campo estiver incerto, use null e inclua um alerta curto. É melhor deixar vazio do que adivinhar.
 15. route_key só pode ser uma das chaves da lista de rotas conhecidas abaixo. Classifique apenas quando houver evidência VISÍVEL no ticket compatível com a rota; nunca escolha rota só pelo preço, motorista ou conjunto. Se não houver evidência suficiente, use null.
 16. route_confidence deve ser de 0 a 1. Só use 0,85 ou mais quando a identificação da rota estiver realmente clara. Caso contrário, use null.
+17. As pistas de match_hints são exemplos de evidência e NÃO devem ser tratadas como palavras independentes suficientes. Prefira uma combinação de pelo menos 2 sinais distintivos ou um nome de rota manuscrito claramente legível.
+18. A palavra SPORTOS sozinha NÃO identifica a rota Sportos - Eco x Festipar. Essa rota exige evidência adicional de ECO/FESTIPAR/FERTIPAR. Tickets LOG CONSULTING + SPORTOS + YARA VIX 1 + NITRABOR/BELISLAND correspondem ao grupo Transportadora - RAS quando o conjunto de sinais estiver claro.
 
 ROTAS CONHECIDAS NO BANCO:
 ${knownRoutesText}
