@@ -173,6 +173,13 @@ if (installOwnerShare && !original.includes("apply-minimal-ui-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-minimal-ui-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Final report export repair: tolerate legacy empty dates and keep Android Blob
+// downloads alive long enough for the system download manager.
+if (!original.includes("apply-report-download-repair-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing report repair insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-report-download-repair-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
