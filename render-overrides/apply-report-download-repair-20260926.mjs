@@ -63,7 +63,7 @@ function write(rel, value) {
     if (endIndex < 0) throw new Error("report-download-repair: PDF cleanup terminator not found");
 
     const oldBlock = before.slice(startIndex, endIndex + 1);
-    const fileMatch = oldBlock.match(/link\.download\s*=\s*([^;]+);/m);
+    const fileMatch = oldBlock.match(/[A-Za-z_$][A-Za-z0-9_$]*\.download\s*=\s*([^;]+);/m);
     if (!fileMatch) {
       console.error("[report-download-repair] pdf download block:", oldBlock);
       throw new Error("report-download-repair: PDF filename expression not found");
