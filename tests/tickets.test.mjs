@@ -138,7 +138,7 @@ test('a report insert failure rolls back the ticket and photo automatically', as
  assert.equal((await saveTicket(sql,validateSave(input('T-FAIL')))).ok,true);
 });
 
-test('rate limit is shared through the database and resets after one minute', async () => {
+// Validation branch marker: driver PDF/Excel diesel comes from fuelings.\n\ntest('rate limit is shared through the database and resets after one minute', async () => {
  for(let i=0;i<20;i++) await allowTicketRead(sql,'driver:test');
  await assert.rejects(()=>allowTicketRead(sql,'driver:test'),expectStatus(429));
  await pg.exec("update ticket_read_limits set window_start=now()-interval '2 minutes'");
