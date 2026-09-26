@@ -240,3 +240,29 @@ if (!original.includes("apply-css-cache-bust-20260926.mjs")) {
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
+
+// TanStack Start server functions were reaching production with HTTP 200 but the
+// browser kept retrying framed responses and remained on "Verificando acesso".
+// Prefer the non-streaming JSON transport for every server function in the final
+// client bundle. The runtime already supports this fallback.
+{
+  const assetsDir = path.join(cwd, '.vercel', 'output', 'static', 'assets');
+  if (fs.existsSync(assetsDir)) {
+    let changed = 0;
+    for (const name of fs.readdirSync(assetsDir)) {
+      if (!name.endsWith('.js')) continue;
+      const file = path.join(assetsDir, name);
+      const before = fs.readFileSync(file, 'utf8');
+      const after = before
+        .replaceAll(`s.set(\`accept\`,\`\${n}, application/x-ndjson, application/json\`)`, `s.set(\`accept\`,\`application/json\`)`)
+        .replaceAll(`s.set("accept",\`\${n}, application/x-ndjson, application/json\`)`, `s.set("accept","application/json")`);
+      if (after !== before) {
+        fs.writeFileSync(file, after);
+        changed += 1;
+      }
+    }
+    if (!changed) throw new Error('Server-function JSON transport patch not applied');
+    console.log('[serverfn-json] patched client transport to application/json');
+  }
+}
+
