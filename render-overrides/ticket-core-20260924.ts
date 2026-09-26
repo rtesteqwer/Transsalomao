@@ -203,9 +203,105 @@ export async function saveTicket(
   ]);
   if (drivers[0]?.status !== "ativo") throw new TicketError(400, "Motorista inválido ou inativo.");
   if (fleets[0]?.status !== "ativo") throw new TicketError(400, "Conjunto inválido ou inativo.");
+
   const reportId = `rep_${crypto.randomUUID().replace(/-/g, "")}`;
   const photoId = photo ? `ticket_photo_${crypto.randomUUID().replace(/-/g, "")}` : null;
   const createdBy = String(meta.createdBy || drivers[0].name || "Motorista").slice(0, 200);
+
+  type ExistingTicket = {
+    id: number;
+    report_id: string;
+    peso_liquido_kg: number | string | null;
+    freight_mode: string | null;
+  };
+
+  async function findExistingTicket() {
+    const rows = await sql<ExistingTicket>`
+      select id, report_id, peso_liquido_kg, freight_mode
+      from tickets_balanca
+      where upper(btrim(numero_ticket))=${d.numero_ticket}
+      order by id asc
+      limit 1
+    `;
+    return rows[0] ?? null;
+  }
+
+  async function linkExactDuplicate(existing: ExistingTicket) {
+    if (freightMode !== "ton" || d.peso_liquido_kg == null) {
+      throw new TicketError(409, `Ticket ${d.numero_ticket} já foi lançado.`);
+    }
+
+    const existingKg = existing.peso_liquido_kg == null ? null : Number(existing.peso_liquido_kg);
+    if (!Number.isFinite(existingKg) || existingKg !== d.peso_liquido_kg) {
+      const existingText = Number.isFinite(existingKg) ? `${existingKg} kg` : "peso não informado";
+      throw new TicketError(
+        409,
+        `Ticket ${d.numero_ticket} já existe com ${existingText}, diferente de ${d.peso_liquido_kg} kg. A foto não foi vinculada automaticamente; confira na Gerência.`,
+      );
+    }
+
+    const reports = await sql<{
+      id: string;
+      ticket: string;
+      driver_id: string | null;
+      driver_name: string | null;
+      fleet_id: string | null;
+      freight_mode: string | null;
+      tons: number | string | null;
+      status: string | null;
+    }>`
+      select
+        r.id,
+        r.ticket,
+        r.driver_id,
+        d0.name as driver_name,
+        r.fleet_id,
+        r.freight_mode,
+        r.tons,
+        r.status
+      from reports r
+      left join drivers d0 on d0.id=r.driver_id
+      where r.id=${existing.report_id}
+      limit 1
+    `;
+    const report = reports[0];
+    if (!report) {
+      throw new TicketError(409, `Ticket ${d.numero_ticket} já existe, mas o lançamento original não foi encontrado. Confira na Gerência.`);
+    }
+
+    if (photo && photoId) {
+      await sql`
+        insert into trip_ticket_photos
+          (id, relation_type, relation_id, trip_code, driver_id, driver_name, fleet_id, fleet_name,
+           trip_date, freight_mode, net_weight, report_status, file_name, mime_type, image_data, created_by)
+        values
+          (${photoId}, 'report', ${report.id}, ${report.ticket || d.numero_ticket},
+           ${report.driver_id}, ${report.driver_name}, ${report.fleet_id}, ${null},
+           current_date, ${report.freight_mode || freightMode}, ${existingKg / 1000}, ${report.status || "pendente"},
+           ${photo.fileName}, ${photo.mime}, ${photo.imageData}, ${createdBy})
+      `;
+    }
+
+    return {
+      ok: true,
+      id: existing.id,
+      reportId: report.id,
+      ticket: report.ticket || d.numero_ticket,
+      tons: existingKg / 1000,
+      freightMode: report.freight_mode || freightMode,
+      photoId,
+      linkedExisting: true,
+      duplicateExact: true,
+      driverId: report.driver_id,
+      driverName: report.driver_name,
+      fleetId: report.fleet_id,
+      fleetName: null,
+      reportStatus: report.status || "pendente",
+    };
+  }
+
+  const existingBeforeInsert = await findExistingTicket();
+  if (existingBeforeInsert) return linkExactDuplicate(existingBeforeInsert);
 
   const rows = await sql<{ id: number; report_id: string }>`
     with saved_ticket as (
@@ -237,7 +333,13 @@ export async function saveTicket(
     )
     select t.id, t.report_id from saved_ticket t join saved_report r on r.id=t.report_id
   `;
-  if (!rows[0]) throw new TicketError(409, `Ticket ${d.numero_ticket} já foi lançado.`);
+
+  if (!rows[0]) {
+    const existingAfterConflict = await findExistingTicket();
+    if (existingAfterConflict) return linkExactDuplicate(existingAfterConflict);
+    throw new TicketError(409, `Ticket ${d.numero_ticket} já foi lançado.`);
+  }
+
   return {
     ok: true,
     id: rows[0].id,
@@ -246,5 +348,13 @@ export async function saveTicket(
     tons,
     freightMode,
     photoId,
+    linkedExisting: false,
+    duplicateExact: false,
+    driverId,
+    driverName: drivers[0].name,
+    fleetId,
+    fleetName: null,
+    reportStatus: "pendente",
   };
 }
+
