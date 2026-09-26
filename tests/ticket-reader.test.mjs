@@ -31,6 +31,16 @@ test('ticket reader build uses ChatGPT vision and no longer ships local Tesserac
   assert.equal(pkg.dependencies?.['tesseract.js'], undefined);
 });
 
+test('confirmed route memory keeps distinct prices and RAS disambiguation evidence', () => {
+  const route = readFileSync(path.join(source, 'src/routes/api/ler-ticket.ts'), 'utf8');
+  assert.match(route, /papaleguas-ureia-adubos-real[\s\S]*?35/);
+  assert.match(route, /rota-do-sol-eco[\s\S]*?17/);
+  assert.match(route, /papaleguas-rota-do-sol-map[\s\S]*?33/);
+  assert.match(route, /transportadora-ras[\s\S]*?14/);
+  assert.match(route, /LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;BELISLAND/);
+  assert.match(route, /SPORTOS sozinha NÃO identifica|SPORTOS sozinha N.O identifica/i);
+});
+
 test('MULTILIFT photo model: ticket 0534063, exact net kg and selected fleet plates', () => {
   const ocr = `MULTILIFT LOGISTICA LTDA
 TICKET DE PESAGEM 0534063 - Encerrado
