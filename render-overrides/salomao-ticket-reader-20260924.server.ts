@@ -71,6 +71,90 @@ TÁTICA DE VARIÁVEIS DA TRANS SALOMÃO:
 12. Preserve zeros à esquerda; placas sem hífen; pesos em kg; dúvidas entram em alertas.
 Layouts conhecidos: MULTILIFT usa TICKET DE PESAGEM, Carreta, Veíc/Cavalo, NAVIO, Transportadora e Peso Líquido; o número junto ao título é o ticket, Carreta é placa_carreta e Veíc/Cavalo é placa_veiculo. ADUBOS REAL usa Ticket nº, Placa, Motorista e PESAGEM com Tara, Bruto e Líquido; 29.960,000 significa 29960 kg. VPORTS estreito usa Tíquete, Navio, Operador, Transportadora, Peso Entrada, Peso Saída, Peso Líquido e duas placas; priorize Peso Líquido. VPORTS folha usa Número Ticket, Placa Carreta, Placa Veículo, Pesagem Inicial/Final, Peso Líquido, Transportadora e Destinatário; associe cada Razão Social ao bloco correto. LOG CONSULTING usa Tíquete, Placa do Veículo, Placa da Carreta, Transportadora, Empresa e uma linha grande Peso líquido; essa linha grande é o líquido da viagem. Se houver valor explicitamente rotulado Peso Líquido/Liquido, ele tem prioridade. Não confunda CNPJ, CPF, NF, datas, produto, manuscrito ou números de fotos com ticket, peso ou placa.`;
 
+type SalomaoRouteMemory = {
+  route_key: string;
+  route_name: string;
+  origin: string | null;
+  destination: string | null;
+  price_per_ton: number | string;
+  match_hints: string;
+};
+
+async function loadSalomaoRouteMemories(sql: Sql): Promise<SalomaoRouteMemory[]> {
+  await sql`
+    create table if not exists ticket_route_memory (
+      route_key text primary key,
+      route_name text not null,
+      origin text,
+      destination text,
+      price_per_ton numeric not null,
+      match_hints text not null default '',
+      source text,
+      active boolean not null default true,
+      updated_at timestamptz not null default now()
+    )
+  `;
+  await sql`
+    insert into ticket_route_memory
+      (route_key, route_name, origin, destination, price_per_ton, match_hints, source, active, updated_at)
+    values
+      ('sportos-eco-festipar', 'Sportos - Eco x Festipar', 'Sportos - Eco', 'Festipar', 40,
+       'SPORTOS;ECO;FESTIPAR;FERTIPAR', 'salomao_variaveis_2026-09-26', true, now()),
+      ('papaleguas-ureia-adubos-real', 'Papaléguas - Uréia (Adubos Real)', null, null, 35,
+       'ADUBOS REAL;UREIA;URÉIA;PAPALEGUAS;PAPALÉGUAS', 'salomao_variaveis_2026-09-26', true, now()),
+      ('rota-do-sol-eco', 'Rota do Sol - Eco', null, null, 17,
+       'ECOLOGISTICS;ECO LOGISTICS;ROTA DO SOL;ECO;OPATEM', 'salomao_variaveis_2026-09-26', true, now()),
+      ('papaleguas-rota-do-sol-map', 'Papaléguas / Rota do Sol - MAP', null, null, 33,
+       'ADUBOS REAL;MAP;FOSFATO MONOAMONICO;FOSFATO MONOAMÔNICO;ROTA DO SOL', 'salomao_variaveis_2026-09-26', true, now()),
+      ('transportadora-ras', 'Transportadora - RAS', null, null, 14,
+       'LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;CAN 27;YARAMILA;MDS ARIADNE;BELISLAND', 'salomao_variaveis_2026-09-26', true, now()),
+      ('ras-vports-26', 'RAS - VPORTS', null, 'VPORTS Autoridade Portuária', 26,
+       'RAS TRANSPORTES E SERVICOS;49544417000104;VPORTS AUTORIDADE;27316538000409;KCL;MAP;PESO ORIGEM;PC2.1', 'salomao_variaveis_2026-09-26', true, now())
+    on conflict (route_key) do update set
+      route_name=excluded.route_name,
+      origin=excluded.origin,
+      destination=excluded.destination,
+      price_per_ton=excluded.price_per_ton,
+      match_hints=excluded.match_hints,
+      active=true,
+      updated_at=now()
+  `;
+  return await sql<SalomaoRouteMemory>`
+    select route_key, route_name, origin, destination, price_per_ton, match_hints
+    from ticket_route_memory
+    where active=true
+    order by updated_at desc
+    limit 30
+  `;
+}
+
+function salomaoRoutePrompt(routes: SalomaoRouteMemory[]) {
+  return routes.map(route =>
+    `- ${route.route_key}: ${route.route_name}; origem=${route.origin || "não definida"}; destino=${route.destination || "não definido"}; preço/t=${route.price_per_ton}; pistas=${route.match_hints}`
+  ).join("\n");
+}
+
+function applySalomaoRoute(ticket: TicketData, route: SalomaoRouteMemory, confidence: number) {
+  const explicitPrice = Number(ticket.inferred_price);
+  const basis = String(ticket.inferred_price_basis || "");
+  const handwrittenOrExplicit = Number.isFinite(explicitPrice) && explicitPrice > 0
+    && /manuscrit|anotação|anotacao|explícito|explicito/i.test(basis);
+
+  ticket.route_group = route.route_name;
+  ticket.route_origin = route.origin;
+  ticket.route_destination = route.destination;
+  ticket.route_price_per_ton = Number(route.price_per_ton);
+  ticket.route_confidence = confidence;
+  ticket.inferred_freight_mode ||= "ton";
+
+  if (!handwrittenOrExplicit) {
+    ticket.inferred_price = Number(route.price_per_ton);
+    ticket.inferred_price_basis = "preço aprendido da rota identificada";
+  } else if (Math.abs(explicitPrice - Number(route.price_per_ton)) > 0.001) {
+    ticket.alertas.push("Preço explícito/manuscrito difere da memória da rota; a Salomão IA manteve o preço visível no ticket.");
+  }
+  ticket.inference_confidence = Math.max(ticket.inference_confidence ?? 0, confidence);
+}
 export class SalomaoVisionUnavailable extends TicketError {
   readonly ocrFallback = true;
 }
