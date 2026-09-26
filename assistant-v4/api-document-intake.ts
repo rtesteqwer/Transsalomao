@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { getSql } from "@/lib/db";
 import { authenticateAssistantRequest } from "@/lib/assistant-auth.server";
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
 
@@ -8,6 +9,7 @@ type DocResult = {
   document_type: string | null;
   document_number: string | null;
   date: string | null;
+  time: string | null;
   amount_total: number | null;
   driver_name: string | null;
   recipient_name: string | null;
@@ -23,6 +25,11 @@ type DocResult = {
   net_weight_kg: number | null;
   freight_mode: "ton" | "trip" | "cegonha" | "caixinha" | null;
   price_per_ton: number | null;
+  price_per_trip: number | null;
+  price_basis: string | null;
+  route_key: string | null;
+  route_confidence: number | null;
+  handwritten_notes: string | null;
   origin: string | null;
   destination: string | null;
   client: string | null;
@@ -58,10 +65,11 @@ export const Route = createFileRoute("/api/assistant/document-intake")({
         const keys = await getSalomaoOpenAIKeys();
         if (!keys.length) return json({ ok: false, code: "OPENAI_REQUIRED", message: "A leitura de documentos precisa da API OpenAI ativa." }, 503);
 
+        const routeMemories = await loadRouteMemories();
         let last = "";
         for (const key of keys.slice(0, 2)) {
           try {
-            const result = await analyzeDocument(key, mime, imageBase64);
+            const result = await analyzeDocument(key, mime, imageBase64, routeMemories);
             return json({
               ok: true,
               fileName,
@@ -87,7 +95,7 @@ function json(value: unknown, status = 200) {
   });
 }
 
-async function analyzeDocument(key: string, mime: string, base64: string): Promise<DocResult> {
+async function analyzeDocument(key: string, mime: string, base64: string, routeMemories: RouteMemory[]): Promise<DocResult> {
   const nullableString = { type: ["string", "null"] };
   const nullableNumber = { type: ["number", "null"] };
   const schema = {
