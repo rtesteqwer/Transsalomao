@@ -5,7 +5,6 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
-import android.content.res.ColorStateList;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -25,15 +24,12 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 import android.text.InputType;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.WindowInsets;
-import android.view.WindowInsetsAnimation;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -118,10 +114,10 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().setSoftInputMode(
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                         | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         if (android.os.Build.VERSION.SDK_INT >= 30) {
-            getWindow().setDecorFitsSystemWindows(false);
+            getWindow().setDecorFitsSystemWindows(true);
         }
         memory = new AssistantMemory(this);
         tokenStore = new SecureTokenStore(this);
@@ -172,27 +168,13 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void installSystemAndKeyboardInsets(View root) {
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             root.setOnApplyWindowInsetsListener((v, insets) -> {
-                applySafeInsets(v, insets);
+                android.graphics.Insets topInsets = insets.getInsets(
+                        WindowInsets.Type.statusBars() | WindowInsets.Type.displayCutout());
+                int top = Math.max(0, topInsets.top);
+                if (v.getPaddingTop() != top) {
+                    v.setPadding(0, top, 0, 0);
+                }
                 return insets;
-            });
-
-            root.setWindowInsetsAnimationCallback(new WindowInsetsAnimation.Callback(
-                    WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
-                @Override
-                public WindowInsets onProgress(
-                        WindowInsets insets,
-                        java.util.List<WindowInsetsAnimation> runningAnimations) {
-                    applySafeInsets(root, insets);
-                    return insets;
-                }
-
-                @Override
-                public void onEnd(WindowInsetsAnimation animation) {
-                    super.onEnd(animation);
-                    if (input != null && input.hasFocus()) {
-                        handler.postDelayed(MainActivity.this::scrollBottom, 60);
-                    }
-                }
             });
             root.post(root::requestApplyInsets);
         } else {
@@ -201,47 +183,6 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             root.setPadding(0, statusTop, 0, 0);
         }
     }
-
-    private void applySafeInsets(View root, WindowInsets insets) {
-        if (android.os.Build.VERSION.SDK_INT < 30 || insets == null) return;
-
-        android.graphics.Insets bars = insets.getInsets(
-                WindowInsets.Type.statusBars()
-                        | WindowInsets.Type.navigationBars()
-                        | WindowInsets.Type.displayCutout());
-        android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
-
-        // O topo é protegido da câmera/notch. Nunca aplicamos a altura do teclado
-        // como padding da tela inteira.
-        int top = Math.max(0, bars.top);
-        if (root.getPaddingTop() != top) {
-            root.setPadding(0, top, 0, 0);
-        }
-
-        // Apenas a barra de digitação acompanha o teclado.
-        if (composer != null) {
-            int keyboardLift = Math.max(0, ime.bottom - bars.bottom);
-            composer.setTranslationY(-keyboardLift);
-
-            ViewGroup.LayoutParams raw = composer.getLayoutParams();
-            if (raw instanceof LinearLayout.LayoutParams) {
-                LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) raw;
-                if (lp.bottomMargin != bars.bottom) {
-                    lp.bottomMargin = bars.bottom;
-                    composer.setLayoutParams(lp);
-                }
-            }
-        }
-
-        if (input != null && input.hasFocus() && ime.bottom > 0) {
-            handler.removeCallbacks(scrollForKeyboard);
-            handler.postDelayed(scrollForKeyboard, 45);
-        }
-    }
-
-    private final Runnable scrollForKeyboard = () -> {
-        if (chatScroll != null) chatScroll.fullScroll(View.FOCUS_DOWN);
-    };
 
     private void buildUi() {
         getWindow().setStatusBarColor(0xFF0B141A);
@@ -387,6 +328,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         composer.setGravity(Gravity.CENTER_VERTICAL);
         composer.setPadding(dp(8), dp(6), dp(8), dp(8));
         composer.setBackgroundColor(0xFF0B141A);
+        composer.setTranslationY(0f);
 
         Button quick = smallButton("＋");
         quick.setTextSize(22);
@@ -425,46 +367,21 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
         input = new EditText(this);
         input.setHint("Digite sua mensagem…");
-        input.setHintTextColor(Color.rgb(134, 150, 160));
+        input.setHintTextColor(0xFF8696A0);
         input.setTextColor(Color.WHITE);
         input.setTextSize(15f);
-        input.setAlpha(1f);
-        input.setEnabled(true);
-        input.setFocusable(true);
-        input.setFocusableInTouchMode(true);
-        input.setCursorVisible(true);
-        input.setSingleLine(false);
-        input.setMaxLines(4);
-        input.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        input.setIncludeFontPadding(false);
-        input.setInputType(InputType.TYPE_CLASS_TEXT
-                | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        input.setPadding(dp(14), dp(8), dp(14), dp(8));
+        input.setSingleLine(true);
+        input.setGravity(Gravity.CENTER_VERTICAL);
+        input.setPadding(dp(14), 0, dp(14), 0);
         input.setBackground(roundRect(0xFF202C33, dp(24)));
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
-            GradientDrawable cursor = roundRect(Color.WHITE, dp(1));
-            input.setTextCursorDrawable(cursor);
-        }
-        if (android.os.Build.VERSION.SDK_INT >= 21) {
-            input.setBackgroundTintList((ColorStateList) null);
-        }
-        input.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence text, int start, int before, int count) {
-                input.setTextColor(Color.WHITE);
-                input.setAlpha(1f);
-                input.invalidate();
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEND);
+        input.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) {
+                sendTyped();
+                return true;
             }
-            @Override public void afterTextChanged(Editable editable) {}
-        });
-        input.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) {
-                input.setTextColor(Color.WHITE);
-                input.setCursorVisible(true);
-                handler.postDelayed(this::scrollBottom, 180);
-                handler.postDelayed(this::scrollBottom, 420);
-            }
+            return false;
         });
         LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, dp(52), 1f);
         inputParams.setMargins(dp(5), 0, dp(5), 0);
@@ -856,7 +773,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.3.2");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.4.0");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -1508,7 +1425,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v532");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v540");
     }
 
     @Override
