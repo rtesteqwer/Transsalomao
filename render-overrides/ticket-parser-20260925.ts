@@ -432,7 +432,10 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   const tonPriceValues = [...joined.matchAll(/\b([0-9]{1,4}(?:[.,][0-9]{1,2})?)\s*(?:R\$\s*)?(?:POR\s+)?(?:TONELADA|TON\b|\/T\b)/g)]
     .map(hit => Number(hit[1].replace(".", "").replace(",", ".")))
     .filter(value => Number.isFinite(value) && value > 0 && value <= 10000);
-  const explicitPrice = moneyValues[0] ?? tonPriceValues[0] ?? null;
+  const routeNotePriceValues = [...joined.matchAll(/(?:PAPALEGUAS|PAPALÉGUAS|ROTA\s+DO\s+SOL|FESTIPAR|FERTIPAR)[^\n]{0,50}?([0-9]{1,4}(?:[.,][0-9]{1,2}))/g)]
+    .map(hit => Number(hit[1].replace(".", "").replace(",", ".")))
+    .filter(value => Number.isFinite(value) && value > 0 && value <= 10000);
+  const explicitPrice = moneyValues[0] ?? tonPriceValues[0] ?? routeNotePriceValues[0] ?? null;
   if (model === "sertrading_cegonha") {
     // Já classificado acima. Não leia a coluna VALOR como preço do frete.
   } else if (/\bCAIXINHA\b/.test(joined)) {
@@ -448,7 +451,7 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   } else if (data.peso_liquido_kg && data.peso_liquido_kg > 0) {
     data.inferred_freight_mode = "ton";
     data.inferred_price = explicitPrice;
-    data.inferred_price_basis = explicitPrice ? "preço por tonelada explícito no ticket/anotação" : "peso líquido identificado";
+    data.inferred_price_basis = explicitPrice ? "preço explícito/anotação manuscrita no ticket" : "peso líquido identificado";
     data.inference_confidence = explicitPrice ? 0.96 : 0.88;
   } else if (explicitPrice) {
     data.inferred_freight_mode = "trip";

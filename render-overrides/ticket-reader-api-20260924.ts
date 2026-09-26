@@ -58,10 +58,17 @@ export const Route = createFileRoute("/api/ler-ticket")({
           const ticket = parseTicketOcr(ocrText, readMode, fleet);
           const routeMatch = matchRouteFromOcr(ocrText, routeMemories);
           if (routeMatch) {
+            const explicitTicketPrice = Number(ticket.inferred_price);
+            const hasExplicitTicketPrice = Number.isFinite(explicitTicketPrice) && explicitTicketPrice > 0
+              && /explícito|anotação|manuscrit/i.test(String(ticket.inferred_price_basis || ""));
             applyRoute(ticket, routeMatch.route, routeMatch.confidence);
             ticket.inferred_freight_mode = "ton";
-            ticket.inferred_price = Number(routeMatch.route.price_per_ton);
-            ticket.inferred_price_basis = "preço aprendido da rota identificada";
+            if (!hasExplicitTicketPrice) {
+              ticket.inferred_price = Number(routeMatch.route.price_per_ton);
+              ticket.inferred_price_basis = "preço aprendido da rota identificada";
+            } else if (Math.abs(explicitTicketPrice - Number(routeMatch.route.price_per_ton)) > 0.001) {
+              ticket.alertas.push("Preço escrito no ticket difere do preço memorizado da rota; foi mantido o preço explícito do ticket.");
+            }
             ticket.inference_confidence = Math.max(ticket.inference_confidence ?? 0, routeMatch.confidence);
           }
           ticket.alertas = [
@@ -313,6 +320,7 @@ REGRAS CRÍTICAS:
 18A. Há duas famílias RAS com preços diferentes e elas NÃO podem ser misturadas. O relatório estilo VPORTS com RAS TRANSPORTES E SERVIÇOS/CNPJ 49.544.417/0001-04, campos Peso Origem/Balança PC2 e produtos KCL ou MAP corresponde à memória ras-vports-26 (R$ 26/t) quando o conjunto de sinais estiver claro. Já LOG CONSULTING + SPORTOS + YARA VIX 1 usa a família Transportadora - RAS de R$ 14/t somente quando as pistas dessa rota estiverem claras.
 18B. LOG CONSULTING + RAS TRANSPORTES + HERINGER MANHUAÇU é uma família distinta observada nos tickets. Enquanto não existir preço confirmado para ela, NÃO atribua R$ 14/t nem R$ 26/t por semelhança de nome. Deixe route_key e inferred_price nulos, salvo se houver preço explícito legível no próprio ticket.
 18C. Em tickets ADUBOS REAL, a anotação manuscrita clara "Rota do Sol" junto da família MAP/Fosfato confirma a memória de R$ 33/t. Se houver preço manuscrito explícito como "33,00 tonelada", ele pode ser usado como inferred_price mesmo que algum outro campo da rota não esteja legível.
+18D. PREÇO MANUSCRITO: quando houver um preço escrito à mão claramente legível e o contexto mostrar que ele é o preço do frete/tonelada (ex.: "35,00", "R$ 35,00", "33,00 tonelada", "Rota do Sol 33,00"), CONSIDERE esse valor como preço válido. Para frete por tonelada, grave em inferred_price e use inferred_price_basis="preço manuscrito no ticket". Um preço manuscrito claro tem prioridade sobre o preço memorizado da rota; se houver divergência, mantenha o manuscrito e inclua um alerta curto. Não trate números manuscritos de NF, ordem, peso, data ou horário como preço.
 19. Cruze TODAS as pistas disponíveis: layout do documento, títulos, empresas, produto, rota, observações manuscritas, pesos, valores, data e hora. Não decida por uma palavra isolada.
 20. inferred_freight_mode deve indicar a modalidade mais provável: "ton" para frete por tonelada; "cegonha" e "caixinha" quando o layout/palavras padronizadas identificarem esses tickets; "trip" para preço fixo por viagem. ${autoDetectMode ? "A modalidade escolhida na tela NÃO deve influenciar a classificação: identifique pela foto." : "Use a modalidade da tela apenas como contexto secundário."}
 20A. MODELO CEGONHA SERTRADING: quando a foto mostrar o layout com "Romaneio", "Prog. Veículo", "Data Embarque" e tabela com colunas "PESO/KG", "VALOR", "BL" e rodapé "QUANTIDADE", classifique model_type="sertrading_cegonha", inferred_freight_mode="cegonha" e inference_confidence >= 0.98. Use o valor de "Romaneio" como numero_ticket preservando a formatação visível (ex.: 1-83.045).
