@@ -344,4 +344,4 @@ const resultUi = [
 
 s = s.replace(savedMarker, resultUi + savedMarker);
 fs.writeFileSync(p, s);
-console.log("[batch-photo-management] multi-photo ChatGPT extraction and safe auto-link applied");
+console.log("[batch-photo-management] unmatched tickets now create pending Caixa reports");
