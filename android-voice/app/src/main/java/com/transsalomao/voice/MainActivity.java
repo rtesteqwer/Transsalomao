@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
+import android.content.res.ColorStateList;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -24,6 +25,8 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 import android.text.InputType;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
@@ -403,15 +406,44 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
         input = new EditText(this);
         input.setHint("Digite sua mensagem…");
-        input.setHintTextColor(0xFF8696A0);
-        input.setTextColor(0xFFE9EDEF);
-        input.setTextSize(14.5f);
+        input.setHintTextColor(Color.rgb(134, 150, 160));
+        input.setTextColor(Color.WHITE);
+        input.setTextSize(15f);
+        input.setAlpha(1f);
+        input.setEnabled(true);
+        input.setFocusable(true);
+        input.setFocusableInTouchMode(true);
+        input.setCursorVisible(true);
         input.setSingleLine(false);
         input.setMaxLines(4);
+        input.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        input.setIncludeFontPadding(false);
+        input.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
         input.setPadding(dp(14), dp(8), dp(14), dp(8));
         input.setBackground(roundRect(0xFF202C33, dp(24)));
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            GradientDrawable cursor = roundRect(Color.WHITE, dp(1));
+            input.setTextCursorDrawable(cursor);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 21) {
+            input.setBackgroundTintList((ColorStateList) null);
+        }
+        input.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence text, int start, int before, int count) {
+                input.setTextColor(Color.WHITE);
+                input.setAlpha(1f);
+                input.invalidate();
+            }
+            @Override public void afterTextChanged(Editable editable) {}
+        });
         input.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) {
+                input.setTextColor(Color.WHITE);
+                input.setCursorVisible(true);
                 handler.postDelayed(this::scrollBottom, 180);
                 handler.postDelayed(this::scrollBottom, 420);
             }
@@ -811,7 +843,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.3.0");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.3.1");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -1463,7 +1495,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v530");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v531");
     }
 
     @Override
