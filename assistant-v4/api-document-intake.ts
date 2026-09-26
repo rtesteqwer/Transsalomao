@@ -105,24 +105,26 @@ type RouteMemory = {
 };
 
 async function loadRouteMemories(): Promise<RouteMemory[]> {
+  const fallback: RouteMemory[] = [
+    { route_key:"sportos-eco-festipar", route_name:"Sportos - Eco x Festipar", origin:"Sportos - Eco", destination:"Festipar", price_per_ton:40, match_hints:"SPORTOS;ECO;FESTIPAR;FERTIPAR" },
+    { route_key:"papaleguas-ureia-adubos-real", route_name:"Papaléguas - Uréia (Adubos Real)", origin:null, destination:null, price_per_ton:35, match_hints:"ADUBOS REAL;UREIA;PAPALEGUAS" },
+    { route_key:"rota-do-sol-eco", route_name:"Rota do Sol - Eco", origin:null, destination:null, price_per_ton:17, match_hints:"ECOLOGISTICS;ROTA DO SOL;OPATEM" },
+    { route_key:"papaleguas-rota-do-sol-map", route_name:"Papaléguas / Rota do Sol - MAP", origin:null, destination:null, price_per_ton:33, match_hints:"ADUBOS REAL;MAP;ROTA DO SOL" },
+    { route_key:"transportadora-ras", route_name:"Transportadora - RAS", origin:null, destination:null, price_per_ton:14, match_hints:"LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;CAN 27;YARAMILA;BELISLAND" },
+    { route_key:"ras-vports-26", route_name:"RAS - VPORTS", origin:null, destination:"VPORTS Autoridade Portuária", price_per_ton:26, match_hints:"RAS TRANSPORTES;VPORTS;PC2;PESO ORIGEM;KCL;MAP" },
+  ];
   const sql = await getSql();
   try {
-    return await sql<RouteMemory>`
+    const rows = await sql<RouteMemory>`
       select route_key, route_name, origin, destination, price_per_ton, match_hints
       from ticket_route_memory
       where active=true
       order by updated_at desc
       limit 30
     `;
+    return rows.length ? rows : fallback;
   } catch {
-    return [
-      { route_key:"sportos-eco-festipar", route_name:"Sportos - Eco x Festipar", origin:"Sportos - Eco", destination:"Festipar", price_per_ton:40, match_hints:"SPORTOS;ECO;FESTIPAR;FERTIPAR" },
-      { route_key:"papaleguas-ureia-adubos-real", route_name:"Papaléguas - Uréia (Adubos Real)", origin:null, destination:null, price_per_ton:35, match_hints:"ADUBOS REAL;UREIA;PAPALEGUAS" },
-      { route_key:"rota-do-sol-eco", route_name:"Rota do Sol - Eco", origin:null, destination:null, price_per_ton:17, match_hints:"ECOLOGISTICS;ROTA DO SOL;OPATEM" },
-      { route_key:"papaleguas-rota-do-sol-map", route_name:"Papaléguas / Rota do Sol - MAP", origin:null, destination:null, price_per_ton:33, match_hints:"ADUBOS REAL;MAP;ROTA DO SOL" },
-      { route_key:"transportadora-ras", route_name:"Transportadora - RAS", origin:null, destination:null, price_per_ton:14, match_hints:"LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;CAN 27;YARAMILA;BELISLAND" },
-      { route_key:"ras-vports-26", route_name:"RAS - VPORTS", origin:null, destination:"VPORTS Autoridade Portuária", price_per_ton:26, match_hints:"RAS TRANSPORTES;VPORTS;PC2;PESO ORIGEM;KCL;MAP" },
-    ];
+    return fallback;
   }
 }
 
