@@ -124,3 +124,12 @@ Commit: 806685278f527e3e8e874f226eb362f2fa482c86
 
 Retry OCR-only deployment after plate evidence test fix — 2026-09-25
 Commit: 2d5628e0ecdf66d8177908cdea2b02265e52c7a2
+
+
+Salomao IA v5.3 ZIP document intake — 2026-09-26
+- botão + permite escolher ZIP
+- abre imagens JPG/JPEG/PNG/WEBP/HEIC/HEIF sem gravar o conteúdo do ZIP no armazenamento
+- classifica documentos como viagem, abastecimento, adiantamento, mecânica, despesa ou revisar
+- extrai valores, litros, preço/L, placas, motorista, ticket e peso quando visíveis
+- não inventa campos ausentes e indica o módulo correto
+Commits: df8ba23e / ad05c63d / 2e7cb4da / fe9219bb
