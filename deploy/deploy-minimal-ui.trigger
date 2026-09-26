@@ -20,3 +20,4 @@ salomao-web-pc=1
 
 salomao-autonomous-agent=1
 2026-09-26 driver-batch-sequential-auto-caixa
+2026-09-26 driver-batch-handler-injected-v2
