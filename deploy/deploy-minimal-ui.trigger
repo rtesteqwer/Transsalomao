@@ -22,3 +22,4 @@ salomao-autonomous-agent=1
 2026-09-26 driver-batch-sequential-auto-caixa
 2026-09-26 driver-batch-handler-injected-v2
 2026-09-26 exact-ticket-weight-link
+2026-09-26 persist-photo-before-ocr-v3
