@@ -70,6 +70,7 @@ export const Route = createFileRoute("/api/photo-intake")({
             created_at,
             created_by
           from trip_ticket_photos
+          where lower(coalesce(created_by, '')) = lower(${session.username})
           order by created_at desc
           limit 250
         `;
