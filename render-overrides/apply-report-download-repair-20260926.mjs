@@ -39,17 +39,38 @@ function write(rel, value) {
   const rel = "src/lib/pdf.ts";
   const before = read(rel);
 
-  const downloadBlock =
-    /const blob = ([A-Za-z_$][A-Za-z0-9_$]*)\.output\((?:["'])blob(?:["'])\);\s*const url = URL\.createObjectURL\(blob\);\s*const link = document\.createElement\((?:["'])a(?:["'])\);\s*link\.href = url;\s*link\.download = ([^;]+);\s*document\.body\.appendChild\(link\);\s*link\.click\(\);\s*(?:link\.remove\(\);|window\.setTimeout\(\(\) => link\.remove\(\),\s*[0-9_]+\);)\s*(?:URL\.revokeObjectURL\(url\);|window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\),\s*[0-9_]+\);)/m;
-
-  const match = before.match(downloadBlock);
-  if (!match) {
-    if (!before.includes("navigator.canShare") || !before.includes('output("bloburl")')) {
-      throw new Error("report-download-repair: PDF download block not found");
-    }
+  if (before.includes("navigator.canShare") && before.includes('output("bloburl")')) {
+    // Já corrigido por uma execução anterior.
+    write(rel, before);
   } else {
-    const docVar = match[1];
-    const fileNameExpr = match[2];
+    const blobMatch = before.match(/const\s+blob\s*=\s*([A-Za-z_$][A-Za-z0-9_$]*)\.output\(\s*["']blob["']\s*\)\s*;/m);
+    if (!blobMatch || blobMatch.index == null) {
+      const marker = before.indexOf('output("blob")');
+      const altMarker = marker >= 0 ? marker : before.indexOf("output('blob')");
+      const sample = altMarker >= 0 ? before.slice(Math.max(0, altMarker - 350), altMarker + 1200) : "output(blob) not present";
+      console.error("[report-download-repair] pdf sample:", sample);
+      throw new Error("report-download-repair: PDF blob output not found");
+    }
+
+    const startIndex = blobMatch.index;
+    const revokeIndex = before.indexOf("URL.revokeObjectURL(url)", startIndex);
+    if (revokeIndex < 0) {
+      const sample = before.slice(startIndex, startIndex + 1800);
+      console.error("[report-download-repair] pdf download sample:", sample);
+      throw new Error("report-download-repair: PDF cleanup marker not found");
+    }
+    const endIndex = before.indexOf(";", revokeIndex);
+    if (endIndex < 0) throw new Error("report-download-repair: PDF cleanup terminator not found");
+
+    const oldBlock = before.slice(startIndex, endIndex + 1);
+    const fileMatch = oldBlock.match(/link\.download\s*=\s*([^;]+);/m);
+    if (!fileMatch) {
+      console.error("[report-download-repair] pdf download block:", oldBlock);
+      throw new Error("report-download-repair: PDF filename expression not found");
+    }
+
+    const docVar = blobMatch[1];
+    const fileNameExpr = fileMatch[1];
     const replacement = `const fileName = ${fileNameExpr};
   const blob = ${docVar}.output("blob");
   const pdfFile = new File([blob], fileName, { type: "application/pdf" });
@@ -85,7 +106,7 @@ function write(rel, value) {
     ${docVar}.save(fileName);
   }`;
 
-    write(rel, before.replace(downloadBlock, replacement));
+    write(rel, before.slice(0, startIndex) + replacement + before.slice(endIndex + 1));
   }
 }
 
