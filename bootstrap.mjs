@@ -244,32 +244,51 @@ if (!original.includes("apply-service-worker-reset-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-service-worker-reset-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
-fs.writeFileSync(originalPath, original);
-
-execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
-
-// TanStack Start server functions were reaching production with HTTP 200 but the
-// browser kept retrying framed responses and remained on "Verificando acesso".
-// Prefer the non-streaming JSON transport for every server function in the final
-// client bundle. The runtime already supports this fallback.
-if (!process.env.TRANS_SOURCE_DUMP) {
-  const assetsDir = path.join(repo, '.vercel', 'output', 'static', 'assets');
-  if (fs.existsSync(assetsDir)) {
-    let changed = 0;
-    for (const name of fs.readdirSync(assetsDir)) {
-      if (!name.endsWith('.js')) continue;
-      const file = path.join(assetsDir, name);
-      const before = fs.readFileSync(file, 'utf8');
-      const after = before
-        .replaceAll(`s.set(\`accept\`,\`\${n}, application/x-ndjson, application/json\`)`, `s.set(\`accept\`,\`application/json\`)`)
-        .replaceAll(`s.set("accept",\`\${n}, application/x-ndjson, application/json\`)`, `s.set("accept","application/json")`);
+// Fix the TanStack Start transport before Vite hashes the browser assets.
+// Using JSON avoids the framed-response retry loop observed in Edge, and doing
+// this before the build guarantees new immutable JS filenames for clients.
+if (!original.includes("[serverfn-json-prebuild]")) {
+  const npmMarker = "execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });";
+  if (!original.includes(npmMarker)) throw new Error('npm install marker not found for serverfn transport fix');
+  const prebuildPatch = `
+console.log('[serverfn-json-prebuild] patching TanStack client transport before build');
+{
+  const roots = [
+    path.join(work, 'node_modules', '@tanstack'),
+  ];
+  let changed = 0;
+  const visit = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { visit(full); continue; }
+      if (!/\\.(?:js|mjs|cjs|ts|tsx)$/.test(entry.name)) continue;
+      let before;
+      try { before = fs.readFileSync(full, 'utf8'); } catch { continue; }
+      if (!before.includes('application/x-ndjson, application/json') || !before.includes('x-tsr-serverFn')) continue;
+      let after = before;
+      after = after.replace(
+        /([A-Za-z_$][\\w$]*\\.set\\(\\s*["'\\\`]accept["'\\\`]\\s*,\\s*)\\\`[^\\\`]*application\\/x-ndjson, application\\/json\\\`\\s*\\)/g,
+        '$1"application/json")'
+      );
+      after = after.replace(
+        /([A-Za-z_$][\\w$]*\\.set\\(\\s*["'\\\`]accept["'\\\`]\\s*,\\s*)[^;\\n]*application\\/x-ndjson, application\\/json[^;\\n]*\\)/g,
+        '$1"application/json")'
+      );
       if (after !== before) {
-        fs.writeFileSync(file, after);
+        fs.writeFileSync(full, after);
         changed += 1;
       }
     }
-    if (!changed) throw new Error('Server-function JSON transport patch not applied');
-    console.log('[serverfn-json] patched client transport to application/json');
-  }
+  };
+  roots.forEach(visit);
+  if (!changed) throw new Error('TanStack server-function transport source was not found');
+  console.log('[serverfn-json-prebuild] files patched=' + changed);
+}
+`;
+  original = original.replace(npmMarker, npmMarker + "\\n" + prebuildPatch);
 }
 
+fs.writeFileSync(originalPath, original);
+
+execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
