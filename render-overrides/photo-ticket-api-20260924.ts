@@ -3,12 +3,28 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { managementSession } from "@/lib/management-auth.server";
 
+function felipeSession() {
+  const session = managementSession();
+  if (!session) return { ok: false as const, status: 401, message: "Entre na Gerência para acessar as fotos dos tickets." };
+  if (String(session.username || "").trim().toLocaleLowerCase("pt-BR") !== "felipe") {
+    return { ok: false as const, status: 403, message: "Esta área é exclusiva do usuário Felipe." };
+  }
+  return { ok: true as const, session };
+}
+
+function sameOriginMutation(request: Request) {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== new URL(request.url).origin) return false;
+  return request.headers.get("sec-fetch-site") !== "cross-site";
+}
+
 export const Route = createFileRoute("/api/photo-intake")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const session = managementSession();
-        if (!session) return json({ ok: false, message: "Entre na Gerência para acessar as fotos dos tickets." }, 401);
+        const access = felipeSession();
+        if (!access.ok) return json({ ok: false, message: access.message }, access.status);
+        const session = access.session;
 
         const sql = await getSql();
         await ensureTable(sql);
@@ -78,8 +94,10 @@ export const Route = createFileRoute("/api/photo-intake")({
       },
 
       POST: async ({ request }) => {
-        const session = managementSession();
-        if (!session) return json({ ok: false, message: "Entre na Gerência para salvar fotos dos tickets." }, 401);
+        const access = felipeSession();
+        if (!access.ok) return json({ ok: false, message: access.message }, access.status);
+        if (!sameOriginMutation(request)) return json({ ok: false, message: "Origem não autorizada." }, 403);
+        const session = access.session;
 
         let body: any = {};
         try {
@@ -129,8 +147,9 @@ export const Route = createFileRoute("/api/photo-intake")({
       },
 
       DELETE: async ({ request }) => {
-        const session = managementSession();
-        if (!session) return json({ ok: false, message: "Entre na Gerência para excluir fotos dos tickets." }, 401);
+        const access = felipeSession();
+        if (!access.ok) return json({ ok: false, message: access.message }, access.status);
+        if (!sameOriginMutation(request)) return json({ ok: false, message: "Origem não autorizada." }, 403);
 
         const id = String(new URL(request.url).searchParams.get("id") || "").trim();
         if (!id) return json({ ok: false, message: "Foto inválida." }, 400);
