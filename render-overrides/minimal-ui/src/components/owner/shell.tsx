@@ -1,11 +1,10 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Camera, ChevronRight, FileText, Fuel, House, LockKeyhole, LogOut, MoreHorizontal, ReceiptText, Truck, UserRound, Users, Wallet } from "lucide-react";
+import { Camera, ChevronRight, FileText, Fuel, House, LockKeyhole, LogOut, MoreHorizontal, ReceiptText, Truck, UserRound, Users, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { BrandLockup } from "@/components/brand";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getManagementSession, managementLogout } from "@/lib/management-auth";
 import { cn } from "@/lib/utils";
 import { useFleet } from "@/lib/use-fleet";
@@ -88,19 +87,63 @@ export function DonoShell() {
         </Link>)}
         <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" aria-expanded={moreOpen} className={cn("mobile-nav-item", (moreOpen || moreActive) && "is-active")}><MoreHorizontal className="size-[23px]" /><span>Mais</span></button>
       </nav>
-      <Dialog open={moreOpen} onOpenChange={setMoreOpen}>
-        <DialogContent title="Mais opções" className="owner-more-sheet">
-          <nav aria-label="Todas as abas" className="grid gap-1">
-            {NAV.slice(3).map((item) => <Link key={item.to} to={item.to} onClick={() => setMoreOpen(false)} aria-current={active(item) ? "page" : undefined} className={cn("owner-nav-link !h-12", active(item) && "is-active")}><item.icon className="size-5" /><span className="flex-1">{item.label}</span><ChevronRight className="size-4 text-subtle" /></Link>)}
-            {isFelipe ? <Link to="/dono" hash="minha-participacao" onClick={() => setMoreOpen(false)} className="owner-nav-link !h-12"><LockKeyhole className="size-5" /><span>Minha participação · 3%</span></Link> : null}
-          </nav>
-          <div className="mt-4 border-t border-border pt-3">
-            <p className="px-3 py-2 text-sm font-semibold">{username} <span className="ml-2 font-normal text-muted">Administrador</span></p>
-            <Link to="/motorista" onClick={() => setMoreOpen(false)} className="owner-nav-link"><Truck className="size-5" />App do motorista</Link>
-            <button type="button" onClick={logout} className="owner-nav-link w-full"><LogOut className="size-5" />Sair da Gerência</button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {moreOpen ? (
+        <div className="owner-more-overlay" role="presentation" onClick={() => setMoreOpen(false)}>
+          <section
+            className="owner-more-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mais-opcoes-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="owner-more-header">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Navegação</p>
+                <h2 id="mais-opcoes-title">Mais opções</h2>
+              </div>
+              <button type="button" onClick={() => setMoreOpen(false)} className="owner-more-close" aria-label="Fechar menu">
+                <X className="size-5" />
+              </button>
+            </div>
+            <nav aria-label="Todas as abas" className="grid gap-1">
+              {NAV.slice(3).map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setMoreOpen(false)}
+                  aria-current={active(item) ? "page" : undefined}
+                  className={cn("owner-nav-link owner-more-link", active(item) && "is-active")}
+                >
+                  <item.icon className="size-5 shrink-0" />
+                  <span className="flex-1">{item.label}</span>
+                  <ChevronRight className="size-4 shrink-0 text-subtle" />
+                </Link>
+              ))}
+              {isFelipe ? (
+                <Link
+                  to="/dono"
+                  hash="minha-participacao"
+                  onClick={() => setMoreOpen(false)}
+                  className="owner-nav-link owner-more-link"
+                >
+                  <LockKeyhole className="size-5 shrink-0" />
+                  <span className="flex-1">Minha participação · 3%</span>
+                  <ChevronRight className="size-4 shrink-0 text-subtle" />
+                </Link>
+              ) : null}
+            </nav>
+            <div className="mt-4 border-t border-border pt-3">
+              <p className="px-3 py-2 text-sm font-semibold">{username} <span className="ml-2 font-normal text-muted">Administrador</span></p>
+              <Link to="/motorista" onClick={() => setMoreOpen(false)} className="owner-nav-link owner-more-link">
+                <Truck className="size-5 shrink-0" /><span className="flex-1">App do motorista</span><ChevronRight className="size-4 shrink-0 text-subtle" />
+              </Link>
+              <button type="button" onClick={logout} className="owner-nav-link owner-more-link w-full">
+                <LogOut className="size-5 shrink-0" /><span>Sair da Gerência</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
