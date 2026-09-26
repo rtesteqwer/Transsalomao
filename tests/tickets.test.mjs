@@ -71,36 +71,44 @@ test('rejects malformed, oversized and mismatched image payloads', () => {
  assert.throws(()=>validateImage({imagem:Buffer.from('not an image at all').toString('base64')}),expectStatus(415));
 });
 
-test('writes exact tons and creates a single pending Caixa report', async () => {
+test('writes exact tons and reuses the existing report for same ticket + same net weight', async () => {
  const result=await saveTicket(sql,validateSave(input('T-100')));
  assert.equal(result.tons,35.81);
  const rows=(await pg.query("select tons,status,ticket from reports where id=$1",[result.reportId])).rows;
  assert.equal(Number(rows[0].tons),35.81); assert.equal(rows[0].status,'pendente');
- await assert.rejects(()=>saveTicket(sql,validateSave(input(' t-100 '))),expectStatus(409));
+ const duplicate=await saveTicket(sql,validateSave(input(' t-100 ')));
+ assert.equal(duplicate.reportId,result.reportId);
+ assert.equal(duplicate.linkedExisting,true);
+ assert.equal(Number((await pg.query("select count(*) from reports where ticket='T-100'")).rows[0].count),1);
+ await assert.rejects(()=>saveTicket(sql,validateSave(input('T-100',{peso_liquido_kg:35820}))),expectStatus(409));
 });
 
-test('archives the driver ticket photo with the same pending report', async () => {
+test('archives driver photos and links a later exact duplicate photo to the original report', async () => {
  const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
  const data=validateSave(input('T-PHOTO',{imagem:'data:image/png;base64,'+png,fileName:'ticket motorista.png'}));
  assert.equal(data.photo?.mime,'image/png');
  const result=await saveTicket(sql,data,{createdBy:'motorista-teste'});
  assert.ok(result.photoId);
- const rows=(await pg.query("select relation_type,relation_id,trip_code,file_name,mime_type,image_data,created_by from trip_ticket_photos where id=$1",[result.photoId])).rows;
- assert.equal(rows.length,1);
- assert.equal(rows[0].relation_type,'report');
- assert.equal(rows[0].relation_id,result.reportId);
- assert.equal(rows[0].trip_code,'T-PHOTO');
+ const duplicate=await saveTicket(sql,validateSave(input('T-PHOTO',{imagem:'data:image/png;base64,'+png,fileName:'segunda foto.png'})),{createdBy:'motorista-teste'});
+ assert.equal(duplicate.reportId,result.reportId);
+ assert.equal(duplicate.linkedExisting,true);
+ const rows=(await pg.query("select relation_type,relation_id,trip_code,file_name,mime_type,image_data,created_by from trip_ticket_photos where relation_id=$1 order by created_at",[result.reportId])).rows;
+ assert.equal(rows.length,2);
+ assert(rows.every(row=>row.relation_type==='report'));
+ assert(rows.every(row=>row.relation_id===result.reportId));
+ assert(rows.every(row=>row.trip_code==='T-PHOTO'));
  assert.equal(rows[0].file_name,'ticket motorista.png');
- assert.equal(rows[0].mime_type,'image/png');
- assert.ok(String(rows[0].image_data).startsWith('data:image/png;base64,'));
- assert.equal(rows[0].created_by,'motorista-teste');
+ assert.equal(rows[1].file_name,'segunda foto.png');
+ assert(rows.every(row=>row.mime_type==='image/png'));
+ assert(rows.every(row=>String(row.image_data).startsWith('data:image/png;base64,')));
+ assert(rows.every(row=>row.created_by==='motorista-teste'));
 });
 
-test('concurrent duplicate submissions create exactly one ticket and report', async () => {
- const results=await Promise.allSettled(Array.from({length:5},()=>saveTicket(sql,validateSave(input('T-101')))));
- assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
- for(const item of results.filter(x=>x.status==='rejected')) assert.equal(item.reason.status,409);
+test('concurrent exact duplicates all resolve to the same single ticket and report', async () => {
+ const results=await Promise.all(Array.from({length:5},()=>saveTicket(sql,validateSave(input('T-101')))));
+ assert.equal(new Set(results.map(x=>x.reportId)).size,1);
  assert.equal(Number((await pg.query("select count(*) from reports where ticket='T-101'")).rows[0].count),1);
+ assert.equal(Number((await pg.query("select count(*) from tickets_balanca where numero_ticket='T-101'")).rows[0].count),1);
 });
 
 test('does not confuse internal trip/report codes with a physical ticket; refuses inactive drivers', async () => {
