@@ -34,6 +34,8 @@ export const Route = createFileRoute("/api/ler-ticket")({
         const access = ticketAccess(request);
         const body = await readBody(request);
         const freightMode = normalizeFreightMode(body.freightMode);
+        const autoDetectMode = body.autoDetectMode === true;
+        const readMode = autoDetectMode ? "ton" : freightMode;
         const selected = body.selectedFleet as Record<string, unknown> | undefined;
         const fleet = {
           tractorPlate: typeof selected?.tractorPlate === "string" ? selected.tractorPlate.slice(0, 20) : undefined,
@@ -53,9 +55,15 @@ export const Route = createFileRoute("/api/ler-ticket")({
         // texto quando ChatGPT Vision está sem crédito, em timeout ou indisponível.
         if (typeof body.ocrText === "string" && body.ocrText.trim()) {
           const ocrText = body.ocrText.slice(0, 30_000);
-          const ticket = parseTicketOcr(ocrText, freightMode, fleet);
+          const ticket = parseTicketOcr(ocrText, readMode, fleet);
           const routeMatch = matchRouteFromOcr(ocrText, routeMemories);
-          if (routeMatch) applyRoute(ticket, routeMatch.route, routeMatch.confidence);
+          if (routeMatch) {
+            applyRoute(ticket, routeMatch.route, routeMatch.confidence);
+            ticket.inferred_freight_mode = "ton";
+            ticket.inferred_price = Number(routeMatch.route.price_per_ton);
+            ticket.inferred_price_basis = "preço aprendido da rota identificada";
+            ticket.inference_confidence = Math.max(ticket.inference_confidence ?? 0, routeMatch.confidence);
+          }
           ticket.alertas = [
             "Contingência automática: a API de visão não respondeu; os dados foram extraídos pelo OCR local.",
             ...ticket.alertas.filter((alerta) => !/^Contingência automática:/.test(alerta)),
@@ -65,14 +73,20 @@ export const Route = createFileRoute("/api/ler-ticket")({
 
         const image = validateImage(body);
         const dataUrl = `data:${image.mime};base64,${image.base64}`;
-        const result = await readTicketWithChatGPT(dataUrl, freightMode, fleet, routeMemories);
-        const ticket = finishTicketReading(result, freightMode, fleet);
+        const result = await readTicketWithChatGPT(dataUrl, freightMode, fleet, routeMemories, autoDetectMode);
+        const ticket = finishTicketReading(result, readMode, fleet);
         const routeKey = typeof result?.route_key === "string" ? result.route_key.trim() : "";
         const routeConfidence = Number(result?.route_confidence);
         const route = Number.isFinite(routeConfidence) && routeConfidence >= 0.85
           ? routeMemories.find((item) => item.route_key === routeKey)
           : undefined;
-        if (route) applyRoute(ticket, route, routeConfidence);
+        if (route) {
+          applyRoute(ticket, route, routeConfidence);
+          if (!ticket.inferred_freight_mode) ticket.inferred_freight_mode = "ton";
+          if (!ticket.inferred_price) ticket.inferred_price = Number(route.price_per_ton);
+          if (!ticket.inferred_price_basis) ticket.inferred_price_basis = "preço aprendido da rota identificada";
+          ticket.inference_confidence = Math.max(ticket.inference_confidence ?? 0, routeConfidence);
+        }
         return json(ticket);
       } catch (error) { return ticketErrorResponse(error); }
     },
@@ -186,6 +200,7 @@ async function readTicketWithChatGPT(
   freightMode: "ton" | "trip" | "cegonha" | "caixinha",
   fleet: { tractorPlate?: string; trailerPlate?: string },
   routeMemories: RouteMemory[],
+  autoDetectMode = false,
 ) {
   const key = process.env.OPENAI_API_KEY?.trim() || "";
   if (!key) throw new TicketError(503, "Leitor ChatGPT não configurado. Falta OPENAI_API_KEY.");
@@ -229,6 +244,10 @@ async function readTicketWithChatGPT(
       model_type: nullableString,
       route_key: nullableString,
       route_confidence: { type: ["number", "null"], minimum: 0, maximum: 1 },
+      inferred_freight_mode: { type: ["string", "null"], enum: ["ton", "trip", "cegonha", "caixinha", null] },
+      inferred_price: { type: ["number", "null"], minimum: 0 },
+      inferred_price_basis: nullableString,
+      inference_confidence: { type: ["number", "null"], minimum: 0, maximum: 1 },
       pesagem_inicial_kg: nullableInteger,
       pesagem_final_kg: nullableInteger,
       peso_liquido_kg: nullableInteger,
@@ -242,7 +261,7 @@ async function readTicketWithChatGPT(
       "motorista","cliente","destinatario","anotacoes_manuscritas","operadora",
       "contratante","remetente","empresa_documento","transportadora_cnpj",
       "destinatario_cnpj","navio","navio_origem","navio_destino",
-      "operador_pesagem","emissor","model_type","route_key","route_confidence","pesagem_inicial_kg",
+      "operador_pesagem","emissor","model_type","route_key","route_confidence","inferred_freight_mode","inferred_price","inferred_price_basis","inference_confidence","pesagem_inicial_kg",
       "pesagem_final_kg","peso_liquido_kg","peso_origem_kg",
       "placas_detectadas","alertas"
     ],
@@ -276,6 +295,12 @@ REGRAS CRÍTICAS:
 16. route_confidence deve ser de 0 a 1. Só use 0,85 ou mais quando a identificação da rota estiver realmente clara. Caso contrário, use null.
 17. As pistas de match_hints são exemplos de evidência e NÃO devem ser tratadas como palavras independentes suficientes. Prefira uma combinação de pelo menos 2 sinais distintivos ou um nome de rota manuscrito claramente legível.
 18. A palavra SPORTOS sozinha NÃO identifica a rota Sportos - Eco x Festipar. Essa rota exige evidência adicional de ECO/FESTIPAR/FERTIPAR. Tickets LOG CONSULTING + SPORTOS + YARA VIX 1 + NITRABOR/BELISLAND correspondem ao grupo Transportadora - RAS quando o conjunto de sinais estiver claro.
+19. Cruze TODAS as pistas disponíveis: layout do documento, títulos, empresas, produto, rota, observações manuscritas, pesos, valores, data e hora. Não decida por uma palavra isolada.
+20. inferred_freight_mode deve indicar a modalidade mais provável: "ton" para frete por tonelada; "cegonha" e "caixinha" quando o layout/palavras padronizadas identificarem esses tickets; "trip" para preço fixo por viagem. ${autoDetectMode ? "A modalidade escolhida na tela NÃO deve influenciar a classificação: identifique pela foto." : "Use a modalidade da tela apenas como contexto secundário."}
+21. inferred_price deve ser o preço operacional da viagem quando puder ser descoberto com segurança. Para "ton", prefira o preço/t aprendido da rota ou explicitamente indicado. Para "cegonha", "caixinha" e "trip", use preço POR VIAGEM. Não confunda peso, número de ticket, NF, CNPJ ou horário com preço.
+22. inferred_price_basis explique em poucas palavras de onde veio o preço (ex.: "rota Papaléguas-Uréia", "valor R$ impresso", "padrão de cegonha"). inference_confidence deve refletir a segurança da modalidade/preço.
+23. Quando data e hora existirem, associe a hora à mesma pesagem escolhida para data_ticket; prefira saída/fechamento/pesagem final. Retorne os dois juntos sempre que forem legíveis.
+24. No modo por tonelada, peso_liquido_kg é o ÚNICO dado operacional obrigatório. Continue extraindo todos os demais campos para facilitar conferência, mas nunca invente um campo ausente.
 
 ROTAS CONHECIDAS NO BANCO:
 ${knownRoutesText}

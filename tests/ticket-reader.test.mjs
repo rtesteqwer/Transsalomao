@@ -301,3 +301,25 @@ test('selected fleet is only used to correct/complete a plate when OCR has match
   assert.equal(d.placa_veiculo,'QWS3E13');
   assert.equal(d.placa_carreta,null);
 });
+
+
+test('smart intake only requires net weight for tonnage and exposes mode/price inference', () => {
+  const core = readFileSync(path.join(source, 'src/lib/ticket-core.ts'), 'utf8');
+  const parser = readFileSync(path.join(source, 'src/lib/ticket-parser.ts'), 'utf8');
+  const reader = readFileSync(path.join(source, 'src/routes/api/ler-ticket.ts'), 'utf8');
+  assert.match(core, /inferred_freight_mode/);
+  assert.match(core, /inferred_price/);
+  assert.match(parser, /somente o peso líquido é obrigatório|somente o peso liquido e obrigatorio/i);
+  assert.match(reader, /Cruze TODAS as pistas disponíveis/);
+  assert.match(reader, /preço POR VIAGEM/);
+  assert.match(reader, /autoDetectMode/);
+});
+
+test('local OCR can infer caixinha and cegonha as per-trip modes', () => {
+  const cx = parseTicketOcr('CAIXINHA\nValor R$ 250,00\nData 20/09/2026 10:15', 'ton');
+  assert.equal(cx.inferred_freight_mode, 'caixinha');
+  assert.equal(cx.inferred_price, 250);
+  const ceg = parseTicketOcr('CEGONHA\nCHASSI ABC123\nFRETE R$ 900,00\n20/09/2026 11:20', 'ton');
+  assert.equal(ceg.inferred_freight_mode, 'cegonha');
+  assert.equal(ceg.inferred_price, 900);
+});

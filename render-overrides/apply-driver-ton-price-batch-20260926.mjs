@@ -24,26 +24,26 @@ edit('src/routes/motorista.tsx', [
   ['disabled={isLoading || drivers.length === 0}', 'disabled={isLoading || drivers.length === 0 || priceBatchPending}'],
   ['disabled={isLoading || fleets.length === 0}', 'disabled={isLoading || fleets.length === 0 || priceBatchPending}'],
   ['                  aria-pressed={freightMode === mode}', '                  aria-pressed={freightMode === mode}\n                  disabled={priceBatchPending}'],
-  ['    e.preventDefault();\n    const tonsN', '    e.preventDefault();\n    if (freightMode === "ton" && priceBatchMode) return;\n    const tonsN'],
-  ['Escolha motorista, conjunto e o modo de frete. Em Cegonha e Caixinha você pode lançar várias viagens de uma vez.', 'Escolha motorista, conjunto e o modo de frete. Leia várias fotos e aplique o mesmo preço por tonelada às viagens selecionadas.'],
+  ['    e.preventDefault();\n    const tonsN', '    e.preventDefault();\n    if (priceBatchMode) return;\n    const tonsN'],
+  ['Escolha motorista, conjunto e o modo de frete. Em Cegonha e Caixinha você pode lançar várias viagens de uma vez.', 'Escolha motorista e conjunto. No leitor inteligente, o ChatGPT identifica automaticamente modalidade, preço, peso, data e hora de cada foto.'],
   ['? "Selecione uma ou várias fotos. O ChatGPT lê cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência."', '? (priceBatchMode ? "Leia as fotos, confira as viagens e aplique o preço do grupo antes de enviar ao Caixa." : "Selecione uma ou várias fotos. Cada ticket válido é enviado automaticamente ao Caixa para a gerência definir o preço.")'],
   ['              <TicketPhotoAccess onAccess={setTicketAccess} />\n              <div className="grid grid-cols-2 gap-3">', `              <TicketPhotoAccess onAccess={setTicketAccess} />
-              {freightMode === "ton" ? <label className="flex min-h-12 items-center gap-3 rounded-lg border border-border p-3 text-sm font-semibold">
+              <label className="flex min-h-12 items-center gap-3 rounded-lg border border-border p-3 text-sm font-semibold">
                 <input type="checkbox" className="size-5" checked={priceBatchMode} disabled={priceBatchPending || batchPhotos.length > 0} onChange={event => setPriceBatchMode(event.target.checked)} />
-                Conferir fotos e definir preço em lote
-              </label> : null}
-              {freightMode === "ton" && priceBatchMode ? <DriverTonPriceBatch
+                Identificar modalidade automaticamente pelas fotos
+              </label>
+              {priceBatchMode ? <DriverTonPriceBatch
                 available={!!ticketAccess?.authenticated && ticketAccess.available && !!driverId && !!fleetId}
                 upload={uploadSelectedPhotoFile}
-                read={(image, fileName) => lerTicket(image, "ton", fleet ? { tractorPlate: fleet.tractorPlate, trailerPlate: fleet.trailerPlate } : undefined, fileName)}
-                save={(dados, pricePerTon) => salvarTicket({ ...dados, conferido: true, driverId, fleetId, freightMode: "ton", dailyValue: 0, km_carreta: 0, pricePerTon })}
+                read={(image, fileName) => lerTicket(image, "ton", fleet ? { tractorPlate: fleet.tractorPlate, trailerPlate: fleet.trailerPlate } : undefined, fileName, true)}
+                save={(dados, detectedMode, price) => salvarTicket({ ...dados, conferido: true, driverId, fleetId, freightMode: detectedMode, dailyValue: detectedMode === "ton" ? 0 : (price ?? 0), km_carreta: 0, pricePerTon: detectedMode === "ton" ? price : undefined })}
                 link={(photoId, fileName, saved, dados) => linkSelectedPhoto(photoId, "", fileName, saved, dados)}
                 onBusy={setTicketSending}
                 onPending={setPriceBatchPending}
                 onSaved={() => queryClient.invalidateQueries({ queryKey: fleetKey })}
               /> : <>
               <div className="grid grid-cols-2 gap-3">`],
-  ['            </section>\n\n          {freightMode === "cegonha"', '              </>}\n            </section>\n\n          {!(freightMode === "ton" && priceBatchMode) ? <>\n          {freightMode === "cegonha"'],
+  ['            </section>\n\n          {freightMode === "cegonha"', '              </>}\n            </section>\n\n          {!priceBatchMode ? <>\n          {freightMode === "cegonha"'],
   ['          </Button>\n          </fieldset>', '          </Button>\n          </> : null}\n          </fieldset>'],
 ]);
 
@@ -59,8 +59,20 @@ edit('src/lib/ticket-core.ts', [
   ['const { ticket: d, driverId, fleetId, km, tons, dailyValue, freightMode, photo } = data;', 'const { ticket: d, driverId, fleetId, km, tons, dailyValue, pricePerTon, freightMode, photo } = data;'],
   ['${reportId}, ${JSON.stringify(d)}::jsonb, ${freightMode}', '${reportId}, ${JSON.stringify({ ...d, price_per_ton: pricePerTon })}::jsonb, ${freightMode}'],
 ]);
+// Final operational rules for smart photo intake.
+edit('src/lib/ticket-core.ts', [
+  ['  if (fixedPhotoMode && !numero) {\n    const prefix = freightMode === "cegonha" ? "CEG" : "CX";\n    numero = prefix + "-" + Date.now().toString(36).toUpperCase() + "-" + crypto.randomUUID().slice(0, 6).toUpperCase();\n  }',
+   '  if (!numero) {\n    const prefix = freightMode === "ton" ? "TON" : freightMode === "cegonha" ? "CEG" : freightMode === "caixinha" ? "CX" : "TRIP";\n    numero = prefix + "-" + Date.now().toString(36).toUpperCase() + "-" + crypto.randomUUID().slice(0, 6).toUpperCase();\n  }'],
+  ['  const dailyValueRaw = freightMode === "trip" ? Number(body.dailyValue ?? 0) : 0;',
+   '  const dailyValueRaw = freightMode === "ton" ? 0 : Number(body.dailyValue ?? 0);'],
+]);
+
 edit('src/routes/api/ticket-meta.ts', [
   ['          numeroTicket: row.numero_ticket,', '          numeroTicket: row.numero_ticket,\n          pricePerTon: (row.ticket_data as Record<string, unknown> | null)?.price_per_ton ?? null,'],
+]);
+edit('src/routes/dono/lancamentos.tsx', [
+  ['          pricePerTrip: open.freightMode === "trip" ? String(open.dailyValue || "") : "",',
+   '          pricePerTrip: open.freightMode !== "ton" ? String(open.dailyValue || "") : "",'],
 ]);
 edit('src/routes/dono/lancamentos.tsx', [
   ['          pricePerTrip: open.freightMode', '          pricePerTon: open.freightMode === "ton" && Number(closingTicketMeta?.pricePerTon) > 0 ? String(closingTicketMeta?.pricePerTon) : "",\n          pricePerTrip: open.freightMode'],
@@ -85,4 +97,4 @@ edit('src/routes/api/photo-intake.ts', [
   ['        if (!image.startsWith("data:image/") || image.length > 3_000_000)', '        if (!storedPhotoOnly && (!image.startsWith("data:image/") || image.length > 3_000_000))'],
   ['        await sql`\n          insert into trip_ticket_photos', '        if (storedPhotoOnly) return json({ ok: false, message: "Foto salva não encontrada. Envie a foto novamente." }, 404);\n\n        await sql`\n          insert into trip_ticket_photos'],
 ]);
-console.log('[driver-ton-price-batch] photo review, group prices and Caixa price persistence installed');
+console.log('[driver-ton-price-batch] smart photo groups, auto mode, ton-only weight requirement and shared per-trip pricing installed');

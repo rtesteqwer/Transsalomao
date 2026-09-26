@@ -51,11 +51,10 @@ function plateSeenApproximately(raw: string, expected: string | null) {
 }
 
 export function missingTicketFields(d: TicketData, mode: TicketFreightMode) {
-  const required = d.model_type === "adubos_real" ? ["numero_ticket", "placa_veiculo", "placa_carreta"] : ["numero_ticket", "placa_veiculo", "placa_carreta", "transportadora"];
-  const missing = required.filter(k => !d[k as keyof TicketData]);
-  if (mode === "ton" && !d.peso_liquido_kg) missing.push("peso_liquido_kg");
-  if (!d.operadora && !d.contratante && !d.destinatario) missing.push("operadora/contratante/destinatario");
-  return missing;
+  // Regra operacional: por tonelada, somente o peso líquido é obrigatório.
+  // Demais campos são inteligência auxiliar e nunca bloqueiam o lançamento.
+  if (mode === "ton" && !(d.peso_liquido_kg && d.peso_liquido_kg > 0)) return ["peso_liquido_kg"];
+  return [];
 }
 
 // Only extracted plate values may be assigned from a selected fleet. Never fill a
@@ -343,7 +342,7 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   const ecologisticsHeader = model === "ecologistics" && /ECOLOGISTICS|ECO\s*LOGISTICS/.test(joined)
     ? "ECOLOGISTICS SOLUCOES INTERMODAIS LTDA" : null;
 
-  const data = {
+  const data: TicketData = {
     numero_ticket: numero, model_type: model,
     status: field("STATUS"), data_ticket: dataTicket, hora_ticket: horaTicket,
     placa_veiculo: vehicleFromOcr, placa_carreta: trailerFromOcr, placas_detectadas: detected,
@@ -392,5 +391,34 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   }
   if (model === "vports_recibo" && /LOG\s+CONSULTING/.test(joined)) data.operadora = "LOG CONSULTING";
   if (model === "vports_relatorio" && /VPORTS\s+AUTORIDADE/.test(joined)) data.destinatario = "VPORTS AUTORIDADE PORTUARIA";
+
+  // Inferência local de modalidade/preço para contingência OCR.
+  // A IA é a primeira opção; estas regras usam os layouts e palavras já conhecidos.
+  const moneyValues = [...joined.matchAll(/(?:R\$|VALOR|PRECO|PREÇO|FRETE)[\s.:=-]*([0-9]{1,6}(?:[.,][0-9]{1,2})?)/g)]
+    .map(hit => Number(hit[1].replace(".", "").replace(",", ".")))
+    .filter(value => Number.isFinite(value) && value > 0 && value <= 100000);
+  const explicitPrice = moneyValues[0] ?? null;
+  if (/\bCAIXINHA\b/.test(joined)) {
+    data.inferred_freight_mode = "caixinha";
+    data.inferred_price = explicitPrice;
+    data.inferred_price_basis = explicitPrice ? "valor explícito do ticket" : "layout/palavra CAIXINHA";
+    data.inference_confidence = explicitPrice ? 0.98 : 0.92;
+  } else if (/\bCEGONHA\b|VEICULOS?\s+TRANSPORTADOS?|CHASSI|RENAVAM/.test(joined)) {
+    data.inferred_freight_mode = "cegonha";
+    data.inferred_price = explicitPrice;
+    data.inferred_price_basis = explicitPrice ? "valor explícito do ticket" : "layout padronizado de cegonha";
+    data.inference_confidence = explicitPrice ? 0.98 : 0.90;
+  } else if (data.peso_liquido_kg && data.peso_liquido_kg > 0) {
+    data.inferred_freight_mode = "ton";
+    data.inferred_price = null;
+    data.inferred_price_basis = "peso líquido identificado";
+    data.inference_confidence = 0.88;
+  } else if (explicitPrice) {
+    data.inferred_freight_mode = "trip";
+    data.inferred_price = explicitPrice;
+    data.inferred_price_basis = "valor fixo explícito do ticket";
+    data.inference_confidence = 0.82;
+  }
+
   return finishTicketReading(data, mode, fleet);
 }
