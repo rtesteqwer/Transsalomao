@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { authenticateAssistantRequest } from "@/lib/assistant-auth.server";
+import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
 
 export const Route = createFileRoute("/api/assistant")({
   server: {
@@ -9,12 +10,13 @@ export const Route = createFileRoute("/api/assistant")({
       GET: async ({ request }) => {
         const auth = await authenticateAssistantRequest(request);
         if (!auth) return out({ ok: false, authenticated: false }, 401);
+        const aiKeys = await getSalomaoOpenAIKeys();
         return out({
           ok: true,
           authenticated: true,
           username: auth.username,
           via: auth.via,
-          aiConfigured: !!process.env.OPENAI_API_KEY?.trim(),
+          aiConfigured: aiKeys.length > 0,
           model: modelName(),
           capabilities: ["consultar", "criar", "editar", "lançar", "aprovar", "configurar acesso"],
         });
@@ -37,40 +39,55 @@ export const Route = createFileRoute("/api/assistant")({
             })).filter((x: Turn) => x.content.trim())
           : [];
 
-        // Intenções de escrita claras têm prioridade absoluta sobre qualquer consulta/fuzzy match.
-        const deterministic = await highPriorityAction(message, history, auth.username);
-        if (deterministic) return out({ ok: true, mode: "action-router", ...deterministic });
-
-        const apiKey = process.env.OPENAI_API_KEY?.trim();
-        if (apiKey) {
+        // Toda ação operacional passa primeiro pelo GPT com ferramentas estritas.
+        // O modo local permanece somente para consultas; ele nunca grava dados.
+        const apiKeys = await getSalomaoOpenAIKeys();
+        let lastAiError = "";
+        for (const apiKey of apiKeys) {
           try {
             return out({ ok: true, mode: "gpt", answer: await gptAnswer(message, history, apiKey, auth.username) });
           } catch (error: any) {
-            const detail = String(error?.message ?? error ?? "");
-            console.error("[salomao-ai-v4] GPT fallback", error);
-
-            if (detail.includes("billing_not_active") || detail.includes("credit_balance_exhausted")) {
-              return out({
-                ok: false,
-                mode: "gpt-unavailable",
-                code: "OPENAI_BILLING_INACTIVE",
-                answer: "A IA avançada está configurada, mas o faturamento da API OpenAI ainda não está ativo. Ative o billing da API e tente novamente. Não vou responder pelo modo local para evitar uma resposta errada."
-              }, 503);
-            }
-
-            if (detail.includes("invalid_api_key") || detail.includes("Incorrect API key")) {
-              return out({
-                ok: false,
-                mode: "gpt-unavailable",
-                code: "OPENAI_KEY_INVALID",
-                answer: "A chave da OpenAI configurada no servidor foi recusada. É necessário substituir a OPENAI_API_KEY por uma chave válida."
-              }, 503);
-            }
+            lastAiError = String(error?.message ?? error ?? "");
+            console.error("[salomao-ai-v5] GPT unavailable", error);
           }
         }
 
+        if (apiKeys.length) {
+          if (lastAiError.includes("billing_not_active") || lastAiError.includes("credit_balance_exhausted") || lastAiError.includes("insufficient_quota")) {
+            return out({
+              ok: false,
+              mode: "gpt-unavailable",
+              code: "OPENAI_BILLING_INACTIVE",
+              answer: "A Salomão IA está conectada à OpenAI, mas a conta da API está sem créditos. Não vou executar comandos por um modo inferior para evitar alterações erradas."
+            }, 503);
+          }
+          if (lastAiError.includes("invalid_api_key") || lastAiError.includes("Incorrect API key")) {
+            return out({
+              ok: false,
+              mode: "gpt-unavailable",
+              code: "OPENAI_KEY_INVALID",
+              answer: "A chave da OpenAI configurada foi recusada. Não vou executar comandos por um modo inferior até existir uma chave válida."
+            }, 503);
+          }
+          return out({
+            ok: false,
+            mode: "gpt-unavailable",
+            code: "OPENAI_UNAVAILABLE",
+            answer: "A OpenAI está temporariamente indisponível. Nenhuma alteração foi executada."
+          }, 503);
+        }
+
+        if (isWriteIntent(norm(message))) {
+          return out({
+            ok: false,
+            mode: "gpt-required",
+            code: "OPENAI_REQUIRED_FOR_WRITE",
+            answer: "A API da OpenAI precisa estar ativa para executar comandos que alteram o Trans Salomão. Nenhuma alteração foi feita."
+          }, 503);
+        }
+
         const local = await localAnswer(message, history);
-        return out({ ok: true, mode: "local", ...local });
+        return out({ ok: true, mode: "local-readonly", ...local });
       },
     },
   },
@@ -83,7 +100,7 @@ type Snapshot = { drivers: Row[]; fleets: Row[]; trips: Row[]; fuelings: Row[]; 
 function out(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }
-function modelName() { return process.env.OPENAI_ASSISTANT_MODEL?.trim() || "gpt-5.6-sol"; }
+function modelName() { return salomaoModel(); }
 function n(v: unknown) { const x = Number(v ?? 0); return Number.isFinite(x) ? x : 0; }
 function norm(v: unknown) { return String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim(); }
 function brl(v: number) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v); }
@@ -135,14 +152,22 @@ function findFleet(s: Snapshot, query: string) {
   return { value: ranked[0]?.x ?? null, score: ranked[0]?.s ?? 0, candidates: ranked.slice(0,5).map((x)=>x.x.name) };
 }
 function resolveUniqueDriver(s: Snapshot, query: string) {
-  const match = findDriver(s, query);
-  if (!match.value || match.score < 70) throw new Error(`Não encontrei um motorista com segurança para “${query}”.`);
-  return match.value;
+  const ranked = s.drivers.map((x) => ({ x, s: score(x.name, query) })).filter((x) => x.s > 0).sort((a,b)=>b.s-a.s);
+  const first = ranked[0], second = ranked[1];
+  if (!first || first.s < 70) throw new Error(`Não encontrei um motorista com segurança para “${query}”.`);
+  if (second && first.s < 100 && second.s >= first.s - 8) {
+    throw new Error(`Há mais de um motorista parecido com “${query}”: ${ranked.slice(0,4).map((x)=>x.x.name).join(", ")}. Informe o nome completo.`);
+  }
+  return first.x;
 }
 function resolveUniqueFleet(s: Snapshot, query: string) {
-  const match = findFleet(s, query);
-  if (!match.value || match.score < 70) throw new Error(`Não encontrei um conjunto com segurança para “${query}”.`);
-  return match.value;
+  const ranked = s.fleets.map((x) => ({ x, s: Math.max(score(x.name,query),score(x.tractor_plate,query),score(x.trailer_plate,query),score(x.model,query)) })).filter((x)=>x.s>0).sort((a,b)=>b.s-a.s);
+  const first = ranked[0], second = ranked[1];
+  if (!first || first.s < 70) throw new Error(`Não encontrei um conjunto com segurança para “${query}”.`);
+  if (second && first.s < 100 && second.s >= first.s - 8) {
+    throw new Error(`Há mais de um conjunto parecido com “${query}”: ${ranked.slice(0,4).map((x)=>x.x.name).join(", ")}. Informe o conjunto ou a placa completa.`);
+  }
+  return first.x;
 }
 function freight(t: Row) { return t.freight_mode === "ton" ? n(t.net_weight) * n(t.price_per_ton) : n(t.price_per_trip); }
 function dateOk(row: Row, from?: string | null, to?: string | null) { const d=iso(row.date); return (!from||!d||d>=from)&&(!to||!d||d<=to); }
@@ -286,6 +311,7 @@ async function mutateSystem(args: Row, actor: string) {
     const driver=driverQ?resolveUniqueDriver(s,driverQ):null;
     const liters=n(args.liters),price=n(args.price_per_liter??args.pricePerLiter);
     if(liters<=0)throw new Error("Informe os litros abastecidos.");
+    if(price<=0)throw new Error("Informe o preço por litro.");
     const id=String(args.id??newId("fuel"));
     const date=iso(args.date)||todayBR();
     await sql`
@@ -318,7 +344,9 @@ async function mutateSystem(args: Row, actor: string) {
   if(op==="trip_upsert"){
     const driver=resolveUniqueDriver(s,String(args.driver??""));
     const fleet=resolveUniqueFleet(s,String(args.fleet??""));
-    const mode=["ton","trip","cegonha","caixinha"].includes(String(args.freight_mode))?String(args.freight_mode):"ton";
+    const requestedMode=String(args.freight_mode??"");
+    if(!["ton","trip","cegonha","caixinha"].includes(requestedMode))throw new Error("Informe o modo da viagem: por tonelada, diária, cegonha ou caixinha.");
+    const mode=requestedMode;
     const id=String(args.id??newId("trip"));
     const code=args.id?String(args.code??"").trim():await nextTicketCode();
     const date=iso(args.date)||todayBR();
@@ -395,7 +423,7 @@ async function mutateSystem(args: Row, actor: string) {
 
 const queryTool = {
   type:"function",name:"query_trans_salomao",
-  description:"Consulta dados reais do Trans Salomão. Use para motoristas, viagens, conjuntos, abastecimentos, despesas, Caixa, faturamento, comissões e logins administrativos.",
+  description:"Consulta dados reais do Trans Salomão. Use antes de responder números, cadastros, viagens, conjuntos, abastecimentos, despesas, Caixa, faturamento, comissões e logins.",
   strict:true,
   parameters:{type:"object",properties:{
     operation:{type:"string",enum:["driver_overview","fleet_overview","trips","fuelings","expenses","pending","financial_by_driver","system_summary","management_users"]},
@@ -403,40 +431,157 @@ const queryTool = {
   },required:["operation","driver","fleet","date_from","date_to","limit"],additionalProperties:false}
 };
 
-const actionTool = {
-  type:"function",name:"mutate_trans_salomao",
-  description:"Executa ações autorizadas no Trans Salomão: criar/editar login, motorista, conjunto, viagem, abastecimento, despesa, preços de frete, aceitar/rejeitar lançamento e exclusões confirmadas. Nunca use para mera consulta.",
-  strict:false,
+const driverTool = {
+  type:"function",name:"save_driver",
+  description:"Cria ou edita um motorista. Se o nome puder apontar para mais de um cadastro, não escolha por aproximação: consulte e peça o nome completo.",
+  strict:true,
   parameters:{type:"object",properties:{
-    operation:{type:"string",enum:["management_user_upsert","management_user_disable","driver_upsert","fleet_upsert","freight_prices_update","fueling_upsert","expense_upsert","trip_upsert","report_accept","report_reject","delete_trip","delete_fueling","delete_expense","delete_report","delete_driver","delete_all_trips"]},
-    username:{type:"string"},password:{type:"string"},role:{type:"string"},
-    name:{type:"string"},phone:{type:"string"},category:{type:"string"},status:{type:"string"},commission_pct:{type:"number"},
-    tractor_plate:{type:"string"},trailer_plate:{type:"string"},model:{type:"string"},
-    driver:{type:"string"},fleet:{type:"string"},date:{type:"string"},station:{type:"string"},km:{type:"number"},liters:{type:"number"},price_per_liter:{type:"number"},notes:{type:"string"},
-    amount:{type:"number"},description:{type:"string"},asset_type:{type:"string"},
-    client:{type:"string"},origin:{type:"string"},destination:{type:"string"},tons:{type:"number"},net_weight:{type:"number"},gross_weight:{type:"number"},loaded_tons:{type:"number"},freight_mode:{type:"string"},price_per_ton:{type:"number"},km_start:{type:"number"},km_end:{type:"number"},
-    trip:{type:"number"},cegonha:{type:"number"},caixinha:{type:"number"},ticket:{type:"string"},id:{type:"string"},confirmed:{type:"boolean"}
-  },required:["operation"],additionalProperties:true}
+    id:{type:["string","null"]},name:{type:"string"},phone:{type:["string","null"]},category:{type:["string","null"]},
+    status:{type:["string","null"],enum:["ativo","inativo",null]},commission_pct:{type:["number","null"],minimum:0,maximum:100}
+  },required:["id","name","phone","category","status","commission_pct"],additionalProperties:false}
 };
+
+const fleetTool = {
+  type:"function",name:"save_fleet",
+  description:"Cria ou edita um conjunto/carreta. Para editar, identifique o conjunto sem ambiguidade.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    id:{type:["string","null"]},name:{type:"string"},tractor_plate:{type:["string","null"]},trailer_plate:{type:["string","null"]},
+    model:{type:["string","null"]},status:{type:["string","null"],enum:["ativo","inativo",null]}
+  },required:["id","name","tractor_plate","trailer_plate","model","status"],additionalProperties:false}
+};
+
+const tripTool = {
+  type:"function",name:"save_trip",
+  description:"Cria ou edita uma viagem. freight_mode: ton=por tonelada, trip=diária, cegonha=cegonha, caixinha=caixinha. Nunca adivinhe motorista, conjunto ou modalidade.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    id:{type:["string","null"]},driver:{type:"string"},fleet:{type:"string"},date:{type:["string","null"]},
+    client:{type:["string","null"]},origin:{type:["string","null"]},destination:{type:["string","null"]},
+    net_weight:{type:["number","null"],minimum:0},gross_weight:{type:["number","null"],minimum:0},loaded_tons:{type:["number","null"],minimum:0},
+    freight_mode:{type:"string",enum:["ton","trip","cegonha","caixinha"]},price_per_ton:{type:["number","null"],minimum:0},
+    km_start:{type:["number","null"],minimum:0},km_end:{type:["number","null"],minimum:0}
+  },required:["id","driver","fleet","date","client","origin","destination","net_weight","gross_weight","loaded_tons","freight_mode","price_per_ton","km_start","km_end"],additionalProperties:false}
+};
+
+const fuelingTool = {
+  type:"function",name:"save_fueling",
+  description:"Cria ou edita um abastecimento. Exige conjunto, litros e preço por litro; não invente valores ausentes.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    id:{type:["string","null"]},driver:{type:["string","null"]},fleet:{type:"string"},date:{type:["string","null"]},
+    station:{type:["string","null"]},km:{type:["number","null"],minimum:0},liters:{type:"number",exclusiveMinimum:0},
+    price_per_liter:{type:"number",exclusiveMinimum:0},notes:{type:["string","null"]}
+  },required:["id","driver","fleet","date","station","km","liters","price_per_liter","notes"],additionalProperties:false}
+};
+
+const expenseTool = {
+  type:"function",name:"save_expense",
+  description:"Cria ou edita despesa ou adiantamento. Para adiantamento use category='Adiantamento' e informe o motorista. Para outra despesa informe o conjunto.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    id:{type:["string","null"]},driver:{type:["string","null"]},fleet:{type:["string","null"]},date:{type:["string","null"]},
+    category:{type:"string"},description:{type:"string"},amount:{type:"number",exclusiveMinimum:0},
+    asset_type:{type:["string","null"],enum:["tractor","trailer",null]},notes:{type:["string","null"]}
+  },required:["id","driver","fleet","date","category","description","amount","asset_type","notes"],additionalProperties:false}
+};
+
+const pricesTool = {
+  type:"function",name:"update_freight_prices",
+  description:"Atualiza os preços globais de Diária, Cegonha e Caixinha. Só use quando os três valores estiverem claros.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    trip:{type:"number",exclusiveMinimum:0},cegonha:{type:"number",exclusiveMinimum:0},caixinha:{type:"number",exclusiveMinimum:0}
+  },required:["trip","cegonha","caixinha"],additionalProperties:false}
+};
+
+const userTool = {
+  type:"function",name:"manage_management_user",
+  description:"Cria/edita ou desativa login administrativo. Nunca exponha a senha na resposta.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    action:{type:"string",enum:["upsert","disable"]},username:{type:"string"},password:{type:["string","null"]},role:{type:["string","null"]}
+  },required:["action","username","password","role"],additionalProperties:false}
+};
+
+const reportTool = {
+  type:"function",name:"process_pending_report",
+  description:"Aceita ou rejeita um lançamento pendente da Caixa pelo ticket. Se o ticket estiver incerto, consulte antes.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    action:{type:"string",enum:["accept","reject"]},ticket:{type:"string"}
+  },required:["action","ticket"],additionalProperties:false}
+};
+
+const deleteTool = {
+  type:"function",name:"delete_trans_salomao_record",
+  description:"Exclui um registro ou todas as viagens. Só pode ser usado após confirmação explícita do usuário no pedido atual.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    entity:{type:"string",enum:["trip","fueling","expense","report","driver","all_trips"]},
+    id:{type:["string","null"]},confirmed:{type:"boolean"}
+  },required:["entity","id","confirmed"],additionalProperties:false}
+};
+
+const assistantTools=[queryTool,driverTool,fleetTool,tripTool,fuelingTool,expenseTool,pricesTool,userTool,reportTool,deleteTool];
+
+async function executeAssistantTool(name:string,args:Row,actor:string,userMessage:string){
+  if(name==="query_trans_salomao")return querySystem(args);
+  if(name==="save_driver")return mutateSystem({operation:"driver_upsert",...args},actor);
+  if(name==="save_fleet")return mutateSystem({operation:"fleet_upsert",...args},actor);
+  if(name==="save_trip")return mutateSystem({operation:"trip_upsert",...args},actor);
+  if(name==="save_fueling")return mutateSystem({operation:"fueling_upsert",...args},actor);
+  if(name==="save_expense")return mutateSystem({operation:"expense_upsert",...args},actor);
+  if(name==="update_freight_prices")return mutateSystem({operation:"freight_prices_update",...args},actor);
+  if(name==="manage_management_user"){
+    if(args.action==="disable")return mutateSystem({operation:"management_user_disable",username:args.username},actor);
+    return mutateSystem({operation:"management_user_upsert",username:args.username,password:args.password??"",role:args.role??"admin"},actor);
+  }
+  if(name==="process_pending_report"){
+    return mutateSystem({operation:args.action==="accept"?"report_accept":"report_reject",ticket:args.ticket},actor);
+  }
+  if(name==="delete_trans_salomao_record"){
+    if(!explicitlyConfirmed(norm(userMessage)))throw new Error("CONFIRMATION_REQUIRED");
+    const map:Record<string,string>={trip:"delete_trip",fueling:"delete_fueling",expense:"delete_expense",report:"delete_report",driver:"delete_driver",all_trips:"delete_all_trips"};
+    const operation=map[String(args.entity??"")];
+    if(!operation)throw new Error("Tipo de exclusão inválido.");
+    return mutateSystem({operation,id:args.id??"",confirmed:true},actor);
+  }
+  throw new Error("Ferramenta não autorizada.");
+}
 
 async function gptAnswer(message:string,history:Turn[],key:string,actor:string){
   const prior=history.map((x)=>`${x.role==="user"?"Usuário":"Salomão"}: ${x.role==="user"?redactSecrets(x.content):x.content}`).join("\n")||"(sem histórico)";
-  const instructions=`Você é Salomão IA, agente operacional da transportadora Trans Salomão. Fale em português do Brasil, natural e objetivo. Sua prioridade é entender a INTENÇÃO antes de escolher uma entidade. Verbos como criar, adicionar, cadastrar, alterar, lançar, aceitar, aprovar, rejeitar, excluir e configurar indicam AÇÃO; não transforme esses pedidos em consulta de motorista. "Login", "usuário", "administrador", "operador" e "acesso" significam conta de gerenciamento, nunca motorista. Exemplo obrigatório: "adicionar login João senha 123456" => mutate_trans_salomao(operation=management_user_upsert). Para números/dados reais use query_trans_salomao; para mudanças use mutate_trans_salomao. Se faltar um campo necessário, pergunte somente o que falta. Não invente. Não revele nem repita senhas. Para exclusões/apagar tudo, só chame a ferramenta quando o usuário tiver confirmado explicitamente; passe confirmed=true. Ações de criação/edição explícitas não precisam de confirmação extra. Use contexto para "ele/dele", mas nunca deixe um nome mencionado numa resposta anterior substituir a intenção atual. Usuário autenticado: ${actor}. Hoje: ${todayBR()}.`;
-  let response=await openAI(key,{model:modelName(),reasoning:{effort:"high"},instructions,input:`Histórico:\n${prior}\n\nPedido atual:\n${message}`,tools:[queryTool,actionTool],tool_choice:"auto",max_output_tokens:4000});
+  const instructions=`Você é Salomão IA, agente operacional da transportadora Trans Salomão. Fale em português do Brasil, natural, curto e preciso.
+
+REGRAS DE SEGURANÇA E CORREÇÃO:
+1. Dados reais sempre vêm das ferramentas. Nunca invente valores, IDs, nomes, preços, datas ou totais.
+2. Para consultas use query_trans_salomao. Para alterar dados use somente a ferramenta específica da entidade.
+3. Antes de uma alteração, confira se todos os campos essenciais estão claros. Se faltar algo, faça uma única pergunta objetiva e NÃO execute nenhuma ferramenta de gravação.
+4. Nunca escolha motorista ou conjunto quando houver ambiguidade. Consulte e peça nome completo/placa.
+5. Não converta um pedido de login/usuário/acesso em motorista.
+6. Não assuma modalidade de viagem. O usuário precisa deixar claro: por tonelada, diária, cegonha ou caixinha.
+7. Só considere uma ação concluída depois de receber retorno de sucesso da ferramenta. Se a ferramenta devolver erro, explique o erro e não diga que executou.
+8. Exclusões só podem ocorrer quando o pedido ATUAL contiver confirmação explícita; caso contrário peça confirmação. Nunca interprete uma confirmação antiga do histórico como confirmação atual.
+9. Nunca revele, repita ou registre em texto de resposta senhas ou segredos.
+10. Se o pedido puder significar duas operações diferentes, pergunte qual delas antes de executar.
+
+Usuário autenticado: ${actor}. Hoje: ${todayBR()}.`;
+  const common={model:modelName(),reasoning:{effort:"high"},instructions,tools:assistantTools,tool_choice:"auto",parallel_tool_calls:false,max_output_tokens:4000};
+  let response=await openAI(key,{...common,input:`Histórico:\n${prior}\n\nPedido atual:\n${message}`});
   for(let i=0;i<8;i++){
     const calls=(Array.isArray(response.output)?response.output:[]).filter((x:any)=>x?.type==="function_call");
     if(!calls.length){const text=outputText(response);if(text)return text;throw new Error("Resposta vazia");}
-    const outputs=[];
-    for(const call of calls){
-      let args:Row={};try{args=JSON.parse(call.arguments||"{}");}catch{}
-      try{
-        const result=call.name==="mutate_trans_salomao"?await mutateSystem(args,actor):await querySystem(args);
-        outputs.push({type:"function_call_output",call_id:call.call_id,output:JSON.stringify(result)});
-      }catch(error:any){
-        outputs.push({type:"function_call_output",call_id:call.call_id,output:JSON.stringify({ok:false,error:String(error?.message||error)})});
-      }
+    const call=calls[0];
+    let args:Row={};
+    try{args=JSON.parse(call.arguments||"{}");}catch{throw new Error("A OpenAI retornou argumentos inválidos.");}
+    let result:any;
+    try{
+      result=await executeAssistantTool(call.name,args,actor,message);
+    }catch(error:any){
+      result={ok:false,error:String(error?.message||error)};
     }
-    response=await openAI(key,{model:modelName(),reasoning:{effort:"high"},instructions,previous_response_id:response.id,input:outputs,tools:[queryTool,actionTool],tool_choice:"auto",max_output_tokens:4000});
+    response=await openAI(key,{...common,previous_response_id:response.id,input:[{type:"function_call_output",call_id:call.call_id,output:JSON.stringify(result)}]});
   }
   throw new Error("Limite de ferramentas excedido");
 }
