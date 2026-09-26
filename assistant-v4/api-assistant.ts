@@ -95,7 +95,7 @@ export const Route = createFileRoute("/api/assistant")({
 
 type Row = Record<string, any>;
 type Turn = { role: "user" | "assistant"; content: string };
-type Snapshot = { drivers: Row[]; fleets: Row[]; trips: Row[]; fuelings: Row[]; expenses: Row[]; reports: Row[]; prices: Row[] };
+type Snapshot = { drivers: Row[]; fleets: Row[]; trips: Row[]; fuelings: Row[]; expenses: Row[]; reports: Row[]; prices: Row[]; maintenance: Row[]; odometers: Row[] };
 
 function out(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
@@ -184,7 +184,9 @@ async function developerSystemChange(args:Row,actor:string){
 
 async function snapshot(): Promise<Snapshot> {
   const sql = await getSql();
-  const [drivers, fleets, trips, fuelings, expenses, reports, prices] = await Promise.all([
+  await sql`create table if not exists fleet_odometer_history (id text primary key, fleet_id text not null, driver_id text, odometer_km integer not null, observed_date date not null, source_name text, source_hash text, notes text, created_at timestamptz not null default now())`;
+  await sql`create table if not exists fleet_maintenance_history (id text primary key, fleet_id text not null, driver_id text, observed_date date not null, description text not null, amount numeric, odometer_km integer, source_name text, source_hash text, raw_data jsonb, created_at timestamptz not null default now())`;
+  const [drivers, fleets, trips, fuelings, expenses, reports, prices, maintenance, odometers] = await Promise.all([
     sql<Row>`select * from drivers order by name`,
     sql<Row>`select * from fleets order by name`,
     sql<Row>`select * from trips order by date desc, code desc`,
@@ -192,8 +194,10 @@ async function snapshot(): Promise<Snapshot> {
     sql<Row>`select * from expenses order by date desc, created_at desc`,
     sql<Row>`select * from reports order by created_at desc`,
     sql<Row>`select * from freight_prices`,
+    sql<Row>`select * from fleet_maintenance_history order by observed_date desc, created_at desc`,
+    sql<Row>`select * from fleet_odometer_history order by observed_date desc, created_at desc`,
   ]);
-  return { drivers, fleets, trips, fuelings, expenses, reports, prices };
+  return { drivers, fleets, trips, fuelings, expenses, reports, prices, maintenance, odometers };
 }
 
 function score(name: unknown, query: unknown) {
@@ -258,7 +262,11 @@ async function querySystem(args: Row) {
   const summary={tripCount:trips.length,netTons:trips.reduce((a,x)=>a+x.netWeight,0),km:trips.reduce((a,x)=>a+x.km,0),freight:tripFreight,commission:commissions,afterCommission:tripFreight-commissions,fuelCost,expenses:expenseTotal,pendingReports:pending.length};
 
   if(op==="driver_overview")return{found:!!d,driver:d?{id:d.id,name:d.name,phone:d.phone,category:d.category,status:d.status,commissionPct:n(d.commission_pct)}:null,summary,fleets:[...new Set(s.trips.filter((t)=>d&&t.driver_id===d.id).map((t)=>s.fleets.find((x)=>x.id===t.fleet_id)?.name).filter(Boolean))],recentTrips:trips.slice(0,limit),recentFuelings:fuels.slice(0,limit),recentExpenses:expenses.slice(0,limit),pending:pending.slice(0,limit),period:{from,to}};
-  if(op==="fleet_overview")return{found:!!f,fleet:f?{id:f.id,name:f.name,tractorPlate:f.tractor_plate,trailerPlate:f.trailer_plate,model:f.model,status:f.status}:null,summary,recentTrips:trips.slice(0,limit),recentFuelings:fuels.slice(0,limit),recentExpenses:expenses.slice(0,limit),period:{from,to}};
+  if(op==="fleet_overview"){
+    const maintenance=f?s.maintenance.filter((x)=>x.fleet_id===f.id&&dateOk({date:x.observed_date},from,to)).slice(0,limit).map((x)=>({id:x.id,date:iso(x.observed_date),description:x.description,amount:n(x.amount),odometerKm:n(x.odometer_km),source:x.source_name})): [];
+    const odometers=f?s.odometers.filter((x)=>x.fleet_id===f.id&&dateOk({date:x.observed_date},from,to)).slice(0,limit).map((x)=>({id:x.id,date:iso(x.observed_date),odometerKm:n(x.odometer_km),driver:s.drivers.find((d)=>d.id===x.driver_id)?.name??"",notes:x.notes,source:x.source_name})): [];
+    return{found:!!f,fleet:f?{id:f.id,name:f.name,tractorPlate:f.tractor_plate,trailerPlate:f.trailer_plate,model:f.model,status:f.status}:null,summary,recentTrips:trips.slice(0,limit),recentFuelings:fuels.slice(0,limit),recentExpenses:expenses.slice(0,limit),maintenance,odometerHistory:odometers,lastOdometer:odometers[0]??null,period:{from,to}};
+  }
   if(op==="trips")return{count:trips.length,totalFreight:tripFreight,rows:trips.slice(0,limit),period:{from,to}};
   if(op==="fuelings")return{count:fuels.length,totalCost:fuelCost,rows:fuels.slice(0,limit),period:{from,to}};
   if(op==="expenses")return{count:expenses.length,total:expenseTotal,rows:expenses.slice(0,limit),period:{from,to}};
@@ -270,6 +278,11 @@ async function querySystem(args: Row) {
   }
   if(op==="drivers")return{count:s.drivers.length,rows:s.drivers.slice(0,limit).map((x)=>({id:x.id,name:x.name,phone:x.phone,category:x.category,status:x.status,commissionPct:n(x.commission_pct)}))};
   if(op==="fleets")return{count:s.fleets.length,rows:s.fleets.slice(0,limit).map((x)=>({id:x.id,name:x.name,tractorPlate:x.tractor_plate,trailerPlate:x.trailer_plate,model:x.model,status:x.status}))};
+  if(op==="fleet_history"){
+    const maintenance=s.maintenance.filter((x)=>(!f||x.fleet_id===f.id)&&(!d||x.driver_id===d.id)&&dateOk({date:x.observed_date},from,to)).slice(0,limit).map((x)=>({id:x.id,date:iso(x.observed_date),fleet:s.fleets.find((y)=>y.id===x.fleet_id)?.name??"",driver:s.drivers.find((y)=>y.id===x.driver_id)?.name??"",description:x.description,amount:n(x.amount),odometerKm:n(x.odometer_km),source:x.source_name}));
+    const odometers=s.odometers.filter((x)=>(!f||x.fleet_id===f.id)&&(!d||x.driver_id===d.id)&&dateOk({date:x.observed_date},from,to)).slice(0,limit).map((x)=>({id:x.id,date:iso(x.observed_date),fleet:s.fleets.find((y)=>y.id===x.fleet_id)?.name??"",driver:s.drivers.find((y)=>y.id===x.driver_id)?.name??"",odometerKm:n(x.odometer_km),notes:x.notes,source:x.source_name}));
+    return{maintenance,odometers,lastOdometer:odometers[0]??null,period:{from,to}};
+  }
   if(op==="freight_prices")return{rows:s.prices.map((x)=>({mode:x.mode,price:n(x.price),updatedAt:String(x.updated_at??"")}))};
   if(op==="reports"){
     const rows=s.reports.filter((x)=>(!d||x.driver_id===d.id)&&(!f||x.fleet_id===f.id)).slice(0,limit).map((x)=>({
@@ -533,7 +546,7 @@ const queryTool = {
   description:"Consulta dados reais do Trans Salomão, incluindo IDs e campos necessários para editar registros. Use para planejar, localizar, conferir e verificar ações.",
   strict:true,
   parameters:{type:"object",properties:{
-    operation:{type:"string",enum:["driver_overview","fleet_overview","drivers","fleets","trips","fuelings","expenses","pending","reports","financial_by_driver","freight_prices","system_summary","management_users"]},
+    operation:{type:"string",enum:["driver_overview","fleet_overview","fleet_history","drivers","fleets","trips","fuelings","expenses","pending","reports","financial_by_driver","freight_prices","system_summary","management_users"]},
     driver:{type:["string","null"]},fleet:{type:["string","null"]},date_from:{type:["string","null"]},date_to:{type:["string","null"]},limit:{type:"number",minimum:1,maximum:100}
   },required:["operation","driver","fleet","date_from","date_to","limit"],additionalProperties:false}
 };
