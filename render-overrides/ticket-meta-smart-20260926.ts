@@ -34,7 +34,13 @@ export const Route = createFileRoute("/api/ticket-meta")({
       let inferenceBasis = explicit ? "preço já gravado no ticket" : routePrice ? "preço da rota identificada" : null;
       let inferenceSupport = explicit || routePrice ? 1 : 0;
 
-      if (!suggestedPrice && String(row.freight_mode || "") === "ton") {
+      const probableTon =
+        String(row.freight_mode || "") === "ton" ||
+        String(td.inferred_freight_mode || "") === "ton" ||
+        Number(row.tons || 0) > 0 ||
+        Number(row.peso_liquido_kg || 0) > 0;
+
+      if (!suggestedPrice && probableTon) {
         const inferred = await inferHistoricalTonPrice(sql, row, td);
         if (inferred) {
           suggestedPrice = inferred.price;
@@ -69,7 +75,7 @@ export const Route = createFileRoute("/api/ticket-meta")({
           transportadora: row.transportadora,
           destinatario: row.destinatario,
           pesoLiquidoKg: row.peso_liquido_kg,
-          freightMode: row.freight_mode,
+          freightMode: row.freight_mode || (probableTon ? "ton" : null),
           pricePerTon: explicit,
           suggestedPricePerTon: suggestedPrice,
           priceInferenceConfidence: inferenceConfidence,
