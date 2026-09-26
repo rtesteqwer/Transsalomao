@@ -1,46 +1,52 @@
 import type { TicketData } from "@/lib/ticket-core";
 
 async function ticketImageToDataUrl(file: File) {
-  if (!file.type.startsWith("image/")) throw new Error("Selecione uma foto válida.");
-  if (file.size > 15_000_000) throw new Error("A foto é grande demais.");
+  const looksLikeImage = file.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || "");
+  if (!looksLikeImage) throw new Error("Selecione uma foto válida.");
+  if (file.size > 30_000_000) throw new Error("A foto é grande demais.");
+
+  const encode = (source: CanvasImageSource, width: number, height: number) => {
+    const maxSides = [1600, 1400, 1200, 1000, 800];
+    for (const maxSide of maxSides) {
+      const scale = Math.min(1, maxSide / Math.max(width, height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.84, 0.76, 0.68, 0.60, 0.52, 0.44]) {
+        const out = canvas.toDataURL("image/jpeg", quality);
+        if (out.length <= 2_700_000) return out;
+      }
+    }
+    throw new Error("Não foi possível reduzir a foto para envio.");
+  };
 
   try {
-    const bitmap = await createImageBitmap(file);
-    const maxSide = 1800;
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Não foi possível preparar a foto.");
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
+    if (typeof createImageBitmap === "function") {
+      const bitmap = await createImageBitmap(file);
+      try {
+        return encode(bitmap, bitmap.width, bitmap.height);
+      } finally {
+        bitmap.close();
+      }
+    }
+  } catch {}
 
-    let quality = 0.86;
-    let out = canvas.toDataURL("image/jpeg", quality);
-    while (out.length > 3_000_000 && quality > 0.5) {
-      quality -= 0.07;
-      out = canvas.toDataURL("image/jpeg", quality);
-    }
-    if (out.length > 3_000_000) {
-      throw new Error("A foto ficou grande demais. Tire outra foto mais próxima do ticket.");
-    }
-    return out;
-  } catch (error) {
-    if (error instanceof Error && /grande demais|preparar/.test(error.message)) throw error;
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("Não foi possível preparar a foto."));
-      reader.onload = () => {
-        const value = String(reader.result || "");
-        if (!value.startsWith("data:image/")) reject(new Error("Selecione uma foto válida."));
-        else if (value.length > 3_000_000) reject(new Error("A foto é grande demais. Use outra foto mais próxima do ticket."));
-        else resolve(value);
-      };
-      reader.readAsDataURL(file);
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Não foi possível abrir esta foto no celular."));
+      image.src = objectUrl;
     });
+    return encode(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
 }
 
@@ -87,5 +93,5 @@ async function salvarTicket(dados: TicketData & {
   });
   const result = await response.json().catch(() => ({ erro: "Resposta inválida do servidor." }));
   if (!response.ok) throw new Error(result?.erro || "Falha ao salvar o ticket");
-  return result as { ok: true; id: number; reportId: string; ticket: string; tons: number; freightMode: string; photoId: string | null };
+  return result as { ok: true; id: number; reportId: string; ticket: string; tons: number; freightMode: string; photoId: string | null; linkedExisting?: boolean; duplicateExact?: boolean; driverId?: string | null; driverName?: string | null; fleetId?: string | null; fleetName?: string | null; reportStatus?: string | null };
 }
