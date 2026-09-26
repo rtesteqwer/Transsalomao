@@ -217,7 +217,7 @@ function PainelPage() {
       <div className="dashboard-title">
         <div><h1>Painel da Gerência</h1><p className="dashboard-subtitle">Sua operação, em um só lugar.</p></div>
         <div className="dashboard-actions">
-          <Button variant="outline" onClick={exportBillingPdf} disabled={computed.length === 0} title="Gerar PDF de faturamento"><FileText className="size-4" /> Faturamento</Button>
+          <Button variant="outline" asChild><Link to="/dono/totais"><FileText className="size-4" /> Faturamento</Link></Button>
           <Button asChild><Link to="/dono/viagens" search={{ nova: true }}><Plus className="size-4" /> Nova viagem</Link></Button>
         </div>
       </div>
