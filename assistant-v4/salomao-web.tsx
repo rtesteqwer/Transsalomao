@@ -65,6 +65,8 @@ function SalomaoWeb() {
   const [loginError, setLoginError] = useState("");
   const [username, setUsername] = useState("Felipe");
   const [password, setPassword] = useState("");
+  const [developerMode, setDeveloperMode] = useState(false);
+  const [activeChangeId, setActiveChangeId] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -76,6 +78,37 @@ function SalomaoWeb() {
     saveHistory(history);
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [history, sending]);
+
+  useEffect(() => {
+    if (!activeChangeId || session.status !== "ready") return;
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await api("/api/assistant/developer", {
+          method: "POST",
+          headers: { "X-Salomao-App": "1" },
+          body: JSON.stringify({ action: "status", id: activeChangeId }),
+        });
+        const data = await response.json().catch(() => ({}));
+        const change = data?.change;
+        if (!response.ok || !change) return;
+        const status = String(change.status || "");
+        if (!["ready", "published", "failed", "cancelled"].includes(status)) return;
+
+        const result =
+          status === "published"
+            ? "✅ Alteração programada, testada e publicada.\n" + String(change.result_summary || "")
+            : status === "ready"
+              ? "✅ Alteração programada e testada. PR: " + String(change.pull_request_url || "") + "\n" + String(change.result_summary || "")
+              : status === "failed"
+                ? "❌ A programação falhou no pipeline. " + String(change.error_text || "Consulte o GitHub Actions.")
+                : "Alteração cancelada.";
+
+        setHistory((current) => [...current, { role: "assistant", content: result }]);
+        setActiveChangeId("");
+      } catch {}
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [activeChangeId, session.status]);
 
   async function checkSession() {
     try {
@@ -153,10 +186,16 @@ function SalomaoWeb() {
     setSending(true);
 
     try {
-      const response = await api("/api/assistant", {
+      const isFelipe = session.username.trim().toLowerCase() === "felipe";
+      const target = developerMode && isFelipe ? "/api/assistant/developer" : "/api/assistant";
+      const payload = developerMode && isFelipe
+        ? { action: "request", request: message, title: message.slice(0, 160), scope: "full" }
+        : { message, history: prior };
+
+      const response = await api(target, {
         method: "POST",
         headers: { "X-Salomao-App": "1" },
-        body: JSON.stringify({ message, history: prior }),
+        body: JSON.stringify(payload),
       });
       const data = await response.json().catch(() => ({}));
       const answer =
@@ -165,7 +204,8 @@ function SalomaoWeb() {
           ? "Sua sessão expirou. Entre novamente."
           : "Não consegui concluir esse comando agora.");
 
-      setHistory((current) => [...current, { role: "assistant", content: answer }]);
+      setHistory((current) => [...current, { role: "assistant", content: developerMode && data?.id ? answer + "\nTarefa: " + data.id : answer }]);
+      if (developerMode && data?.id) setActiveChangeId(String(data.id));
       if (response.status === 401) {
         setToken("");
         setSession({ status: "guest", username: "", model: "" });
@@ -224,6 +264,19 @@ function SalomaoWeb() {
               </p>
             </div>
 
+            {session.username.trim().toLowerCase() === "felipe" ? (
+              <button
+                type="button"
+                onClick={() => setDeveloperMode((value) => !value)}
+                className={"mb-4 w-full rounded-xl border px-4 py-3 text-left text-sm font-semibold " +
+                  (developerMode
+                    ? "border-[#00a884] bg-[#063f36] text-white"
+                    : "border-white/10 bg-[#182229] text-[#d1d7db] hover:bg-[#202c33]")}
+              >
+                🛠 {developerMode ? "Modo Desenvolvedor ATIVO" : "Ativar Modo Desenvolvedor"}
+              </button>
+            ) : null}
+
             <div className="mt-4 grid gap-2">
               <Quick label="📊 Resumo da empresa" onClick={() => setInput("Mostre o resumo atual da empresa")} />
               <Quick label="🚛 Consultar motorista" onClick={() => setInput("Quero consultar um motorista")} />
@@ -262,7 +315,7 @@ function SalomaoWeb() {
               <div className="min-w-0">
                 <h2 className="truncate font-semibold text-white">Salomão IA</h2>
                 <p className="truncate text-xs text-[#8696a0]">
-                  online • {session.model} • {session.username}
+                  {developerMode ? "🛠 desenvolvedor • " : "online • "}{session.model} • {session.username}
                 </p>
               </div>
             </div>
@@ -283,7 +336,9 @@ function SalomaoWeb() {
           >
             <div className="mx-auto flex w-full max-w-4xl flex-col">
               <div className="mx-auto mb-5 rounded-lg bg-[#182229] px-4 py-2 text-center text-xs text-[#8696a0]">
-                🔒 Os comandos usam seu acesso da Gerência e são enviados com conexão segura.
+                {developerMode
+                  ? "🛠 Modo Desenvolvedor: ordens de Felipe entram no pipeline GitHub → Codex → testes → PR → produção quando autorizada."
+                  : "🔒 Os comandos usam seu acesso da Gerência e são enviados com conexão segura."}
               </div>
 
               {history.length === 0 ? (
