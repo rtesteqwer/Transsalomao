@@ -160,12 +160,14 @@ export class SalomaoVisionUnavailable extends TicketError {
 }
 
 export async function readTicketWithSalomaoIA(
-  _sql: Sql,
+  sql: Sql,
   image: { base64: string; mime: string },
   requestedMode: TicketFreightMode,
   fleet: FleetPlates = {},
 ) {
   const mode = normalizeFreightMode(requestedMode);
+  const routeMemories = await loadSalomaoRouteMemories(sql);
+  const salomaoPrompt = TICKET_PROMPT + "\n\nMEMÓRIA DE ROTAS/PREÇOS DISPONÍVEL:\n" + salomaoRoutePrompt(routeMemories);
   const keys = await getSalomaoOpenAIKeys();
   const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim() || "";
   if (!keys.length && !anthropicKey) {
@@ -173,14 +175,24 @@ export async function readTicketWithSalomaoIA(
   }
 
   const deadline = Date.now() + 42_000;
-  const instruction = mode === "ton"
-    ? "Por tonelada: leia número do ticket, peso líquido, pesagens, placas e os papéis de cada empresa."
-    : "Modo sem peso: deixe todos os pesos null; leia ticket, placas e os papéis de cada empresa.";
+  const instruction = "Identifique a modalidade pela foto usando as variáveis. Extraia peso líquido, preço, rota, empresas, produto, placas, data/hora e manuscrito. Por tonelada, somente peso líquido é obrigatório. A modalidade solicitada (" + mode + ") é contexto secundário.";
 
   const parseResult = (text: string) => {
     if (!text.trim()) throw new Error("Empty vision response");
-    const parsed = JSON.parse(text.replace(/^\`\`\`(?:json)?\\s*|\\s*\`\`\`$/gi, "").trim());
-    return finishTicketReading(parsed, mode, fleet);
+    const stripped = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    const parsed = JSON.parse(stripped);
+    const inferredMode = ["ton","trip","cegonha","caixinha"].includes(String(parsed?.inferred_freight_mode))
+      && Number(parsed?.inference_confidence) >= 0.80
+      ? parsed.inferred_freight_mode as TicketFreightMode
+      : mode;
+    const ticket = finishTicketReading(parsed, inferredMode, fleet);
+    const routeKey = typeof parsed?.route_key === "string" ? parsed.route_key.trim() : "";
+    const routeConfidence = Number(parsed?.route_confidence);
+    const route = Number.isFinite(routeConfidence) && routeConfidence >= 0.85
+      ? routeMemories.find(item => item.route_key === routeKey)
+      : undefined;
+    if (route) applySalomaoRoute(ticket, route, routeConfidence);
+    return ticket;
   };
 
   async function readOpenAI(key: string, focus = "") {
@@ -193,7 +205,7 @@ export async function readTicketWithSalomaoIA(
       body: JSON.stringify({
         model: ticketModel(), store: false,
         text: { format: { type: "json_object" } },
-        instructions: TICKET_PROMPT,
+        instructions: salomaoPrompt,
         input: [{ role: "user", content: [
           { type: "input_text", text: instruction + " " + focus + " Responda somente JSON." },
           { type: "input_image", image_url: `data:${image.mime};base64,${image.base64}`, detail: "high" },
@@ -227,7 +239,7 @@ export async function readTicketWithSalomaoIA(
       body: JSON.stringify({
         model: anthropicModel(),
         max_tokens: 3000,
-        system: TICKET_PROMPT,
+        system: salomaoPrompt,
         messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: image.mime, data: image.base64 } },
           { type: "text", text: instruction + " " + focus + " Responda somente JSON." },
@@ -259,7 +271,7 @@ export async function readTicketWithSalomaoIA(
     }
 
     const missing = missingTicketFields(primary, mode);
-    if (missing.length >= 2 && deadline - Date.now() > 2500) {
+    if (missing.length >= 1 && deadline - Date.now() > 2500) {
       try {
         const retry = await provider.read("SEGUNDA LEITURA: examine textos pequenos e blocos de empresas. Procure os campos ausentes: " + missing.join(", ") + ". Não invente.");
         const merged: Record<string, unknown> = { ...primary };
@@ -269,7 +281,16 @@ export async function readTicketWithSalomaoIA(
         }
         merged.alertas = [...primary.alertas, ...retry.alertas]
           .filter(a => !a.startsWith("Leitura incompleta:") && !a.includes("não identificado"));
-        primary = finishTicketReading(merged, mode, fleet);
+        const mergedMode = ["ton","trip","cegonha","caixinha"].includes(String(merged.inferred_freight_mode))
+          ? merged.inferred_freight_mode as TicketFreightMode
+          : mode;
+        primary = finishTicketReading(merged, mergedMode, fleet);
+        const mergedRouteKey = typeof merged.route_key === "string" ? merged.route_key.trim() : "";
+        const mergedRouteConfidence = Number(merged.route_confidence);
+        const mergedRoute = Number.isFinite(mergedRouteConfidence) && mergedRouteConfidence >= 0.85
+          ? routeMemories.find(item => item.route_key === mergedRouteKey)
+          : undefined;
+        if (mergedRoute) applySalomaoRoute(primary, mergedRoute, mergedRouteConfidence);
       } catch {
         primary.alertas.push("A segunda leitura não pôde ser concluída. Confira os campos ausentes.");
       }
