@@ -24,6 +24,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -98,6 +99,9 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                        | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         memory = new AssistantMemory(this);
         tokenStore = new SecureTokenStore(this);
         assistantToken = tokenStore.load();
@@ -319,6 +323,12 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         input.setMaxLines(4);
         input.setPadding(dp(14), dp(8), dp(14), dp(8));
         input.setBackground(roundRect(0xFF202C33, dp(24)));
+        input.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                handler.postDelayed(this::scrollBottom, 180);
+                handler.postDelayed(this::scrollBottom, 420);
+            }
+        });
         LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, dp(52), 1f);
         inputParams.setMargins(dp(5), 0, dp(5), 0);
         composer.addView(input, inputParams);
@@ -337,6 +347,11 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         send.setOnClickListener(v -> sendTyped());
         composer.addView(send, new LinearLayout.LayoutParams(dp(52), dp(52)));
 
+        composer.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (input != null && input.hasFocus() && bottom != oldBottom) {
+                handler.postDelayed(this::scrollBottom, 40);
+            }
+        });
         root.addView(composer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(68)));
 
         setContentView(root);
@@ -390,7 +405,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.1");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.2.1");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -1042,7 +1057,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v51");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v521");
     }
 
     @Override
