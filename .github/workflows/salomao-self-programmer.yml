@@ -82,11 +82,14 @@ jobs:
 
       - name: Claim Felipe-authorized change
         id: claim
-        env:
-          DATABASE_URL: ${{ steps.env.outputs.db_url }}
         shell: bash
         run: |
           set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          export DATABASE_URL="${DATABASE_URL:-${POSTGRES_URL:-}}"
+          test -n "$DATABASE_URL"
           node <<'NODE'
           const fs = require("fs");
           const path = require("path");
