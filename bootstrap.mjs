@@ -218,6 +218,12 @@ if (!original.includes("apply-route-memory-caixa-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-route-memory-caixa-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Busca inteligente, cartões compactos e resumo financeiro completo do Caixa.
+if (!original.includes("apply-smart-ops-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing smart ops insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-smart-ops-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
