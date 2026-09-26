@@ -109,16 +109,17 @@ export const Route = createFileRoute("/api/photo-intake")({
 
         const image = String(body?.image || "");
         const fileName = safeFileName(String(body?.fileName || "ticket.jpg"));
-        const relationType = String(body?.relationType || "") as "trip" | "report";
-        const relationId = String(body?.relationId || "").trim();
-        const tripCode = String(body?.tripCode || "").trim();
+        const relationType = String(body?.relationType || "") as "trip" | "report" | "unlinked";
+        const relationId = String(body?.relationId || "").trim() || (relationType === "unlinked" ? "pending" : "");
+        const tripCode = String(body?.tripCode || "").trim() || (relationType === "unlinked" ? "Aguardando vínculo" : "");
+        const photoId = String(body?.photoId || "").trim();
 
-        if (relationType !== "trip" && relationType !== "report") return json({ ok: false, message: "Tipo de vínculo inválido." }, 400);
+        if (relationType !== "trip" && relationType !== "report" && relationType !== "unlinked") return json({ ok: false, message: "Tipo de vínculo inválido." }, 400);
         if (!relationId || !tripCode) return json({ ok: false, message: "Escolha a viagem correta antes de salvar a foto." }, 400);
         if (!image.startsWith("data:image/") || image.length > 3_000_000) return json({ ok: false, message: "Imagem inválida ou grande demais." }, 413);
 
         const mime = image.match(/^data:([^;]+);base64,/)?.[1] || "image/jpeg";
-        const id = "ticket_photo_" + createHash("sha256").update(relationType + ":" + relationId + ":" + image).digest("hex").slice(0, 28);
+        const id = photoId || ("ticket_photo_" + createHash("sha256").update(image).digest("hex").slice(0, 28));
         const sql = await getSql();
         await ensureTable(sql);
 
@@ -132,8 +133,33 @@ export const Route = createFileRoute("/api/photo-intake")({
         const reportStatus = textValue(body?.reportStatus);
         const createdBy = textValue((session as any)?.username) || textValue((session as any)?.name) || "Gerência";
 
-        const existing = await sql<Record<string, any>>`select id from trip_ticket_photos where id=${id} limit 1`;
-        if (existing[0]) return json({ ok: true, alreadyExists: true, id, message: "Esta foto já estava salva nesta viagem." });
+        const existing = await sql<Record<string, any>>`select id, created_by from trip_ticket_photos where id=${id} limit 1`;
+        if (existing[0]) {
+          const owner = String(existing[0].created_by || "").trim().toLocaleLowerCase("pt-BR");
+          const currentUser = String(session.username || "").trim().toLocaleLowerCase("pt-BR");
+          if (owner && owner !== currentUser) return json({ ok: false, message: "Foto não autorizada." }, 403);
+
+          if (photoId && relationType !== "unlinked") {
+            await sql`
+              update trip_ticket_photos
+              set relation_type=${relationType},
+                  relation_id=${relationId},
+                  trip_code=${tripCode},
+                  driver_id=${driverId},
+                  driver_name=${driverName},
+                  fleet_id=${fleetId},
+                  fleet_name=${fleetName},
+                  trip_date=${tripDate},
+                  freight_mode=${freightMode},
+                  net_weight=${netWeight},
+                  report_status=${reportStatus}
+              where id=${id}
+            `;
+            return json({ ok: true, id, linked: true, message: "Foto relacionada à viagem." });
+          }
+
+          return json({ ok: true, alreadyExists: true, id, message: relationType === "unlinked" ? "Esta foto já estava enviada." : "Esta foto já estava salva nesta viagem." });
+        }
 
         await sql`
           insert into trip_ticket_photos
@@ -144,7 +170,7 @@ export const Route = createFileRoute("/api/photo-intake")({
              ${tripDate}, ${freightMode}, ${netWeight}, ${reportStatus}, ${fileName}, ${mime}, ${image}, ${createdBy})
         `;
 
-        return json({ ok: true, id, message: "Foto do ticket salva e relacionada à viagem." });
+        return json({ ok: true, id, message: relationType === "unlinked" ? "Foto enviada e aguardando vínculo." : "Foto do ticket salva e relacionada à viagem." });
       },
 
       DELETE: async ({ request }) => {
