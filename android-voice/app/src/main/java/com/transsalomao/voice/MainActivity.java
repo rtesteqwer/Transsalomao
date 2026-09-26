@@ -92,6 +92,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private WebView webView;
     private ScrollView chatScroll;
     private LinearLayout chatMessages;
+    private LinearLayout composer;
     private EditText input;
     private TextView status;
     private TextView modeInfo;
@@ -116,14 +117,11 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                        | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         if (android.os.Build.VERSION.SDK_INT >= 30) {
-            getWindow().setSoftInputMode(
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-                            | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
-        } else {
-            getWindow().setSoftInputMode(
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-                            | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+            getWindow().setDecorFitsSystemWindows(false);
         }
         memory = new AssistantMemory(this);
         tokenStore = new SecureTokenStore(this);
@@ -174,7 +172,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void installSystemAndKeyboardInsets(View root) {
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             root.setOnApplyWindowInsetsListener((v, insets) -> {
-                applySystemAndKeyboardInsets(v, insets);
+                applySafeInsets(v, insets);
                 return insets;
             });
 
@@ -184,7 +182,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                 public WindowInsets onProgress(
                         WindowInsets insets,
                         java.util.List<WindowInsetsAnimation> runningAnimations) {
-                    applySystemAndKeyboardInsets(root, insets);
+                    applySafeInsets(root, insets);
                     return insets;
                 }
 
@@ -192,37 +190,58 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                 public void onEnd(WindowInsetsAnimation animation) {
                     super.onEnd(animation);
                     if (input != null && input.hasFocus()) {
-                        handler.postDelayed(() -> {
-                            if (chatScroll != null) scrollBottom();
-                        }, 40);
+                        handler.postDelayed(MainActivity.this::scrollBottom, 60);
                     }
                 }
             });
             root.post(root::requestApplyInsets);
         } else {
-            // Android 8–10: adjustResize from the window remains the fallback.
             int statusId = getResources().getIdentifier("status_bar_height", "dimen", "android");
             int statusTop = statusId > 0 ? getResources().getDimensionPixelSize(statusId) : 0;
             root.setPadding(0, statusTop, 0, 0);
         }
     }
 
-    private void applySystemAndKeyboardInsets(View root, WindowInsets insets) {
+    private void applySafeInsets(View root, WindowInsets insets) {
         if (android.os.Build.VERSION.SDK_INT < 30 || insets == null) return;
 
-        android.graphics.Insets system = insets.getInsets(
+        android.graphics.Insets bars = insets.getInsets(
                 WindowInsets.Type.statusBars()
                         | WindowInsets.Type.navigationBars()
                         | WindowInsets.Type.displayCutout());
         android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
 
-        int top = Math.max(0, system.top);
-        int bottom = Math.max(system.bottom, ime.bottom);
+        // O topo é protegido da câmera/notch. Nunca aplicamos a altura do teclado
+        // como padding da tela inteira.
+        int top = Math.max(0, bars.top);
+        if (root.getPaddingTop() != top) {
+            root.setPadding(0, top, 0, 0);
+        }
 
-        if (root.getPaddingTop() != top || root.getPaddingBottom() != bottom) {
-            root.setPadding(0, top, 0, bottom);
+        // Apenas a barra de digitação acompanha o teclado.
+        if (composer != null) {
+            int keyboardLift = Math.max(0, ime.bottom - bars.bottom);
+            composer.setTranslationY(-keyboardLift);
+
+            ViewGroup.LayoutParams raw = composer.getLayoutParams();
+            if (raw instanceof LinearLayout.LayoutParams) {
+                LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) raw;
+                if (lp.bottomMargin != bars.bottom) {
+                    lp.bottomMargin = bars.bottom;
+                    composer.setLayoutParams(lp);
+                }
+            }
+        }
+
+        if (input != null && input.hasFocus() && ime.bottom > 0) {
+            handler.removeCallbacks(scrollForKeyboard);
+            handler.postDelayed(scrollForKeyboard, 45);
         }
     }
+
+    private final Runnable scrollForKeyboard = () -> {
+        if (chatScroll != null) chatScroll.fullScroll(View.FOCUS_DOWN);
+    };
 
     private void buildUi() {
         getWindow().setStatusBarColor(0xFF0B141A);
@@ -363,7 +382,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         content.addView(webView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         // Composer no padrão WhatsApp.
-        LinearLayout composer = new LinearLayout(this);
+        composer = new LinearLayout(this);
         composer.setOrientation(LinearLayout.HORIZONTAL);
         composer.setGravity(Gravity.CENTER_VERTICAL);
         composer.setPadding(dp(8), dp(6), dp(8), dp(8));
@@ -420,8 +439,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         input.setIncludeFontPadding(false);
         input.setInputType(InputType.TYPE_CLASS_TEXT
                 | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         input.setPadding(dp(14), dp(8), dp(14), dp(8));
         input.setBackground(roundRect(0xFF202C33, dp(24)));
         if (android.os.Build.VERSION.SDK_INT >= 29) {
@@ -466,11 +484,6 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         send.setOnClickListener(v -> sendTyped());
         composer.addView(send, new LinearLayout.LayoutParams(dp(52), dp(52)));
 
-        composer.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-            if (input != null && input.hasFocus() && bottom != oldBottom) {
-                handler.postDelayed(this::scrollBottom, 40);
-            }
-        });
         root.addView(composer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(68)));
 
         setContentView(root);
@@ -843,7 +856,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.3.1");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.3.2");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -1495,7 +1508,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v531");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v532");
     }
 
     @Override
