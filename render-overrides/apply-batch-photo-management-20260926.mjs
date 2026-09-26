@@ -196,12 +196,12 @@ s = s.replace("Selecione uma ou várias fotos do ticket recebidas do motorista."
 
 
 s = s.replace(
-  '              onChange={(e) => {\\n                setFiles(Array.from(e.currentTarget.files ?? []));\\n                e.currentTarget.value = "";\\n              }}',
-  '              onChange={(e) => {\\n                const selectedFiles = Array.from(e.currentTarget.files ?? []);\\n                e.currentTarget.value = "";\\n                if (!selectedFiles.length) return;\\n                setFiles(selectedFiles);\\n                void savePhotos(selectedFiles);\\n              }}',
+  '              onChange={(e) => {\n                setFiles(Array.from(e.currentTarget.files ?? []));\n                e.currentTarget.value = "";\n              }}',
+  '              onChange={(e) => {\n                const selectedFiles = Array.from(e.currentTarget.files ?? []);\n                e.currentTarget.value = "";\n                if (!selectedFiles.length) return;\n                setFiles(selectedFiles);\n                void savePhotos(selectedFiles);\n              }}',
 );
 s = s.replace(
-  '              onChange={(e) => {\\n                const selectedFiles = Array.from(e.currentTarget.files ?? []);\\n                if (selectedFiles.length) setFiles((current) => [...current, ...selectedFiles]);\\n                e.currentTarget.value = "";\\n              }}',
-  '              onChange={(e) => {\\n                const selectedFiles = Array.from(e.currentTarget.files ?? []);\\n                e.currentTarget.value = "";\\n                if (!selectedFiles.length) return;\\n                setFiles(selectedFiles);\\n                void savePhotos(selectedFiles);\\n              }}',
+  '              onChange={(e) => {\n                const selectedFiles = Array.from(e.currentTarget.files ?? []);\n                if (selectedFiles.length) setFiles((current) => [...current, ...selectedFiles]);\n                e.currentTarget.value = "";\n              }}',
+  '              onChange={(e) => {\n                const selectedFiles = Array.from(e.currentTarget.files ?? []);\n                e.currentTarget.value = "";\n                if (!selectedFiles.length) return;\n                setFiles(selectedFiles);\n                void savePhotos(selectedFiles);\n              }}',
 );
 s = s.replace(
   '{files.length} foto(s) pronta(s) para salvar',
