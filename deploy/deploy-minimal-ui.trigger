@@ -37,3 +37,5 @@ sertrading-cegonha-romaneio-ticket=1
 smart-search-caixa-monthly-import-history=1
 
 axor-sample-import-route=1
+
+axor-sample-import-proxy=1
