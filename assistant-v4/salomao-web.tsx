@@ -146,7 +146,7 @@ function SalomaoWeb() {
     const message = input.trim();
     if (!message || sending || session.status !== "ready") return;
 
-    const prior = history.slice(-18);
+    const prior = history.slice(-30);
     const next = [...history, { role: "user", content: message } as Turn];
     setHistory(next);
     setInput("");
