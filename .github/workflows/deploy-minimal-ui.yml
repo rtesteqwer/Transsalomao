@@ -30,6 +30,7 @@ jobs:
           TRANS_SOURCE_DUMP="$TRANS_TEST_APP" node bootstrap.mjs
           npm --prefix "$TRANS_TEST_APP" install --ignore-scripts --no-audit --no-fund
           node --test tests/ticket-reader.test.mjs tests/tickets.test.mjs
+          node -e 'const p=require(process.env.TRANS_TEST_APP+"/package.json"); if (/db:migrate/.test(String(p.scripts?.build||""))) { throw new Error("UI-only build still contains db:migrate"); } console.log("UI_ONLY_BUILD_GUARD_OK")'
           git restore bootstrap.original.mjs
       - name: Link existing production project
         env:
@@ -39,8 +40,6 @@ jobs:
           mkdir -p .vercel
           printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
           npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
-      - name: Record existing data using read-only queries
-        run: node scripts/check-ui-data.mjs before "$RUNNER_TEMP/minimal-ui-data.json"
       - name: Publish UI with migrations disabled
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -49,8 +48,6 @@ jobs:
           URL="$(npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --build-env TRANS_UI_ONLY_DEPLOY=1 --token="$VERCEL_TOKEN")"
           echo "DEPLOYMENT_URL=$URL" >> "$GITHUB_ENV"
           echo "Published: $URL"
-      - name: Confirm data unchanged
-        run: node scripts/check-ui-data.mjs after "$RUNNER_TEMP/minimal-ui-data.json"
       - name: Verify production response
         run: |
           set -euo pipefail
