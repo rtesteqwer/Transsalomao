@@ -129,7 +129,7 @@ async function loadTicketRouteMemories(sql: Awaited<ReturnType<typeof getSql>>):
       ('papaleguas-rota-do-sol-map', 'Papaléguas / Rota do Sol - MAP', null, null, 33,
        'ADUBOS REAL;MAP;FOSFATO MONOAMONICO;FOSFATO MONOAMÔNICO;PAPALEGUAS;PAPALÉGUAS;ROTA DO SOL', 'motorista_confirmado_2026-09-26', true, now()),
       ('transportadora-ras', 'Transportadora - RAS', null, null, 14,
-       'LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;BELISLAND RECEPCAO;BELISLAND RECEPÇÃO', 'motorista_confirmado_2026-09-26', true, now()),
+       'LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;CAN 27;YARAMILA;MDS ARIADNE;BELISLAND RECEPCAO;BELISLAND RECEPÇÃO', 'motorista_confirmado_2026-09-26', true, now()),
       ('ras-vports-26', 'RAS - VPORTS', null, 'VPORTS Autoridade Portuária', 26,
        'RAS TRANSPORTES E SERVICOS;49544417000104;VPORTS AUTORIDADE;27316538000409;KCL;MAP;PESO ORIGEM;PC2.1;BALANCA ENTRADA;BALANCA SAIDA', 'amostras_confirmadas_por_calculo_2026-09-26', true, now())
     on conflict (route_key) do update set
@@ -190,9 +190,9 @@ function matchRouteFromOcr(text: string, routes: RouteMemory[]) {
     const route = get("rota-do-sol-eco");
     if (route) return { route, confidence: 0.97 };
   }
-  if (has(/ADUBOS\s+REAL/) && has(/\bMAP\b|FOSFATO\s+MONOAMONICO|FOSFATO\s+MONOAMONICO/)) {
+  if (has(/ADUBOS\s+REAL/) && has(/ROTA\s+DO\s+SOL|\bMAP\b|FOSFATO\s+MONOAMONICO|FOSFATO\s+MONOAMONICO/)) {
     const route = get("papaleguas-rota-do-sol-map");
-    if (route) return { route, confidence: 0.95 };
+    if (route) return { route, confidence: has(/ROTA\s+DO\s+SOL/) ? 0.98 : 0.95 };
   }
   if (has(/ADUBOS\s+REAL/) && has(/UREIA|PAPALEGUAS/)) {
     const route = get("papaleguas-ureia-adubos-real");
@@ -306,6 +306,8 @@ REGRAS CRÍTICAS:
 17. As pistas de match_hints são exemplos de evidência e NÃO devem ser tratadas como palavras independentes suficientes. Prefira uma combinação de pelo menos 2 sinais distintivos ou um nome de rota manuscrito claramente legível.
 18. A palavra SPORTOS sozinha NÃO identifica a rota Sportos - Eco x Festipar. Essa rota exige evidência adicional de ECO/FESTIPAR/FERTIPAR. Tickets LOG CONSULTING + SPORTOS + YARA VIX 1 + NITRABOR/BELISLAND correspondem ao grupo Transportadora - RAS quando o conjunto de sinais estiver claro.
 18A. Há duas famílias RAS com preços diferentes e elas NÃO podem ser misturadas. O relatório estilo VPORTS com RAS TRANSPORTES E SERVIÇOS/CNPJ 49.544.417/0001-04, campos Peso Origem/Balança PC2 e produtos KCL ou MAP corresponde à memória ras-vports-26 (R$ 26/t) quando o conjunto de sinais estiver claro. Já LOG CONSULTING + SPORTOS + YARA VIX 1 usa a família Transportadora - RAS de R$ 14/t somente quando as pistas dessa rota estiverem claras.
+18B. LOG CONSULTING + RAS TRANSPORTES + HERINGER MANHUAÇU é uma família distinta observada nos tickets. Enquanto não existir preço confirmado para ela, NÃO atribua R$ 14/t nem R$ 26/t por semelhança de nome. Deixe route_key e inferred_price nulos, salvo se houver preço explícito legível no próprio ticket.
+18C. Em tickets ADUBOS REAL, a anotação manuscrita clara "Rota do Sol" junto da família MAP/Fosfato confirma a memória de R$ 33/t. Se houver preço manuscrito explícito como "33,00 tonelada", ele pode ser usado como inferred_price mesmo que algum outro campo da rota não esteja legível.
 19. Cruze TODAS as pistas disponíveis: layout do documento, títulos, empresas, produto, rota, observações manuscritas, pesos, valores, data e hora. Não decida por uma palavra isolada.
 20. inferred_freight_mode deve indicar a modalidade mais provável: "ton" para frete por tonelada; "cegonha" e "caixinha" quando o layout/palavras padronizadas identificarem esses tickets; "trip" para preço fixo por viagem. ${autoDetectMode ? "A modalidade escolhida na tela NÃO deve influenciar a classificação: identifique pela foto." : "Use a modalidade da tela apenas como contexto secundário."}
 21. inferred_price deve ser o preço operacional da viagem quando puder ser descoberto com segurança. Para "ton", prefira o preço/t aprendido da rota ou explicitamente indicado. Para "cegonha", "caixinha" e "trip", use preço POR VIAGEM. Não confunda peso, número de ticket, NF, CNPJ ou horário com preço.

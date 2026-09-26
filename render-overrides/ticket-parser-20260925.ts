@@ -397,7 +397,10 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   const moneyValues = [...joined.matchAll(/(?:R\$|VALOR|PRECO|PREÇO|FRETE)[\s.:=-]*([0-9]{1,6}(?:[.,][0-9]{1,2})?)/g)]
     .map(hit => Number(hit[1].replace(".", "").replace(",", ".")))
     .filter(value => Number.isFinite(value) && value > 0 && value <= 100000);
-  const explicitPrice = moneyValues[0] ?? null;
+  const tonPriceValues = [...joined.matchAll(/\b([0-9]{1,4}(?:[.,][0-9]{1,2})?)\s*(?:R\$\s*)?(?:POR\s+)?(?:TONELADA|TON\b|\/T\b)/g)]
+    .map(hit => Number(hit[1].replace(".", "").replace(",", ".")))
+    .filter(value => Number.isFinite(value) && value > 0 && value <= 10000);
+  const explicitPrice = moneyValues[0] ?? tonPriceValues[0] ?? null;
   if (/\bCAIXINHA\b/.test(joined)) {
     data.inferred_freight_mode = "caixinha";
     data.inferred_price = explicitPrice;
@@ -410,9 +413,9 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     data.inference_confidence = explicitPrice ? 0.98 : 0.90;
   } else if (data.peso_liquido_kg && data.peso_liquido_kg > 0) {
     data.inferred_freight_mode = "ton";
-    data.inferred_price = null;
-    data.inferred_price_basis = "peso líquido identificado";
-    data.inference_confidence = 0.88;
+    data.inferred_price = explicitPrice;
+    data.inferred_price_basis = explicitPrice ? "preço por tonelada explícito no ticket/anotação" : "peso líquido identificado";
+    data.inference_confidence = explicitPrice ? 0.96 : 0.88;
   } else if (explicitPrice) {
     data.inferred_freight_mode = "trip";
     data.inferred_price = explicitPrice;
