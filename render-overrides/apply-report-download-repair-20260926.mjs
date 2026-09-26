@@ -40,7 +40,7 @@ function write(rel, value) {
   const before = read(rel);
 
   const downloadBlock =
-    /const blob = ([A-Za-z_$][A-Za-z0-9_$]*)\.output\("blob"\);\s*const url = URL\.createObjectURL\(blob\);\s*const link = document\.createElement\("a"\);\s*link\.href = url;\s*link\.download = ([^;]+);\s*document\.body\.appendChild\(link\);\s*link\.click\(\);\s*(?:link\.remove\(\);|window\.setTimeout\(\(\) => link\.remove\(\), 60_000\);)\s*(?:URL\.revokeObjectURL\(url\);|window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\);)/m;
+    /const blob = ([A-Za-z_$][A-Za-z0-9_$]*)\.output\((?:["'])blob(?:["'])\);\s*const url = URL\.createObjectURL\(blob\);\s*const link = document\.createElement\((?:["'])a(?:["'])\);\s*link\.href = url;\s*link\.download = ([^;]+);\s*document\.body\.appendChild\(link\);\s*link\.click\(\);\s*(?:link\.remove\(\);|window\.setTimeout\(\(\) => link\.remove\(\),\s*[0-9_]+\);)\s*(?:URL\.revokeObjectURL\(url\);|window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\),\s*[0-9_]+\);)/m;
 
   const match = before.match(downloadBlock);
   if (!match) {
