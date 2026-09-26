@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { managementSession } from "@/lib/management-auth.server";
+import { ticketAccess } from "@/lib/ticket-auth.server";
+import { TicketError } from "@/lib/ticket-core";
 
 function felipeSession() {
   const session = managementSession();
@@ -70,7 +72,6 @@ export const Route = createFileRoute("/api/photo-intake")({
             created_at,
             created_by
           from trip_ticket_photos
-          where lower(coalesce(created_by, '')) = lower(${session.username})
           order by created_at desc
           limit 250
         `;
@@ -95,10 +96,14 @@ export const Route = createFileRoute("/api/photo-intake")({
       },
 
       POST: async ({ request }) => {
-        const access = felipeSession();
-        if (!access.ok) return json({ ok: false, message: access.message }, access.status);
+        let access: ReturnType<typeof ticketAccess>;
+        try {
+          access = ticketAccess(request);
+        } catch (error) {
+          if (error instanceof TicketError) return json({ ok: false, message: error.message }, error.status);
+          return json({ ok: false, message: "Entre novamente para enviar a foto." }, 401);
+        }
         if (!sameOriginMutation(request)) return json({ ok: false, message: "Origem não autorizada." }, 403);
-        const session = access.session;
 
         let body: any = {};
         try {
@@ -131,13 +136,13 @@ export const Route = createFileRoute("/api/photo-intake")({
         const freightMode = textValue(body?.freightMode);
         const netWeight = nullableNumber(body?.netWeight);
         const reportStatus = textValue(body?.reportStatus);
-        const createdBy = textValue((session as any)?.username) || textValue((session as any)?.name) || "Gerência";
+        const createdBy = textValue(access.username) || (access.role === "driver" ? "Motorista" : access.role === "service" ? "Integração" : "Gerência");
 
         const existing = await sql<Record<string, any>>`select id, created_by from trip_ticket_photos where id=${id} limit 1`;
         if (existing[0]) {
           const owner = String(existing[0].created_by || "").trim().toLocaleLowerCase("pt-BR");
-          const currentUser = String(session.username || "").trim().toLocaleLowerCase("pt-BR");
-          if (owner && owner !== currentUser) return json({ ok: false, message: "Foto não autorizada." }, 403);
+          const currentUser = String(access.username || "").trim().toLocaleLowerCase("pt-BR");
+          if (owner && owner !== currentUser && access.role !== "admin") return json({ ok: false, message: "Foto não autorizada." }, 403);
 
           if (photoId && relationType !== "unlinked") {
             await sql`
