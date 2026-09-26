@@ -1,0 +1,200 @@
+import fs from "node:fs";
+import path from "node:path";
+
+const target = process.argv[2];
+if (!target || !fs.existsSync(target)) throw new Error("batch-photo-driver: target missing");
+const p = path.join(target, "src/routes/motorista.tsx");
+let s = fs.readFileSync(p, "utf8");
+
+function must(before, after, label) {
+  if (!s.includes(before)) throw new Error("batch-photo-driver: pattern not found (" + label + ")");
+  s = s.replace(before, after);
+}
+
+must(
+  '  const [batchPhotos, setBatchPhotos] = useState<Array<{ fileName: string; imageData: string }>>([]);',
+  '  const [batchPhotos, setBatchPhotos] = useState<Array<{ fileName: string; imageData: string; data: TicketData | null; error: string }>>([]);',
+  "state",
+);
+
+const fnStart = s.indexOf("  async function onFixedModeFiles(files: File[]) {");
+const fnEnd = s.indexOf("\n\n  async function onSubmit(e: React.FormEvent)", fnStart);
+if (fnStart < 0 || fnEnd < 0) throw new Error("batch-photo-driver: fixed batch handler missing");
+
+const fn = [
+'  async function onBatchTicketFiles(files: File[]) {',
+'    if (ticketBusy.current || files.length === 0) return;',
+'    if (!freightMode) return toast.error("Escolha primeiro o modo da viagem.");',
+'    if (!ticketAccess?.authenticated) return toast.error("Entre com seu login para enviar as fotos.");',
+'    ticketBusy.current = true;',
+'    setTicketReading(true);',
+'    setTicketReadError("");',
+'    try {',
+'      const prepared = await Promise.all(files.map(async (file) => ({ fileName: file.name || "foto.jpg", imageData: await ticketImageToDataUrl(file) })));',
+'      const results: Array<{ fileName: string; imageData: string; data: TicketData | null; error: string }> = new Array(prepared.length);',
+'      let cursor = 0;',
+'      const workers = Array.from({ length: Math.min(3, prepared.length) }, async () => {',
+'        while (true) {',
+'          const index = cursor++;',
+'          if (index >= prepared.length) return;',
+'          const photo = prepared[index];',
+'          try {',
+'            let data: TicketData | null = null;',
+'            for (let attempt = 0; attempt < 6; attempt += 1) {',
+'              try { data = await lerTicket(photo.imageData, freightMode, fleet ? { tractorPlate: fleet.tractorPlate, trailerPlate: fleet.trailerPlate } : undefined, photo.fileName); break; }',
+'              catch (readError) {',
+'                const message = readError instanceof Error ? readError.message : "";',
+'                if (message.includes("Muitas leituras") && attempt < 5) { await new Promise((resolve) => setTimeout(resolve, 61_000)); continue; }',
+'                throw readError;',
+'              }',
+'            }',
+'            if (!data) throw new Error("Não foi possível concluir a leitura desta foto.");',
+'            results[index] = { ...photo, data, error: "" };',
+'          } catch (error) {',
+'            results[index] = { ...photo, data: null, error: error instanceof Error ? error.message : "Não foi possível ler esta foto." };',
+'          }',
+'        }',
+'      });',
+'      await Promise.all(workers);',
+'      setBatchPhotos((current) => [...current, ...results]);',
+'      setTicketData(null);',
+'      setTicketImage(null);',
+'      setTicketFileName("");',
+'      setTicketConfirmed(false);',
+'      const ok = results.filter((item) => item.data).length;',
+'      const errors = results.length - ok;',
+'      if (errors) toast.warning(ok + " foto(s) lida(s) e " + errors + " com erro. Confira a lista.");',
+'      else toast.success(ok + (ok === 1 ? " foto lida pelo ChatGPT." : " fotos lidas pelo ChatGPT."));',
+'    } catch (error) {',
+'      const message = error instanceof Error ? error.message : "Não foi possível preparar as fotos.";',
+'      setTicketReadError(message);',
+'      toast.error(message);',
+'    } finally {',
+'      ticketBusy.current = false;',
+'      setTicketReading(false);',
+'    }',
+'  }',
+].join("\n");
+s = s.slice(0, fnStart) + fn + s.slice(fnEnd);
+
+must(
+  '    if (batchMode && batchPhotos.length === 0 && (!Number.isInteger(tripCountN) || tripCountN < 1 || tripCountN > 100)) {\n      return toast.error("Selecione uma ou mais fotos, ou informe uma quantidade entre 1 e 100.");\n    }\n    if (ticketBusy.current) return;\n    if (!batchMode && ticketFileName && !ticketData) return toast.error("A foto foi selecionada, mas não foi lida. Tente ler novamente ou remova a foto para lançar manualmente.");\n    if (!batchMode && ticketData && !ticketImage) return toast.error("A foto foi lida, mas não ficou pronta para arquivamento. Selecione a foto novamente.");\n    if (!batchMode && ticketData && !ticketConfirmed) return toast.error("Confirme a conferência dos dados do ticket.");',
+  '    if (batchMode && batchPhotos.length === 0 && (!Number.isInteger(tripCountN) || tripCountN < 1 || tripCountN > 100)) {\n' +
+    '      return toast.error("Selecione uma ou mais fotos, ou informe uma quantidade entre 1 e 100.");\n' +
+    '    }\n' +
+    '    const batchErrors = batchPhotos.filter((photo) => !photo.data || photo.error);\n' +
+    '    if (batchPhotos.length > 0 && batchErrors.length > 0) return toast.error(batchErrors.length + " foto(s) não foram lidas. Remova ou tente novamente antes de lançar.");\n' +
+    '    if (batchPhotos.length > 0 && freightMode !== "cegonha" && freightMode !== "caixinha" && batchPhotos.some((photo) => !photo.data?.numero_ticket?.trim())) return toast.error("Confira o número do ticket em todas as fotos.");\n' +
+    '    if (batchPhotos.length > 0 && freightMode === "ton" && batchPhotos.some((photo) => !(photo.data?.peso_liquido_kg != null && photo.data.peso_liquido_kg > 0))) return toast.error("Confira o peso líquido em todas as fotos.");\n' +
+    '    if (ticketBusy.current) return;\n' +
+    '    if (batchPhotos.length === 0 && !batchMode && ticketFileName && !ticketData) return toast.error("A foto foi selecionada, mas não foi lida. Tente ler novamente ou remova a foto para lançar manualmente.");\n' +
+    '    if (batchPhotos.length === 0 && !batchMode && ticketData && !ticketImage) return toast.error("A foto foi lida, mas não ficou pronta para arquivamento. Selecione a foto novamente.");\n' +
+    '    if (batchPhotos.length === 0 && !batchMode && ticketData && !ticketConfirmed) return toast.error("Confirme a conferência dos dados do ticket.");',
+  "validation",
+);
+
+const branchStart = s.indexOf('      const count = batchMode ? (batchPhotos.length || tripCountN) : 1;');
+const branchEnd = s.indexOf('      } else if (ticketData) {', branchStart);
+if (branchStart < 0 || branchEnd < 0) throw new Error("batch-photo-driver: submit branch missing");
+
+const submitBatch = [
+'      const count = batchPhotos.length > 0 ? batchPhotos.length : (batchMode ? tripCountN : 1);',
+'      let firstTicket = "";',
+'      let sentCount = count;',
+'      let failedBatch: typeof batchPhotos = [];',
+'',
+'      if (batchPhotos.length > 0) {',
+'        sentCount = 0;',
+'        for (const photo of batchPhotos) {',
+'          if (!photo.data) { failedBatch.push(photo); continue; }',
+'          try {',
+'            const saved = await salvarTicket({',
+'              ...photo.data,',
+'              conferido: true,',
+'              driverId,',
+'              fleetId,',
+'              freightMode,',
+'              dailyValue: freightMode === "trip" ? (dailyValueN ?? 0) : 0,',
+'              km_carreta: Number.parseInt(kmCarreta.replace(/\\D/g, ""), 10) || 0,',
+'              imagem: photo.imageData,',
+'              fileName: photo.fileName,',
+'            });',
+'            if (!firstTicket) firstTicket = saved.ticket;',
+'            sentCount += 1;',
+'          } catch (error) {',
+'            failedBatch.push({ ...photo, error: error instanceof Error ? error.message : "Não foi possível salvar esta viagem." });',
+'          }',
+'        }',
+'        if (sentCount === 0) throw new Error(failedBatch[0]?.error || "Nenhuma viagem foi salva.");',
+'      } else if (ticketData) {',
+].join("\n");
+s = s.slice(0, branchStart) + submitBatch + s.slice(branchEnd + '      } else if (ticketData) {'.length);
+
+must(
+  '      setBatchPhotos([]);\n      await queryClient.invalidateQueries({ queryKey: fleetKey });',
+  '      setBatchPhotos(failedBatch);\n      await queryClient.invalidateQueries({ queryKey: fleetKey });',
+  "retain failed",
+);
+
+must(
+  '      toast.success(batchMode\n        ? sentCount + (sentCount === 1 ? " viagem enviada ao Caixa da Gerência." : " viagens enviadas ao Caixa da Gerência.")\n        : sentCount > 1\n          ? sentCount + " viagens enviadas ao Caixa da Gerência."\n          : "Ticket " + firstTicket + " enviado ao Caixa da Gerência.");',
+  '      toast.success(sentCount + (sentCount === 1 ? " viagem enviada ao Caixa da Gerência." : " viagens enviadas ao Caixa da Gerência."));\n' +
+    '      if (failedBatch.length) toast.warning(failedBatch.length + " foto(s) ficaram na lista porque não puderam ser salvas.");',
+  "message",
+);
+
+must(
+  '                      multiple={!option.camera && (freightMode === "cegonha" || freightMode === "caixinha")}\n                      disabled={ticketReading || ticketSending || !freightMode || !ticketAccess?.authenticated || !ticketAccess.available}\n                      onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; if (!files.length) return; if (freightMode === "cegonha" || freightMode === "caixinha") void onFixedModeFiles(files); else void onTicketFile(files[0]); }} />',
+  '                      multiple={!option.camera}\n' +
+    '                      disabled={ticketReading || ticketSending || !freightMode || !ticketAccess?.authenticated || !ticketAccess.available}\n' +
+    '                      onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; if (files.length) void onBatchTicketFiles(files); }} />',
+  "input",
+);
+
+const statusStart = s.indexOf('              {(freightMode === "cegonha" || freightMode === "caixinha") && batchPhotos.length > 0 ? (');
+const statusEndMarker = '              {!(freightMode === "cegonha" || freightMode === "caixinha") && ticketFileName ? (';
+const statusEnd = s.indexOf(statusEndMarker, statusStart);
+if (statusStart < 0 || statusEnd < 0) throw new Error("batch-photo-driver: status block missing");
+
+const batchUi = [
+'              {batchPhotos.length > 0 ? (',
+'                <div className="grid gap-2 rounded-lg border border-ok/30 bg-ok/10 p-3 text-sm">',
+'                  <p className="font-semibold">{batchPhotos.length} foto{batchPhotos.length === 1 ? "" : "s"} selecionada{batchPhotos.length === 1 ? "" : "s"}</p>',
+'                  <p className="text-xs text-muted">O ChatGPT extraiu os dados de cada foto. Ao depositar, cada foto cria uma viagem separada no Caixa.</p>',
+'                  <div className="max-h-48 space-y-2 overflow-auto">',
+'                    {batchPhotos.map((photo, index) => (',
+'                      <div key={index} className="rounded-md border border-border/70 bg-bg/70 p-2 text-xs">',
+'                        <p className="truncate font-medium">{index + 1}. {photo.fileName}</p>',
+'                        {photo.error ? <p className="mt-1 text-danger">{photo.error}</p> : photo.data ? (',
+'                          <p className="mt-1 text-muted">',
+'                            Ticket {photo.data.numero_ticket || "—"}',
+'                            {freightMode === "ton" ? " · " + (photo.data.peso_liquido_kg ? new Intl.NumberFormat("pt-BR").format(photo.data.peso_liquido_kg) + " kg" : "peso não identificado") : ""}',
+'                            {photo.data.placa_veiculo ? " · " + photo.data.placa_veiculo : ""}',
+'                          </p>',
+'                        ) : null}',
+'                        <Button type="button" size="sm" variant="ghost" className="mt-1" onClick={() => setBatchPhotos((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remover esta foto</Button>',
+'                      </div>',
+'                    ))}',
+'                  </div>',
+'                  <Button type="button" variant="ghost" onClick={() => setBatchPhotos([])}>Remover todas as fotos</Button>',
+'                </div>',
+'              ) : null}',
+'',
+].join("\n");
+s = s.slice(0, statusStart) + batchUi + s.slice(statusEnd);
+
+s = s.replace(
+  'Selecione uma ou várias fotos. Cada foto será um lançamento novo. Nenhum número de ticket nem dado da foto é exigido.',
+  'Selecione uma ou várias fotos. O ChatGPT lê cada uma e cada foto será um lançamento novo.',
+);
+s = s.replace(
+  'O OCR lê número do ticket, peso líquido, placas, transportadora, operadora, destinatário, data e horário quando estiverem no ticket.',
+  'Selecione uma ou várias fotos. O ChatGPT lê número do ticket, peso líquido, placas, empresas, data e horário de cada uma.',
+);
+s = s.replace(
+  'Neste modo o OCR lê número do ticket, placas, transportadora, destinatário, data e horário; pesos e pesagens são ignorados.',
+  'Selecione uma ou várias fotos. O ChatGPT lê os dados de cada documento; pesos são ignorados neste modo.',
+);
+
+fs.writeFileSync(p, s);
+console.log("[batch-photo-driver] all modes now support multi-photo ChatGPT extraction");
