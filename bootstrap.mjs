@@ -197,6 +197,14 @@ if (!original.includes("apply-exact-fueling-liters-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-exact-fueling-liters-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+
+// Corrige por último o custo diesel dos relatórios por motorista:
+// sempre a soma dos abastecimentos reais do motorista no período, em PDF e Excel.
+if (!original.includes("apply-driver-fueling-cost-sync-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing driver fueling cost sync insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-driver-fueling-cost-sync-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
