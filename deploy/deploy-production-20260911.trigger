@@ -17,3 +17,4 @@ fix-reports-excel-click-2026-09-25
 fixed-photo-batch-cegonha-caixinha-2026-09-25
 excel-group-all-black-2026-09-25
 security-hardening-2026-09-25
+caixa-delete-selected-2026-09-26
