@@ -323,3 +323,47 @@ test('local OCR can infer caixinha and cegonha as per-trip modes', () => {
   assert.equal(ceg.inferred_freight_mode, 'cegonha');
   assert.equal(ceg.inferred_price, 900);
 });
+
+
+test('RAS VPORTS family is learned separately at 26 per ton', () => {
+  const route = readFileSync(path.join(source, 'src/routes/api/ler-ticket.ts'), 'utf8');
+  assert.match(route, /ras-vports-26[\s\S]*?'RAS - VPORTS'[\s\S]*?26/);
+  assert.match(route, /RAS\\s\+TRANSPORTES/);
+  assert.match(route, /PESO\\s\+ORIGEM/);
+  assert.match(route, /PC2/);
+  assert.match(route, /famílias RAS com preços diferentes|familias RAS com precos diferentes/i);
+});
+
+test('VPORTS RAS sample keeps exact ticket weight and date time fields', () => {
+  const ocr = `Número
+0024090
+Ticket:
+Status: Encerrado
+Placa
+Carreta FYW7J05
+Placa Veiculo QWS3E13
+Produto: KCL 00-00-60
+Pesagem Inicial: 54270 kg
+Data / Hora: 23/09/2026 10:36:19
+Pesagem Final: 18460 kg
+Data / Hora: 23/09/2026 11:35:16
+Peso Liquido: 35810 kg
+Peso Origem: 35840 kg
+Transportadora
+CNPJ: 49544417000104
+Razão Social: RAS TRANSPORTES E SERVICOS LTDA
+Destinatário
+CNPJ: VPORTS AUTORIDADE POR
+Razão Social: 27316538000409
+Balança Entrada: PC2.1 - Balança Entrada
+Balança SAIDA: PC2 - Balança Saida`;
+  const d = parseTicketOcr(ocr, 'ton', { tractorPlate: 'QWS3E13', trailerPlate: 'FYW7J05' });
+  assert.equal(d.model_type, 'vports_relatorio');
+  assert.equal(d.numero_ticket, '0024090');
+  assert.equal(d.peso_liquido_kg, 35810);
+  assert.equal(d.placa_veiculo, 'QWS3E13');
+  assert.equal(d.placa_carreta, 'FYW7J05');
+  assert.equal(d.transportadora, 'RAS TRANSPORTES E SERVICOS LTDA');
+  assert.equal(d.data_ticket, '23/09/2026');
+  assert.equal(d.hora_ticket, '11:35:16');
+});

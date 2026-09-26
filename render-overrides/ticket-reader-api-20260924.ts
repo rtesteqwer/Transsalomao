@@ -129,7 +129,9 @@ async function loadTicketRouteMemories(sql: Awaited<ReturnType<typeof getSql>>):
       ('papaleguas-rota-do-sol-map', 'Papaléguas / Rota do Sol - MAP', null, null, 33,
        'ADUBOS REAL;MAP;FOSFATO MONOAMONICO;FOSFATO MONOAMÔNICO;PAPALEGUAS;PAPALÉGUAS;ROTA DO SOL', 'motorista_confirmado_2026-09-26', true, now()),
       ('transportadora-ras', 'Transportadora - RAS', null, null, 14,
-       'LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;BELISLAND RECEPCAO;BELISLAND RECEPÇÃO', 'motorista_confirmado_2026-09-26', true, now())
+       'LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;BELISLAND RECEPCAO;BELISLAND RECEPÇÃO', 'motorista_confirmado_2026-09-26', true, now()),
+      ('ras-vports-26', 'RAS - VPORTS', null, 'VPORTS Autoridade Portuária', 26,
+       'RAS TRANSPORTES E SERVICOS;49544417000104;VPORTS AUTORIDADE;27316538000409;KCL;MAP;PESO ORIGEM;PC2.1;BALANCA ENTRADA;BALANCA SAIDA', 'amostras_confirmadas_por_calculo_2026-09-26', true, now())
     on conflict (route_key) do update set
       route_name=excluded.route_name,
       origin=excluded.origin,
@@ -170,8 +172,16 @@ function matchRouteFromOcr(text: string, routes: RouteMemory[]) {
   const has = (pattern: RegExp) => pattern.test(u);
   const get = (key: string) => routes.find((route) => route.route_key === key);
 
-  // Ordem específica evita colisões: ECOLOGISTICS com MAP continua sendo a
-  // rota Rota do Sol - Eco, enquanto ADUBOS REAL + MAP é a rota de R$33/t.
+  // Ordem específica evita colisões entre as famílias RAS de R$26/t e R$14/t.
+  // O layout VPORTS/RAS de R$26/t usa relatório com Peso Origem/PC2 e KCL/MAP.
+  if (
+    has(/RAS\s+TRANSPORTES(?:\s+E\s+SERVICOS)?|49544417000104/) &&
+    has(/PESO\s+ORIGEM|BALANCA\s+(?:ENTRADA|SAIDA)|PC2(?:\.1)?/) &&
+    has(/\bKCL\b|\bMAP\b|FERTILIZANTES\s+HERINGER|VPORTS\s+AUTORIDADE|27316538000409/)
+  ) {
+    const route = get("ras-vports-26");
+    if (route) return { route, confidence: 0.99 };
+  }
   if (has(/LOG\s+CONSULTING/) && has(/SPORTOS/) && has(/YARA\s+VIX\s*1|NITRABOR|BELISLAND/)) {
     const route = get("transportadora-ras");
     if (route) return { route, confidence: 0.99 };
@@ -295,6 +305,7 @@ REGRAS CRÍTICAS:
 16. route_confidence deve ser de 0 a 1. Só use 0,85 ou mais quando a identificação da rota estiver realmente clara. Caso contrário, use null.
 17. As pistas de match_hints são exemplos de evidência e NÃO devem ser tratadas como palavras independentes suficientes. Prefira uma combinação de pelo menos 2 sinais distintivos ou um nome de rota manuscrito claramente legível.
 18. A palavra SPORTOS sozinha NÃO identifica a rota Sportos - Eco x Festipar. Essa rota exige evidência adicional de ECO/FESTIPAR/FERTIPAR. Tickets LOG CONSULTING + SPORTOS + YARA VIX 1 + NITRABOR/BELISLAND correspondem ao grupo Transportadora - RAS quando o conjunto de sinais estiver claro.
+18A. Há duas famílias RAS com preços diferentes e elas NÃO podem ser misturadas. O relatório estilo VPORTS com RAS TRANSPORTES E SERVIÇOS/CNPJ 49.544.417/0001-04, campos Peso Origem/Balança PC2 e produtos KCL ou MAP corresponde à memória ras-vports-26 (R$ 26/t) quando o conjunto de sinais estiver claro. Já LOG CONSULTING + SPORTOS + YARA VIX 1 usa a família Transportadora - RAS de R$ 14/t somente quando as pistas dessa rota estiverem claras.
 19. Cruze TODAS as pistas disponíveis: layout do documento, títulos, empresas, produto, rota, observações manuscritas, pesos, valores, data e hora. Não decida por uma palavra isolada.
 20. inferred_freight_mode deve indicar a modalidade mais provável: "ton" para frete por tonelada; "cegonha" e "caixinha" quando o layout/palavras padronizadas identificarem esses tickets; "trip" para preço fixo por viagem. ${autoDetectMode ? "A modalidade escolhida na tela NÃO deve influenciar a classificação: identifique pela foto." : "Use a modalidade da tela apenas como contexto secundário."}
 21. inferred_price deve ser o preço operacional da viagem quando puder ser descoberto com segurança. Para "ton", prefira o preço/t aprendido da rota ou explicitamente indicado. Para "cegonha", "caixinha" e "trip", use preço POR VIAGEM. Não confunda peso, número de ticket, NF, CNPJ ou horário com preço.
