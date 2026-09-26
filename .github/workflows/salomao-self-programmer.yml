@@ -1,0 +1,329 @@
+name: Salomao IA - Programador Autonomo
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/10 * * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: salomao-self-programmer
+  cancel-in-progress: false
+
+jobs:
+  program:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Pull protected production environment
+        id: env
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN" >/dev/null
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          DB_URL="${DATABASE_URL:-${POSTGRES_URL:-}}"
+          AI_KEY="${OPENAI_API_KEY:-${SALOMAO_OPENAI_API_KEY:-}}"
+          test -n "$DB_URL"
+          test -n "$AI_KEY"
+          echo "::add-mask::$DB_URL"
+          echo "::add-mask::$AI_KEY"
+          {
+            echo "db_url<<SALOMAO_EOF"
+            echo "$DB_URL"
+            echo "SALOMAO_EOF"
+            echo "openai_key<<SALOMAO_EOF"
+            echo "$AI_KEY"
+            echo "SALOMAO_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install queue client
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/salomao-db"
+          npm install --prefix "$RUNNER_TEMP/salomao-db" --package-lock=false --no-save postgres@3 >/dev/null
+
+      - name: Claim Felipe-authorized change
+        id: claim
+        env:
+          DATABASE_URL: ${{ steps.env.outputs.db_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("fs");
+          const path = require("path");
+          const { createRequire } = require("module");
+          const req = createRequire(path.join(process.env.RUNNER_TEMP, "salomao-db", "package.json"));
+          const postgres = req("postgres");
+          const sql = postgres(process.env.DATABASE_URL, { ssl: "require", max: 1 });
+          (async () => {
+            await sql.unsafe("create table if not exists salomao_code_changes (id text primary key, requested_by text not null, title text not null, request_text text not null, scope text not null default 'full', publish_requested boolean not null default false, status text not null default 'queued', branch text, commit_sha text, pull_request_url text, result_summary text, error_text text, created_at timestamptz not null default now(), started_at timestamptz, completed_at timestamptz, updated_at timestamptz not null default now())");
+            const rows = await sql.unsafe("select c.* from salomao_code_changes c join management_users u on lower(u.username)=lower(c.requested_by) where c.status='queued' and u.id='adm_felipe' and u.status='ativo' order by c.created_at limit 1");
+            const c = rows[0];
+            if (!c) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, "found=false\n");
+              console.log("Nenhuma alteração autorizada pelo Felipe na fila.");
+              await sql.end({ timeout: 2 });
+              return;
+            }
+            const claimed = await sql.unsafe("update salomao_code_changes set status='programming', started_at=coalesce(started_at,now()), updated_at=now() where id=$1 and status='queued' returning *", [c.id]);
+            if (!claimed[0]) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, "found=false\n");
+              await sql.end({ timeout: 2 });
+              return;
+            }
+            const task = claimed[0];
+            const branch = "salomao-auto/" + String(task.id).replace(/[^A-Za-z0-9._-]/g, "-");
+            const prompt = [
+              "Você está programando o Trans Salomão por ordem autenticada do usuário Felipe.",
+              "",
+              "Pedido:",
+              String(task.request_text),
+              "",
+              "Escopo informado: " + String(task.scope || "full"),
+              "",
+              "Regras obrigatórias:",
+              "- Explore o repositório e implemente a alteração real, não apenas explique.",
+              "- Este projeto reconstrói a aplicação via bootstrap/overlays; altere a fonte persistente correta.",
+              "- Preserve dados existentes e use migrações idempotentes quando necessário.",
+              "- Não altere .github/**, deploy/**, .vercel/**, arquivos .env, segredos ou credenciais.",
+              "- Não altere assistant-v4/api-assistant-auth.ts, assistant-v4/assistant-auth.server.ts, assistant-v4/developer-mode.server.ts nem qualquer regra que limite programação ao Felipe.",
+              "- Não tente mudar este workflow nem ampliar suas próprias permissões.",
+              "- Adicione ou ajuste testes quando fizer sentido.",
+              "- Ao final, revise o git diff e deixe o workspace pronto para commit.",
+            ].join("\n");
+            fs.writeFileSync(".salomao-task.md", prompt);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,
+              "found=true\n" +
+              "change_id=" + task.id + "\n" +
+              "branch=" + branch + "\n" +
+              "publish=" + String(task.publish_requested === true) + "\n"
+            );
+            await sql.end({ timeout: 2 });
+          })().catch(async (e) => {
+            console.error(e);
+            try { await sql.end({ timeout: 2 }); } catch {}
+            process.exit(1);
+          });
+          NODE
+
+      - name: Run Codex programmer
+        id: codex
+        if: steps.claim.outputs.found == 'true'
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ steps.env.outputs.openai_key }}
+          permission-profile: ":workspace"
+          safety-strategy: drop-sudo
+          allow-bots: true
+          prompt-file: .salomao-task.md
+          effort: high
+
+      - name: Remove task prompt
+        if: steps.claim.outputs.found == 'true'
+        shell: bash
+        run: rm -f .salomao-task.md
+
+      - name: Enforce protected paths
+        if: steps.claim.outputs.found == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          CHANGED="$(git diff --name-only; git ls-files --others --exclude-standard)"
+          test -n "$CHANGED"
+          if printf '%s\n' "$CHANGED" | grep -E '^(\.github/|deploy/|\.vercel/|backup-payload/|assistant-v4/(api-assistant-auth\.ts|assistant-auth\.server\.ts|developer-mode\.server\.ts)|.*\.env($|\.)|.*(secret|credential|token).*)'; then
+            echo "Salomão tentou alterar caminho protegido."
+            exit 1
+          fi
+
+      - name: Reconstruct and test web application
+        if: steps.claim.outputs.found == 'true'
+        env:
+          VERCEL: "1"
+          VERCEL_PROJECT_PRODUCTION_URL: transsalomao.vercel.app
+          TRANS_UI_ONLY_DEPLOY: "1"
+          DATABASE_URL: ${{ steps.env.outputs.db_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TRANS_TEST_APP="$RUNNER_TEMP/salomao-test-app"
+          TRANS_SOURCE_DUMP="$TRANS_TEST_APP" node bootstrap.mjs
+          npm --prefix "$TRANS_TEST_APP" install --ignore-scripts --no-audit --no-fund
+          node --test "$TRANS_TEST_APP/tests/ticket-reader.test.mjs" "$TRANS_TEST_APP/tests/tickets.test.mjs"
+          npm --prefix "$TRANS_TEST_APP" run build
+          git restore bootstrap.original.mjs
+
+      - name: Build Android when changed
+        if: steps.claim.outputs.found == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --name-only | grep -q '^android-voice/'; then
+            gradle -p android-voice assembleDebug --stacktrace
+            test -f android-voice/app/build/outputs/apk/debug/app-debug.apk
+          else
+            echo "Android não foi alterado."
+          fi
+
+      - name: Commit branch and open PR
+        id: pr
+        if: steps.claim.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.claim.outputs.change_id }}
+          BRANCH: ${{ steps.claim.outputs.branch }}
+          CODEX_SUMMARY: ${{ steps.codex.outputs.final-message }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Salomao IA"
+          git config user.email "salomao-ia@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add -A
+          git commit -m "Salomao IA: $CHANGE_ID"
+          COMMIT_SHA="$(git rev-parse HEAD)"
+          git push --set-upstream origin "$BRANCH"
+          BODY_FILE="$RUNNER_TEMP/pr-body.md"
+          {
+            echo "Alteração programada autonomamente pela Salomão IA."
+            echo
+            echo "Autorização: usuário Felipe (adm_felipe), validado novamente pelo workflow."
+            echo
+            echo "Resumo do Codex:"
+            echo
+            printf '%s\n' "$CODEX_SUMMARY"
+            echo
+            echo "Validações executadas antes deste PR: reconstrução, testes de tickets, build web e build Android quando aplicável."
+          } > "$BODY_FILE"
+          PR_URL="$(gh pr create --base main --head "$BRANCH" --title "Salomão IA: $CHANGE_ID" --body-file "$BODY_FILE")"
+          {
+            echo "commit_sha=$COMMIT_SHA"
+            echo "pr_url=$PR_URL"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Record tested PR
+        if: steps.claim.outputs.found == 'true'
+        env:
+          DATABASE_URL: ${{ steps.env.outputs.db_url }}
+          CHANGE_ID: ${{ steps.claim.outputs.change_id }}
+          BRANCH: ${{ steps.claim.outputs.branch }}
+          COMMIT_SHA: ${{ steps.pr.outputs.commit_sha }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          SUMMARY: ${{ steps.codex.outputs.final-message }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const path=require("path");
+          const {createRequire}=require("module");
+          const req=createRequire(path.join(process.env.RUNNER_TEMP,"salomao-db","package.json"));
+          const postgres=req("postgres");
+          const sql=postgres(process.env.DATABASE_URL,{ssl:"require",max:1});
+          (async()=>{
+            await sql.unsafe("update salomao_code_changes set status='ready',branch=$2,commit_sha=$3,pull_request_url=$4,result_summary=$5,error_text=null,completed_at=now(),updated_at=now() where id=$1",
+              [process.env.CHANGE_ID,process.env.BRANCH,process.env.COMMIT_SHA,process.env.PR_URL,String(process.env.SUMMARY||"").slice(0,10000)]);
+            await sql.end({timeout:2});
+          })().catch(async e=>{console.error(e);try{await sql.end({timeout:2})}catch{};process.exit(1)});
+          NODE
+
+      - name: Merge tested PR when Felipe requested production
+        id: merge
+        if: steps.claim.outputs.found == 'true' && steps.claim.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_URL" --squash --delete-branch
+          git switch main
+          git pull --ff-only origin main
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy production when authorized
+        id: deploy
+        if: steps.claim.outputs.found == 'true' && steps.claim.outputs.publish == 'true' && steps.merge.outputs.merged == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="$(npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          curl --fail --location --retry 5 --retry-delay 3 --max-time 30 https://transsalomao.vercel.app/dono >/dev/null
+
+      - name: Record production result
+        if: steps.claim.outputs.found == 'true' && steps.claim.outputs.publish == 'true' && steps.deploy.outputs.url != ''
+        env:
+          DATABASE_URL: ${{ steps.env.outputs.db_url }}
+          CHANGE_ID: ${{ steps.claim.outputs.change_id }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const path=require("path");
+          const {createRequire}=require("module");
+          const req=createRequire(path.join(process.env.RUNNER_TEMP,"salomao-db","package.json"));
+          const postgres=req("postgres");
+          const sql=postgres(process.env.DATABASE_URL,{ssl:"require",max:1});
+          (async()=>{
+            await sql.unsafe("update salomao_code_changes set status='published',result_summary=coalesce(result_summary,'') || $2,completed_at=now(),updated_at=now() where id=$1",
+              [process.env.CHANGE_ID,"\nProdução: "+process.env.DEPLOYMENT_URL]);
+            await sql.end({timeout:2});
+          })().catch(async e=>{console.error(e);try{await sql.end({timeout:2})}catch{};process.exit(1)});
+          NODE
+
+      - name: Record failure
+        if: failure() && steps.claim.outputs.found == 'true'
+        env:
+          DATABASE_URL: ${{ steps.env.outputs.db_url }}
+          CHANGE_ID: ${{ steps.claim.outputs.change_id }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const path=require("path");
+          const {createRequire}=require("module");
+          const req=createRequire(path.join(process.env.RUNNER_TEMP,"salomao-db","package.json"));
+          const postgres=req("postgres");
+          const sql=postgres(process.env.DATABASE_URL,{ssl:"require",max:1});
+          (async()=>{
+            await sql.unsafe("update salomao_code_changes set status='failed',error_text='Falha no workflow de programação. Consulte o GitHub Actions para detalhes.',completed_at=now(),updated_at=now() where id=$1 and status not in ('published','cancelled')",[process.env.CHANGE_ID]);
+            await sql.end({timeout:2});
+          })().catch(async e=>{console.error(e);try{await sql.end({timeout:2})}catch{};process.exit(1)});
+          NODE
