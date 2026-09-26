@@ -33,7 +33,7 @@ export const Route = createFileRoute("/api/assistant")({
         if (!message) return out({ ok: false, code: "EMPTY_MESSAGE" }, 400);
 
         const history: Turn[] = Array.isArray(body?.history)
-          ? body.history.slice(-18).map((x: any) => ({
+          ? body.history.slice(-30).map((x: any) => ({
               role: x?.role === "assistant" ? "assistant" : "user",
               content: String(x?.content ?? "").slice(0, 2800),
             })).filter((x: Turn) => x.content.trim())
@@ -175,7 +175,7 @@ function labelMode(m: unknown) { return m === "trip" ? "Diária" : m === "cegonh
 
 function enrichTrip(s: Snapshot, t: Row) {
   const d=s.drivers.find((x)=>x.id===t.driver_id), f=s.fleets.find((x)=>x.id===t.fleet_id), value=freight(t);
-  return { code:t.code,date:iso(t.date),client:t.client,origin:t.origin,destination:t.destination,driver:d?.name??"Motorista removido",fleet:f?.name??"Conjunto removido",tractorPlate:f?.tractor_plate??"",trailerPlate:f?.trailer_plate??"",mode:labelMode(t.freight_mode),netWeight:n(t.net_weight),pricePerTon:n(t.price_per_ton),pricePerTrip:n(t.price_per_trip),km:Math.max(0,n(t.km_end)-n(t.km_start)),freight:value,commission:value*n(d?.commission_pct) };
+  return { id:t.id,code:t.code,date:iso(t.date),client:t.client,origin:t.origin,destination:t.destination,driverId:t.driver_id,driver:d?.name??"Motorista removido",fleetId:t.fleet_id,fleet:f?.name??"Conjunto removido",tractorPlate:f?.tractor_plate??"",trailerPlate:f?.trailer_plate??"",mode:labelMode(t.freight_mode),freightMode:t.freight_mode,loadedTons:n(t.loaded_tons),grossWeight:n(t.gross_weight),netWeight:n(t.net_weight),pricePerTon:n(t.price_per_ton),pricePerTrip:n(t.price_per_trip),kmStart:n(t.km_start),kmEnd:n(t.km_end),km:Math.max(0,n(t.km_end)-n(t.km_start)),freight:value,commission:value*n(d?.commission_pct) };
 }
 
 async function querySystem(args: Row) {
@@ -188,14 +188,14 @@ async function querySystem(args: Row) {
   if(fleetQ&&(!fm.value||fm.score<55))return{found:false,entity:"conjunto",candidates:fm.candidates};
   const d=dm.value,f=fm.value;
   const trips=s.trips.filter((t)=>(!d||t.driver_id===d.id)&&(!f||t.fleet_id===f.id)&&dateOk(t,from,to)).map((t)=>enrichTrip(s,t));
-  const fuels=s.fuelings.filter((x)=>(!d||x.driver_id===d.id)&&(!f||x.fleet_id===f.id)&&dateOk(x,from,to)).map((x)=>{const fl=s.fleets.find((y)=>y.id===x.fleet_id),dr=s.drivers.find((y)=>y.id===x.driver_id);return{date:iso(x.date),driver:dr?.name??"",fleet:fl?.name??"",station:x.station,km:n(x.km),liters:n(x.liters),pricePerLiter:n(x.price_per_liter),total:n(x.liters)*n(x.price_per_liter),notes:x.notes};});
-  const expenses=s.expenses.filter((x)=>(!d||x.driver_id===d.id)&&(!f||x.fleet_id===f.id)&&dateOk(x,from,to)).map((x)=>{const fl=s.fleets.find((y)=>y.id===x.fleet_id),dr=s.drivers.find((y)=>y.id===x.driver_id);return{date:iso(x.date),driver:dr?.name??"",fleet:fl?.name??"",category:x.category,description:x.description,amount:n(x.amount),notes:x.notes};});
+  const fuels=s.fuelings.filter((x)=>(!d||x.driver_id===d.id)&&(!f||x.fleet_id===f.id)&&dateOk(x,from,to)).map((x)=>{const fl=s.fleets.find((y)=>y.id===x.fleet_id),dr=s.drivers.find((y)=>y.id===x.driver_id);return{id:x.id,date:iso(x.date),driverId:x.driver_id,driver:dr?.name??"",fleetId:x.fleet_id,fleet:fl?.name??"",station:x.station,km:n(x.km),liters:n(x.liters),pricePerLiter:n(x.price_per_liter),total:n(x.liters)*n(x.price_per_liter),notes:x.notes};});
+  const expenses=s.expenses.filter((x)=>(!d||x.driver_id===d.id)&&(!f||x.fleet_id===f.id)&&dateOk(x,from,to)).map((x)=>{const fl=s.fleets.find((y)=>y.id===x.fleet_id),dr=s.drivers.find((y)=>y.id===x.driver_id);return{id:x.id,date:iso(x.date),driverId:x.driver_id,driver:dr?.name??"",fleetId:x.fleet_id,fleet:fl?.name??"",assetType:x.asset_type??null,category:x.category,description:x.description,amount:n(x.amount),notes:x.notes};});
   const pending=s.reports.filter((x)=>x.status==="pendente"&&(!d||x.driver_id===d.id)&&(!f||x.fleet_id===f.id)).map((x)=>({id:x.id,ticket:x.ticket,driver:s.drivers.find((y)=>y.id===x.driver_id)?.name??"",fleet:s.fleets.find((y)=>y.id===x.fleet_id)?.name??"",mode:labelMode(x.freight_mode),tons:n(x.tons),dailyValue:n(x.daily_value),km:n(x.km),createdAt:String(x.created_at??"")}));
   const tripFreight=trips.reduce((a,x)=>a+x.freight,0),commissions=trips.reduce((a,x)=>a+x.commission,0),fuelCost=fuels.reduce((a,x)=>a+x.total,0),expenseTotal=expenses.reduce((a,x)=>a+x.amount,0);
   const summary={tripCount:trips.length,netTons:trips.reduce((a,x)=>a+x.netWeight,0),km:trips.reduce((a,x)=>a+x.km,0),freight:tripFreight,commission:commissions,afterCommission:tripFreight-commissions,fuelCost,expenses:expenseTotal,pendingReports:pending.length};
 
-  if(op==="driver_overview")return{found:!!d,driver:d?{name:d.name,phone:d.phone,category:d.category,status:d.status,commissionPct:n(d.commission_pct)}:null,summary,fleets:[...new Set(s.trips.filter((t)=>d&&t.driver_id===d.id).map((t)=>s.fleets.find((x)=>x.id===t.fleet_id)?.name).filter(Boolean))],recentTrips:trips.slice(0,limit),recentFuelings:fuels.slice(0,limit),recentExpenses:expenses.slice(0,limit),pending:pending.slice(0,limit),period:{from,to}};
-  if(op==="fleet_overview")return{found:!!f,fleet:f?{name:f.name,tractorPlate:f.tractor_plate,trailerPlate:f.trailer_plate,model:f.model,status:f.status}:null,summary,recentTrips:trips.slice(0,limit),recentFuelings:fuels.slice(0,limit),recentExpenses:expenses.slice(0,limit),period:{from,to}};
+  if(op==="driver_overview")return{found:!!d,driver:d?{id:d.id,name:d.name,phone:d.phone,category:d.category,status:d.status,commissionPct:n(d.commission_pct)}:null,summary,fleets:[...new Set(s.trips.filter((t)=>d&&t.driver_id===d.id).map((t)=>s.fleets.find((x)=>x.id===t.fleet_id)?.name).filter(Boolean))],recentTrips:trips.slice(0,limit),recentFuelings:fuels.slice(0,limit),recentExpenses:expenses.slice(0,limit),pending:pending.slice(0,limit),period:{from,to}};
+  if(op==="fleet_overview")return{found:!!f,fleet:f?{id:f.id,name:f.name,tractorPlate:f.tractor_plate,trailerPlate:f.trailer_plate,model:f.model,status:f.status}:null,summary,recentTrips:trips.slice(0,limit),recentFuelings:fuels.slice(0,limit),recentExpenses:expenses.slice(0,limit),period:{from,to}};
   if(op==="trips")return{count:trips.length,totalFreight:tripFreight,rows:trips.slice(0,limit),period:{from,to}};
   if(op==="fuelings")return{count:fuels.length,totalCost:fuelCost,rows:fuels.slice(0,limit),period:{from,to}};
   if(op==="expenses")return{count:expenses.length,total:expenseTotal,rows:expenses.slice(0,limit),period:{from,to}};
@@ -203,6 +203,17 @@ async function querySystem(args: Row) {
   if(op==="management_users"){
     const sql=await getSql();
     const rows=await sql<Row>`select username,role,status,created_at,updated_at from management_users order by lower(username)`;
+    return{count:rows.length,rows};
+  }
+  if(op==="drivers")return{count:s.drivers.length,rows:s.drivers.slice(0,limit).map((x)=>({id:x.id,name:x.name,phone:x.phone,category:x.category,status:x.status,commissionPct:n(x.commission_pct)}))};
+  if(op==="fleets")return{count:s.fleets.length,rows:s.fleets.slice(0,limit).map((x)=>({id:x.id,name:x.name,tractorPlate:x.tractor_plate,trailerPlate:x.trailer_plate,model:x.model,status:x.status}))};
+  if(op==="freight_prices")return{rows:s.prices.map((x)=>({mode:x.mode,price:n(x.price),updatedAt:String(x.updated_at??"")}))};
+  if(op==="reports"){
+    const rows=s.reports.filter((x)=>(!d||x.driver_id===d.id)&&(!f||x.fleet_id===f.id)).slice(0,limit).map((x)=>({
+      id:x.id,ticket:x.ticket,status:x.status,driverId:x.driver_id,driver:s.drivers.find((y)=>y.id===x.driver_id)?.name??"",
+      fleetId:x.fleet_id,fleet:s.fleets.find((y)=>y.id===x.fleet_id)?.name??"",freightMode:x.freight_mode??null,
+      tons:n(x.tons),dailyValue:n(x.daily_value),km:n(x.km),loadingDate:iso(x.loading_date),tripId:x.trip_id??null,createdAt:String(x.created_at??"")
+    }));
     return{count:rows.length,rows};
   }
   if(op==="financial_by_driver"){
@@ -273,7 +284,7 @@ async function mutateSystem(args: Row, actor: string) {
       values(${id},${name},${phone},${category},${status},${pct})
       on conflict(id) do update set name=excluded.name,phone=excluded.phone,category=excluded.category,status=excluded.status,commission_pct=excluded.commission_pct
     `;
-    return{ok:true,action:existing?"updated":"created",entity:"driver",name,commissionPct:pct};
+    return{ok:true,action:existing?"updated":"created",entity:"driver",id,name,commissionPct:pct};
   }
 
   if(op==="fleet_upsert"){
@@ -292,7 +303,7 @@ async function mutateSystem(args: Row, actor: string) {
       values(${id},${name},${tractor||existing?.tractor_plate||""},${trailer||existing?.trailer_plate||""},${model},${status})
       on conflict(id) do update set name=excluded.name,tractor_plate=excluded.tractor_plate,trailer_plate=excluded.trailer_plate,model=excluded.model,status=excluded.status
     `;
-    return{ok:true,action:existing?"updated":"created",entity:"fleet",name};
+    return{ok:true,action:existing?"updated":"created",entity:"fleet",id,name};
   }
 
   if(op==="freight_prices_update"){
@@ -363,6 +374,34 @@ async function mutateSystem(args: Row, actor: string) {
     return{ok:true,entity:"trip",id,code,date,driver:driver.name,fleet:fleet.name,freight:mode==="ton"?net*pricePerTon:pricePerTrip};
   }
 
+  if(op==="report_update"){
+    const ticket=String(args.ticket??"").trim();
+    if(!ticket)throw new Error("Informe o ticket do lançamento pendente.");
+    const rows=await sql<Row>`select * from reports where ticket=${ticket} and status='pendente' limit 1`;
+    const report=rows[0];
+    if(!report)throw new Error("Lançamento pendente não encontrado.");
+
+    const driverQ=String(args.driver??"").trim();
+    const fleetQ=String(args.fleet??"").trim();
+    const modeRaw=args.freight_mode==null?"":String(args.freight_mode);
+    if(driverQ){const driver=resolveUniqueDriver(s,driverQ);await sql`update reports set driver_id=${driver.id} where id=${String(report.id)}`;}
+    if(fleetQ){const fleet=resolveUniqueFleet(s,fleetQ);await sql`update reports set fleet_id=${fleet.id} where id=${String(report.id)}`;}
+    if(modeRaw){
+      if(!["ton","trip","cegonha","caixinha"].includes(modeRaw))throw new Error("Modalidade inválida.");
+      await sql`update reports set freight_mode=${modeRaw} where id=${String(report.id)}`;
+    }
+    if(args.tons!=null)await sql`update reports set tons=${n(args.tons)} where id=${String(report.id)}`;
+    if(args.km!=null)await sql`update reports set km=${n(args.km)} where id=${String(report.id)}`;
+    if(args.loading_date!=null){
+      const date=iso(args.loading_date);if(!date)throw new Error("Data inválida.");
+      await sql`update reports set loading_date=${date} where id=${String(report.id)}`;
+    }
+    if(args.daily_value!=null)await sql`update reports set daily_value=${n(args.daily_value)} where id=${String(report.id)}`;
+
+    const updated=await sql<Row>`select id,ticket,status,driver_id,fleet_id,freight_mode,tons,daily_value,km,loading_date from reports where id=${String(report.id)} limit 1`;
+    return{ok:true,entity:"report",action:"updated",...updated[0]};
+  }
+
   if(op==="report_accept"){
     const ticket=String(args.ticket??"").trim();
     if(!ticket)throw new Error("Informe o ticket a aceitar.");
@@ -395,7 +434,7 @@ async function mutateSystem(args: Row, actor: string) {
     return{ok:true,entity:"report",action:"rejected",ticket:rows[0].ticket};
   }
 
-  const destructive=["delete_trip","delete_fueling","delete_expense","delete_report","delete_driver","delete_all_trips"];
+  const destructive=["delete_trip","delete_fueling","delete_expense","delete_report","delete_driver","delete_fleet","delete_all_trips"];
   if(destructive.includes(op)){
     if(!args.confirmed)throw new Error("CONFIRMATION_REQUIRED");
     if(op==="delete_all_trips"){
@@ -415,6 +454,11 @@ async function mutateSystem(args: Row, actor: string) {
       if(Number(linked[0]?.count??0)>0)throw new Error("Este motorista possui histórico. Altere o status para inativo em vez de excluir.");
       await sql`delete from drivers where id=${id}`;
     }
+    if(op==="delete_fleet"){
+      const linked=await sql<{count:number}>`select ((select count(*) from trips where fleet_id=${id})+(select count(*) from reports where fleet_id=${id})+(select count(*) from fuelings where fleet_id=${id})+(select count(*) from expenses where fleet_id=${id}))::int as count`;
+      if(Number(linked[0]?.count??0)>0)throw new Error("Este conjunto possui histórico. Altere o status para inativo em vez de excluir.");
+      await sql`delete from fleets where id=${id}`;
+    }
     return{ok:true,action:op,id};
   }
 
@@ -423,10 +467,10 @@ async function mutateSystem(args: Row, actor: string) {
 
 const queryTool = {
   type:"function",name:"query_trans_salomao",
-  description:"Consulta dados reais do Trans Salomão. Use antes de responder números, cadastros, viagens, conjuntos, abastecimentos, despesas, Caixa, faturamento, comissões e logins.",
+  description:"Consulta dados reais do Trans Salomão, incluindo IDs e campos necessários para editar registros. Use para planejar, localizar, conferir e verificar ações.",
   strict:true,
   parameters:{type:"object",properties:{
-    operation:{type:"string",enum:["driver_overview","fleet_overview","trips","fuelings","expenses","pending","financial_by_driver","system_summary","management_users"]},
+    operation:{type:"string",enum:["driver_overview","fleet_overview","drivers","fleets","trips","fuelings","expenses","pending","reports","financial_by_driver","freight_prices","system_summary","management_users"]},
     driver:{type:["string","null"]},fleet:{type:["string","null"]},date_from:{type:["string","null"]},date_to:{type:["string","null"]},limit:{type:"number",minimum:1,maximum:100}
   },required:["operation","driver","fleet","date_from","date_to","limit"],additionalProperties:false}
 };
@@ -513,63 +557,159 @@ const reportTool = {
   },required:["action","ticket"],additionalProperties:false}
 };
 
+const reportUpdateTool = {
+  type:"function",name:"update_pending_report",
+  description:"Atualiza dados de um lançamento pendente da Caixa antes de aceitar. Use para definir/corrigir motorista, conjunto, modalidade, toneladas, km, data ou valor da diária.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    ticket:{type:"string"},
+    driver:{type:["string","null"]},fleet:{type:["string","null"]},
+    freight_mode:{type:["string","null"],enum:["ton","trip","cegonha","caixinha",null]},
+    tons:{type:["number","null"],minimum:0},km:{type:["number","null"],minimum:0},
+    loading_date:{type:["string","null"]},daily_value:{type:["number","null"],minimum:0}
+  },required:["ticket","driver","fleet","freight_mode","tons","km","loading_date","daily_value"],additionalProperties:false}
+};
+
+const bulkReportTool = {
+  type:"function",name:"process_pending_reports_bulk",
+  description:"Aceita ou rejeita vários lançamentos pendentes da Caixa em sequência. Use quando o usuário pedir ação em lote ou em todos os tickets explicitamente listados.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    action:{type:"string",enum:["accept","reject"]},
+    tickets:{type:"array",items:{type:"string"},minItems:1,maxItems:100}
+  },required:["action","tickets"],additionalProperties:false}
+};
+
 const deleteTool = {
   type:"function",name:"delete_trans_salomao_record",
   description:"Exclui um registro ou todas as viagens. Só pode ser usado após confirmação explícita do usuário no pedido atual.",
   strict:true,
   parameters:{type:"object",properties:{
-    entity:{type:"string",enum:["trip","fueling","expense","report","driver","all_trips"]},
+    entity:{type:"string",enum:["trip","fueling","expense","report","driver","fleet","all_trips"]},
     id:{type:["string","null"]},confirmed:{type:"boolean"}
   },required:["entity","id","confirmed"],additionalProperties:false}
 };
 
-const assistantTools=[queryTool,driverTool,fleetTool,tripTool,fuelingTool,expenseTool,pricesTool,userTool,reportTool,deleteTool];
+const assistantTools=[queryTool,driverTool,fleetTool,tripTool,fuelingTool,expenseTool,pricesTool,userTool,reportTool,reportUpdateTool,bulkReportTool,deleteTool];
+
+async function verifyMutation(operation:string,result:Row){
+  const sql=await getSql();
+  if(operation==="driver_upsert"&&result.id){
+    const rows=await sql<Row>`select id,name,phone,category,status,commission_pct from drivers where id=${String(result.id)} limit 1`;
+    return{verified:!!rows[0],record:rows[0]??null};
+  }
+  if(operation==="fleet_upsert"&&result.id){
+    const rows=await sql<Row>`select id,name,tractor_plate,trailer_plate,model,status from fleets where id=${String(result.id)} limit 1`;
+    return{verified:!!rows[0],record:rows[0]??null};
+  }
+  if(operation==="trip_upsert"&&result.id){
+    const rows=await sql<Row>`select id,code,date,driver_id,fleet_id,freight_mode,net_weight,price_per_ton,price_per_trip from trips where id=${String(result.id)} limit 1`;
+    return{verified:!!rows[0],record:rows[0]??null};
+  }
+  if(operation==="fueling_upsert"&&result.id){
+    const rows=await sql<Row>`select id,date,driver_id,fleet_id,liters,price_per_liter,km,station from fuelings where id=${String(result.id)} limit 1`;
+    return{verified:!!rows[0],record:rows[0]??null};
+  }
+  if(operation==="expense_upsert"&&result.id){
+    const rows=await sql<Row>`select id,date,driver_id,fleet_id,category,description,amount,asset_type from expenses where id=${String(result.id)} limit 1`;
+    return{verified:!!rows[0],record:rows[0]??null};
+  }
+  if(operation==="report_update"||operation==="report_accept"||operation==="report_reject"){
+    const ticket=String(result.ticket??"");
+    const rows=ticket?await sql<Row>`select id,ticket,status,trip_id,freight_mode,driver_id,fleet_id,tons,km from reports where ticket=${ticket} limit 1`:[];
+    return{verified:!!rows[0],record:rows[0]??null};
+  }
+  if(operation==="management_user_upsert"||operation==="management_user_disable"){
+    const username=String(result.username??"");
+    const rows=username?await sql<Row>`select username,role,status from management_users where lower(username)=lower(${username}) limit 1`:[];
+    return{verified:!!rows[0],record:rows[0]??null};
+  }
+  if(operation==="freight_prices_update"){
+    const rows=await sql<Row>`select mode,price from freight_prices where mode in ('trip','cegonha','caixinha') order by mode`;
+    return{verified:rows.length>=3,record:rows};
+  }
+  if(operation.startsWith("delete_")){
+    return{verified:true,record:null};
+  }
+  return{verified:true,record:null};
+}
+
+async function mutateVerified(args:Row,actor:string){
+  const operation=String(args.operation??"");
+  const result:any=await mutateSystem(args,actor);
+  const verification=await verifyMutation(operation,result);
+  return{...result,verification};
+}
 
 async function executeAssistantTool(name:string,args:Row,actor:string,userMessage:string){
   if(name==="query_trans_salomao")return querySystem(args);
-  if(name==="save_driver")return mutateSystem({operation:"driver_upsert",...args},actor);
-  if(name==="save_fleet")return mutateSystem({operation:"fleet_upsert",...args},actor);
-  if(name==="save_trip")return mutateSystem({operation:"trip_upsert",...args},actor);
-  if(name==="save_fueling")return mutateSystem({operation:"fueling_upsert",...args},actor);
-  if(name==="save_expense")return mutateSystem({operation:"expense_upsert",...args},actor);
-  if(name==="update_freight_prices")return mutateSystem({operation:"freight_prices_update",...args},actor);
+  if(name==="save_driver")return mutateVerified({operation:"driver_upsert",...args},actor);
+  if(name==="save_fleet")return mutateVerified({operation:"fleet_upsert",...args},actor);
+  if(name==="save_trip")return mutateVerified({operation:"trip_upsert",...args},actor);
+  if(name==="save_fueling")return mutateVerified({operation:"fueling_upsert",...args},actor);
+  if(name==="save_expense")return mutateVerified({operation:"expense_upsert",...args},actor);
+  if(name==="update_freight_prices")return mutateVerified({operation:"freight_prices_update",...args},actor);
   if(name==="manage_management_user"){
-    if(args.action==="disable")return mutateSystem({operation:"management_user_disable",username:args.username},actor);
-    return mutateSystem({operation:"management_user_upsert",username:args.username,password:args.password??"",role:args.role??"admin"},actor);
+    if(args.action==="disable")return mutateVerified({operation:"management_user_disable",username:args.username},actor);
+    return mutateVerified({operation:"management_user_upsert",username:args.username,password:args.password??"",role:args.role??"admin"},actor);
   }
   if(name==="process_pending_report"){
-    return mutateSystem({operation:args.action==="accept"?"report_accept":"report_reject",ticket:args.ticket},actor);
+    return mutateVerified({operation:args.action==="accept"?"report_accept":"report_reject",ticket:args.ticket},actor);
+  }
+  if(name==="update_pending_report"){
+    return mutateVerified({operation:"report_update",...args},actor);
+  }
+  if(name==="process_pending_reports_bulk"){
+    const results:any[]=[];
+    for(const ticket of Array.isArray(args.tickets)?args.tickets:[]){
+      try{
+        results.push(await mutateVerified({operation:args.action==="accept"?"report_accept":"report_reject",ticket},actor));
+      }catch(error:any){
+        results.push({ok:false,ticket,error:String(error?.message||error)});
+      }
+    }
+    return{ok:results.every((x)=>x.ok!==false),action:args.action,total:results.length,results};
   }
   if(name==="delete_trans_salomao_record"){
     if(!explicitlyConfirmed(norm(userMessage)))throw new Error("CONFIRMATION_REQUIRED");
-    const map:Record<string,string>={trip:"delete_trip",fueling:"delete_fueling",expense:"delete_expense",report:"delete_report",driver:"delete_driver",all_trips:"delete_all_trips"};
+    const map:Record<string,string>={trip:"delete_trip",fueling:"delete_fueling",expense:"delete_expense",report:"delete_report",driver:"delete_driver",fleet:"delete_fleet",all_trips:"delete_all_trips"};
     const operation=map[String(args.entity??"")];
     if(!operation)throw new Error("Tipo de exclusão inválido.");
-    return mutateSystem({operation,id:args.id??"",confirmed:true},actor);
+    return mutateVerified({operation,id:args.id??"",confirmed:true},actor);
   }
   throw new Error("Ferramenta não autorizada.");
 }
 
 async function gptAnswer(message:string,history:Turn[],key:string,actor:string){
   const prior=history.map((x)=>`${x.role==="user"?"Usuário":"Salomão"}: ${x.role==="user"?redactSecrets(x.content):x.content}`).join("\n")||"(sem histórico)";
-  const instructions=`Você é Salomão IA, agente operacional da transportadora Trans Salomão. Fale em português do Brasil, natural, curto e preciso.
+  const instructions=`Você é Salomão IA, agente operacional autônomo da transportadora Trans Salomão. Fale em português do Brasil, natural, curto e preciso.
 
-REGRAS DE SEGURANÇA E CORREÇÃO:
-1. Dados reais sempre vêm das ferramentas. Nunca invente valores, IDs, nomes, preços, datas ou totais.
-2. Para consultas use query_trans_salomao. Para alterar dados use somente a ferramenta específica da entidade.
-3. Antes de uma alteração, confira se todos os campos essenciais estão claros. Se faltar algo, faça uma única pergunta objetiva e NÃO execute nenhuma ferramenta de gravação.
-4. Nunca escolha motorista ou conjunto quando houver ambiguidade. Consulte e peça nome completo/placa.
-5. Não converta um pedido de login/usuário/acesso em motorista.
-6. Não assuma modalidade de viagem. O usuário precisa deixar claro: por tonelada, diária, cegonha ou caixinha.
-7. Só considere uma ação concluída depois de receber retorno de sucesso da ferramenta. Se a ferramenta devolver erro, explique o erro e não diga que executou.
-8. Exclusões só podem ocorrer quando o pedido ATUAL contiver confirmação explícita; caso contrário peça confirmação. Nunca interprete uma confirmação antiga do histórico como confirmação atual.
-9. Nunca revele, repita ou registre em texto de resposta senhas ou segredos.
-10. Se o pedido puder significar duas operações diferentes, pergunte qual delas antes de executar.
+MISSÃO:
+- Trate cada mensagem como um OBJETIVO a ser concluído, não como uma única ação.
+- Faça internamente um plano de execução, consulte o estado real do sistema, execute quantas ferramentas forem necessárias, confira os resultados e continue até concluir.
+- Preserve o contexto da conversa para referências como "ele", "essa viagem", "o mesmo motorista" e "agora lance o abastecimento".
+- Não exponha cadeia de raciocínio interna. Na resposta final, informe somente o que fez, resultados e qualquer pendência objetiva.
+
+REGRAS OPERACIONAIS:
+1. Dados reais sempre vêm das ferramentas. Nunca invente valores, IDs, nomes, placas, preços, datas ou totais.
+2. Antes de alterar um registro existente, consulte o registro quando precisar completar campos ou resolver qual registro é.
+3. Depois de cada gravação, use o retorno de verificação. Só diga que concluiu se verification.verified não for false.
+4. Você pode encadear consultas e alterações no mesmo pedido. Exemplo: encontrar motorista → encontrar conjunto → lançar viagem → consultar e confirmar que apareceu.
+5. Use padrões já definidos pelo sistema quando forem inequívocos: data ausente pode ser hoje; preços de Diária/Cegonha/Caixinha vêm da configuração global. Não invente modalidade, peso, litros, preço por litro, motorista ou conjunto.
+6. Se faltar um dado realmente obrigatório e ele não puder ser obtido do sistema nem do histórico, faça UMA pergunta objetiva. Não peça dados opcionais.
+7. Se uma ferramenta der erro, tente diagnosticar consultando o sistema e corrigir o plano quando houver uma solução segura. Não repita a mesma ação cegamente.
+8. Para Caixa, você pode corrigir um pendente com update_pending_report e depois aceitar/rejeitar. Para vários tickets, use process_pending_reports_bulk quando apropriado.
+9. Para despesas: categoria "Adiantamento" pertence ao motorista; "Mecânica" e demais despesas operacionais normalmente pertencem ao conjunto.
+10. Nunca escolha entre motoristas ou conjuntos ambíguos. Consulte candidatos e peça identificação somente se ainda houver mais de uma possibilidade real.
+11. Exclusões continuam exigindo confirmação explícita NO PEDIDO ATUAL. Não use confirmação antiga do histórico.
+12. Nunca revele, repita ou registre senhas ou segredos na resposta.
+13. Se o usuário pedir várias ações, execute todas as que forem independentes e seguras; não pare depois da primeira.
+14. Ao final, faça uma resposta curta com: o que foi executado, o que foi verificado e, se houver, o único item que ainda precisa de informação.
 
 Usuário autenticado: ${actor}. Hoje: ${todayBR()}.`;
   const common={model:modelName(),reasoning:{effort:"high"},instructions,tools:assistantTools,tool_choice:"auto",parallel_tool_calls:false,max_output_tokens:4000};
   let response=await openAI(key,{...common,input:`Histórico:\n${prior}\n\nPedido atual:\n${message}`});
-  for(let i=0;i<8;i++){
+  for(let i=0;i<24;i++){
     const calls=(Array.isArray(response.output)?response.output:[]).filter((x:any)=>x?.type==="function_call");
     if(!calls.length){const text=outputText(response);if(text)return text;throw new Error("Resposta vazia");}
     const call=calls[0];
