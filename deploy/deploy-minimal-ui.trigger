@@ -1,1 +1,1 @@
-2026-09-26 05:47 BRT: Fix mobile Mais menu clipping and make Faturamento open Relatórios. UI-only production deploy; keep TRANS_UI_ONLY_DEPLOY=1 and do not run database migrations.
+2026-09-26: Fix Relatórios Excel button on Android/mobile. Preload Excel generator, show progress/errors, and keep Blob download URL alive for 60s. UI-only deploy; no database migrations.
