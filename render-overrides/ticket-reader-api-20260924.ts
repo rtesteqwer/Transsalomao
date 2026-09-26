@@ -9,7 +9,7 @@ import {
   TicketError,
   validateImage,
 } from "@/lib/ticket-core";
-import { finishTicketReading } from "@/lib/ticket-parser";
+import { finishTicketReading, parseTicketOcr } from "@/lib/ticket-parser";
 
 export const Route = createFileRoute("/api/ler-ticket")({
   server: { handlers: {
@@ -20,8 +20,9 @@ export const Route = createFileRoute("/api/ler-ticket")({
           authenticated: true,
           ...access,
           available: true,
-          engine: "chatgpt-vision",
+          engine: "chatgpt-vision+local-ocr-fallback",
           localOcrOnly: false,
+          ocrFallback: true,
           aiEnabled: true,
           provider: "openai",
         });
@@ -46,9 +47,24 @@ export const Route = createFileRoute("/api/ler-ticket")({
         }
         await allowTicketRead(sql, `${access.role}:${access.username}`);
 
+        const routeMemories = await loadTicketRouteMemories(sql);
+
+        // Segunda leitura automática: o aparelho executa Tesseract e envia só o
+        // texto quando ChatGPT Vision está sem crédito, em timeout ou indisponível.
+        if (typeof body.ocrText === "string" && body.ocrText.trim()) {
+          const ocrText = body.ocrText.slice(0, 30_000);
+          const ticket = parseTicketOcr(ocrText, freightMode, fleet);
+          const routeMatch = matchRouteFromOcr(ocrText, routeMemories);
+          if (routeMatch) applyRoute(ticket, routeMatch.route, routeMatch.confidence);
+          ticket.alertas = [
+            "Contingência automática: a API de visão não respondeu; os dados foram extraídos pelo OCR local.",
+            ...ticket.alertas.filter((alerta) => !/^Contingência automática:/.test(alerta)),
+          ];
+          return json(ticket);
+        }
+
         const image = validateImage(body);
         const dataUrl = `data:${image.mime};base64,${image.base64}`;
-        const routeMemories = await loadTicketRouteMemories(sql);
         const result = await readTicketWithChatGPT(dataUrl, freightMode, fleet, routeMemories);
         const ticket = finishTicketReading(result, freightMode, fleet);
         const routeKey = typeof result?.route_key === "string" ? result.route_key.trim() : "";
@@ -56,14 +72,7 @@ export const Route = createFileRoute("/api/ler-ticket")({
         const route = Number.isFinite(routeConfidence) && routeConfidence >= 0.85
           ? routeMemories.find((item) => item.route_key === routeKey)
           : undefined;
-        if (route) {
-          ticket.route_group = route.route_name;
-          ticket.route_origin = route.origin;
-          ticket.route_destination = route.destination;
-          ticket.route_price_per_ton = Number(route.price_per_ton);
-          ticket.route_confidence = routeConfidence;
-          ticket.alertas = ticket.alertas.filter((alerta) => !/rota não identificada/i.test(alerta));
-        }
+        if (route) applyRoute(ticket, route, routeConfidence);
         return json(ticket);
       } catch (error) { return ticketErrorResponse(error); }
     },
@@ -131,6 +140,45 @@ function routeMemoryInstructions(routes: RouteMemory[]) {
   return routes.map((route) =>
     `- ${route.route_key}: ${route.route_name}; origem=${route.origin || "não definida"}; destino=${route.destination || "não definido"}; preço/t=${route.price_per_ton}; pistas=${route.match_hints || "nenhuma"}`
   ).join("\n");
+}
+
+function applyRoute(ticket: ReturnType<typeof finishTicketReading>, route: RouteMemory, confidence: number) {
+  ticket.route_group = route.route_name;
+  ticket.route_origin = route.origin;
+  ticket.route_destination = route.destination;
+  ticket.route_price_per_ton = Number(route.price_per_ton);
+  ticket.route_confidence = confidence;
+  ticket.alertas = ticket.alertas.filter((alerta) => !/rota não identificada/i.test(alerta));
+}
+
+function matchRouteFromOcr(text: string, routes: RouteMemory[]) {
+  const u = String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  const has = (pattern: RegExp) => pattern.test(u);
+  const get = (key: string) => routes.find((route) => route.route_key === key);
+
+  // Ordem específica evita colisões: ECOLOGISTICS com MAP continua sendo a
+  // rota Rota do Sol - Eco, enquanto ADUBOS REAL + MAP é a rota de R$33/t.
+  if (has(/LOG\s+CONSULTING/) && has(/SPORTOS/) && has(/YARA\s+VIX\s*1|NITRABOR|BELISLAND/)) {
+    const route = get("transportadora-ras");
+    if (route) return { route, confidence: 0.99 };
+  }
+  if (has(/ECOLOGISTICS|ECO\s*LOGISTICS/) && has(/BOLETIM\s+DE\s+PESAGEM|OPATEM/)) {
+    const route = get("rota-do-sol-eco");
+    if (route) return { route, confidence: 0.97 };
+  }
+  if (has(/ADUBOS\s+REAL/) && has(/\bMAP\b|FOSFATO\s+MONOAMONICO|FOSFATO\s+MONOAMONICO/)) {
+    const route = get("papaleguas-rota-do-sol-map");
+    if (route) return { route, confidence: 0.95 };
+  }
+  if (has(/ADUBOS\s+REAL/) && has(/UREIA|PAPALEGUAS/)) {
+    const route = get("papaleguas-ureia-adubos-real");
+    if (route) return { route, confidence: 0.94 };
+  }
+  if (has(/SPORTOS/) && has(/ECO/) && has(/FESTIPAR|FERTIPAR/)) {
+    const route = get("sportos-eco-festipar");
+    if (route) return { route, confidence: 0.96 };
+  }
+  return null;
 }
 
 async function readTicketWithChatGPT(

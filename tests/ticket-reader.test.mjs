@@ -22,13 +22,18 @@ for (const name of ['ticket-core', 'ticket-parser']) {
 const { parseTicketOcr, finishTicketReading } = await import(pathToFileURL(path.join(tmp, 'ticket-parser.mjs')));
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
-test('ticket reader build uses ChatGPT vision and no longer ships local Tesseract', () => {
+test('ticket reader uses ChatGPT first and ships automatic local OCR fallback', () => {
   const route = readFileSync(path.join(source, 'src/routes/api/ler-ticket.ts'), 'utf8');
+  const motorista = readFileSync(path.join(source, 'src/routes/motorista.tsx'), 'utf8');
   const pkg = JSON.parse(readFileSync(path.join(source, 'package.json'), 'utf8'));
   assert.match(route, /api\.openai\.com\/v1\/responses/);
   assert.match(route, /input_image/);
   assert.match(route, /OPENAI_API_KEY/);
-  assert.equal(pkg.dependencies?.['tesseract.js'], undefined);
+  assert.match(route, /body\.ocrText/);
+  assert.match(route, /parseTicketOcr/);
+  assert.match(motorista, /ocrTicketLocal/);
+  assert.match(motorista, /fallbackStatuses/);
+  assert.equal(pkg.dependencies?.['tesseract.js'], '^6.0.1');
 });
 
 test('confirmed route memory keeps distinct prices and RAS disambiguation evidence', () => {
@@ -39,6 +44,49 @@ test('confirmed route memory keeps distinct prices and RAS disambiguation eviden
   assert.match(route, /transportadora-ras[\s\S]*?14/);
   assert.match(route, /LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;BELISLAND/);
   assert.match(route, /SPORTOS sozinha NÃO identifica|SPORTOS sozinha N.O identifica/i);
+});
+
+test('ECOLOGISTICS fallback model reads OPATEM, plates, MAP cargo and exact net kg', () => {
+  const ocr = `ECOLOGISTICS SOLUCOES INTERMODAIS LTDA
+CNPJ: 14.165.301/0001-80
+BOLETIM DE PESAGEM
+OPATEM N°: 001533/000013
+PLACA ES QWS3E13
+REBOQ ES FYW7J05
+LIQUIDO 32720 KG
+Declarado: 32710
+Navio: SANTAMARIA
+Empresa: ADUBOS REAL S/A MATOZINHOS
+Transportador: ULIANA ARS TRANSPORTADORA LTDA
+Motorista: KLEBERSON DUTRA DA SILVA
+Carga: FOSFATO MONOAMONICO (MAP GR)
+PESO BRUTO 51280 KG
+DATA/HORA 09/09/2026 - 07:26
+PESO TARA 18560 KG
+DATA/HORA 09/09/2026 - 07:50
+Emissão 09/09/2026 - 07:50:59`;
+  const d = parseTicketOcr(ocr, 'ton', { tractorPlate: 'QWS3E13', trailerPlate: 'FYW7J05' });
+  assert.equal(d.model_type, 'ecologistics');
+  assert.equal(d.numero_ticket, '001533000013');
+  assert.equal(d.placa_veiculo, 'QWS3E13');
+  assert.equal(d.placa_carreta, 'FYW7J05');
+  assert.equal(d.peso_liquido_kg, 32720);
+  assert.equal(d.pesagem_inicial_kg, 51280);
+  assert.equal(d.pesagem_final_kg, 18560);
+  assert.equal(d.transportadora, 'ULIANA ARS TRANSPORTADORA LTDA');
+  assert.match(d.produto || '', /FOSFATO MONOAMONICO/);
+  assert.equal(d.navio, 'SANTAMARIA');
+  assert.equal(d.data_ticket, '09/09/2026');
+  assert.equal(d.hora_ticket, '07:50:59');
+});
+
+test('OCR route contingency keeps Ecologistics and RAS rules separate', () => {
+  const route = readFileSync(path.join(source, 'src/routes/api/ler-ticket.ts'), 'utf8');
+  assert.match(route, /ECOLOGISTICS\|ECO\\s\*LOGISTICS/);
+  assert.match(route, /transportadora-ras/);
+  assert.match(route, /rota-do-sol-eco/);
+  assert.match(route, /LOG\\s\+CONSULTING/);
+  assert.match(route, /YARA\\s\+VIX/);
 });
 
 test('MULTILIFT photo model: ticket 0534063, exact net kg and selected fleet plates', () => {
