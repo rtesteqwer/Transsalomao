@@ -74,7 +74,12 @@ export const Route = createFileRoute("/api/ler-ticket")({
         const image = validateImage(body);
         const dataUrl = `data:${image.mime};base64,${image.base64}`;
         const result = await readTicketWithChatGPT(dataUrl, freightMode, fleet, routeMemories, autoDetectMode);
-        const ticket = finishTicketReading(result, readMode, fleet);
+        const detectedMode = result?.model_type === "sertrading_cegonha"
+          ? "cegonha"
+          : (autoDetectMode && ["ton","trip","cegonha","caixinha"].includes(String(result?.inferred_freight_mode))
+            ? result.inferred_freight_mode
+            : readMode);
+        const ticket = finishTicketReading(result, detectedMode, fleet);
         const routeKey = typeof result?.route_key === "string" ? result.route_key.trim() : "";
         const routeConfidence = Number(result?.route_confidence);
         const route = Number.isFinite(routeConfidence) && routeConfidence >= 0.85
@@ -287,7 +292,7 @@ async function readTicketWithChatGPT(
 Analise SOMENTE o que está visível na foto e devolva os campos pelo schema. Não invente dados.
 
 REGRAS CRÍTICAS:
-1. numero_ticket é o número físico do ticket/tiquete/comprovante de pesagem. Nunca use número de agendamento, NF, CNPJ, chave de acesso ou código aleatório.
+1. numero_ticket é o identificador operacional do ticket. Nunca use número de agendamento, NF, CNPJ, chave de acesso ou código aleatório. EXCEÇÃO IMPORTANTE: no modelo SERTRADING de Cegonha, o campo impresso "Romaneio" É o Ticket da viagem; copie o Romaneio exatamente, preservando hífen e ponto (ex.: Romaneio 1-83.045 -> numero_ticket "1-83.045").
 2. peso_liquido_kg deve ser o PESO LÍQUIDO impresso, em quilogramas inteiros. Se estiver em toneladas, converta para kg (38,470 t = 38470 kg). Não confunda bruto, tara, entrada ou saída com peso líquido.
 3. Se peso líquido não estiver legível, mas bruto e tara estiverem claramente legíveis, pode calcular a diferença e escrever um alerta informando que foi calculado.
 4. placa_veiculo = cavalo/veículo; placa_carreta = carreta/reboque. Normalize placa brasileira para 7 caracteres sem hífen. Não troque as duas.
@@ -296,7 +301,7 @@ REGRAS CRÍTICAS:
 7. data_ticket = data impressa no ticket/documento. Se houver várias datas, prefira a data de fechamento/saída/pesagem final; se houver apenas uma, use essa. Normalize para DD/MM/AAAA quando for inequívoco.
 8. hora_ticket = horário correspondente à data escolhida. Se houver vários horários, prefira fechamento/saída/pesagem final. Use HH:MM ou HH:MM:SS conforme estiver legível. Se data ou hora não estiverem visíveis com segurança, use null.
 9. Preserve nomes de empresas de forma legível quando a foto permitir. Ex.: RAS TRANSPORTES, LOG CONSULTING, HERINGER, MULTILIFT, ADUBOS REAL, VPORTS.
-10. model_type pode ser "multilift", "adubos_real", "vports_recibo", "vports_relatorio", "log_consulting" ou "desconhecido".
+10. model_type pode ser "sertrading_cegonha", "multilift", "adubos_real", "vports_recibo", "vports_relatorio", "log_consulting" ou "desconhecido".
 11. placas_detectadas deve listar todas as placas plausíveis vistas na foto.
 12. Em modo diferente de "ton", ainda leia metadados do ticket, incluindo data e horário, mas os pesos serão descartados pelo servidor.
 13. Conjunto selecionado: ${selectedFleetText || "nenhum"}. Use isso somente para desambiguar um caractere que esteja VISIVELMENTE muito próximo na foto; nunca preencha uma placa que não apareça.
@@ -310,6 +315,9 @@ REGRAS CRÍTICAS:
 18C. Em tickets ADUBOS REAL, a anotação manuscrita clara "Rota do Sol" junto da família MAP/Fosfato confirma a memória de R$ 33/t. Se houver preço manuscrito explícito como "33,00 tonelada", ele pode ser usado como inferred_price mesmo que algum outro campo da rota não esteja legível.
 19. Cruze TODAS as pistas disponíveis: layout do documento, títulos, empresas, produto, rota, observações manuscritas, pesos, valores, data e hora. Não decida por uma palavra isolada.
 20. inferred_freight_mode deve indicar a modalidade mais provável: "ton" para frete por tonelada; "cegonha" e "caixinha" quando o layout/palavras padronizadas identificarem esses tickets; "trip" para preço fixo por viagem. ${autoDetectMode ? "A modalidade escolhida na tela NÃO deve influenciar a classificação: identifique pela foto." : "Use a modalidade da tela apenas como contexto secundário."}
+20A. MODELO CEGONHA SERTRADING: quando a foto mostrar o layout com "Romaneio", "Prog. Veículo", "Data Embarque" e tabela com colunas "PESO/KG", "VALOR", "BL" e rodapé "QUANTIDADE", classifique model_type="sertrading_cegonha", inferred_freight_mode="cegonha" e inference_confidence >= 0.98. Use o valor de "Romaneio" como numero_ticket preservando a formatação visível (ex.: 1-83.045).
+20B. Nesse modelo SERTRADING, a coluna PESO/KG e o total PESO/KG NÃO são peso líquido da viagem: retorne pesagem_inicial_kg, pesagem_final_kg, peso_liquido_kg e peso_origem_kg como null. A coluna VALOR e o total "Valor" são valores da carga/BL, NÃO preço do frete: inferred_price deve ser null, salvo se existir um preço de frete separado e explicitamente identificado como frete.
+20C. No modelo SERTRADING, use "Data Embarque" para data_ticket e hora_ticket quando legíveis. Não exija placas, peso líquido ou BL para reconhecer a modalidade Cegonha.
 21. inferred_price deve ser o preço operacional da viagem quando puder ser descoberto com segurança. Para "ton", prefira o preço/t aprendido da rota ou explicitamente indicado. Para "cegonha", "caixinha" e "trip", use preço POR VIAGEM. Não confunda peso, número de ticket, NF, CNPJ ou horário com preço.
 22. inferred_price_basis explique em poucas palavras de onde veio o preço (ex.: "rota Papaléguas-Uréia", "valor R$ impresso", "padrão de cegonha"). inference_confidence deve refletir a segurança da modalidade/preço.
 23. Quando data e hora existirem, associe a hora à mesma pesagem escolhida para data_ticket; prefira saída/fechamento/pesagem final. Retorne os dois juntos sempre que forem legíveis.
