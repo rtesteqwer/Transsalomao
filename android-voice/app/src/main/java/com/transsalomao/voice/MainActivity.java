@@ -10,9 +10,12 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.net.Uri;
 import android.provider.Settings;
 import android.service.voice.VoiceInteractionService;
 import android.speech.RecognitionListener;
@@ -21,6 +24,7 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 import android.text.InputType;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -45,6 +49,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -59,13 +64,19 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public class MainActivity extends Activity implements TextToSpeech.OnInitListener {
     private static final int AUDIO_PERMISSION_REQUEST = 1001;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1002;
+    private static final int ZIP_PICK_REQUEST = 1601;
+    private static final int MAX_ZIP_IMAGES = 40;
+    private static final int MAX_ZIP_ENTRY_BYTES = 12 * 1024 * 1024;
     private static final String HOME_URL = "https://transsalomao.vercel.app/";
     private static final String ASSISTANT_URL = HOME_URL + "api/assistant";
     private static final String AUTH_URL = HOME_URL + "api/assistant/auth";
+    private static final String DOCUMENT_INTAKE_URL = HOME_URL + "api/assistant/document-intake";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService network = Executors.newSingleThreadExecutor();
@@ -96,6 +107,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private boolean showingSite;
     private boolean siteLoaded;
     private boolean accessChecking;
+    private boolean processingArchive;
     private String queuedVoiceCommand;
 
     @Override
@@ -138,6 +150,14 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         super.onNewIntent(intent);
         setIntent(intent);
         handleAssistantIntent(intent);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == ZIP_PICK_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            processZipArchive(data.getData());
+        }
     }
 
     @Override
@@ -352,6 +372,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             new AlertDialog.Builder(this)
                     .setTitle("Ações rápidas")
                     .setItems(new String[]{
+                            "📦 Adicionar ZIP e reconhecer fotos",
                             "Lançar viagem",
                             "Consultar motorista",
                             "Abastecimentos",
@@ -359,7 +380,11 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                             "Relatórios",
                             "Abrir site"
                     }, (dialog, which) -> {
-                        if (which == 5) {
+                        if (which == 0) {
+                            openZipPicker();
+                            return;
+                        }
+                        if (which == 6) {
                             showSite();
                             return;
                         }
@@ -370,7 +395,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                                 "Quero consultar despesas",
                                 "Quero ver os relatórios"
                         };
-                        input.setText(prompts[which]);
+                        input.setText(prompts[which - 1]);
                         input.setSelection(input.getText().length());
                     }).show();
         });
@@ -459,6 +484,325 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    private void openZipPicker() {
+        if (processingArchive) {
+            Toast.makeText(this, "Já estou analisando um ZIP.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        picker.addCategory(Intent.CATEGORY_OPENABLE);
+        picker.setType("application/zip");
+        picker.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "application/zip",
+                "application/x-zip-compressed",
+                "application/octet-stream"
+        });
+        try {
+            startActivityForResult(picker, ZIP_PICK_REQUEST);
+        } catch (Exception e) {
+            Toast.makeText(this, "Não encontrei um seletor de arquivos ZIP.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void processZipArchive(Uri uri) {
+        if (processingArchive || uri == null) return;
+        processingArchive = true;
+        showChat();
+        status.setText("Lendo ZIP e reconhecendo documentos…");
+        addChatMessage("assistant",
+                "📦 Recebi o ZIP. Vou abrir as imagens, ler os dados e separar cada documento em Viagem, Abastecimento, Adiantamento, Mecânica, Despesa ou Revisar.",
+                true);
+
+        network.execute(() -> {
+            ArrayList<String> summaries = new ArrayList<>();
+            int images = 0;
+            int analyzed = 0;
+            int failed = 0;
+
+            try (InputStream raw = getContentResolver().openInputStream(uri);
+                 ZipInputStream zip = raw == null ? null : new ZipInputStream(raw)) {
+                if (zip == null) throw new IllegalArgumentException("Não consegui abrir o ZIP.");
+
+                ZipEntry entry;
+                while ((entry = zip.getNextEntry()) != null) {
+                    if (entry.isDirectory()) {
+                        zip.closeEntry();
+                        continue;
+                    }
+                    String name = safeZipEntryName(entry.getName());
+                    if (!isImageArchiveEntry(name)) {
+                        zip.closeEntry();
+                        continue;
+                    }
+                    images += 1;
+                    if (images > MAX_ZIP_IMAGES) {
+                        summaries.add("⚠ O ZIP possui mais de " + MAX_ZIP_IMAGES + " imagens. Analisei somente as primeiras " + MAX_ZIP_IMAGES + ".");
+                        break;
+                    }
+                    if (entry.getSize() > MAX_ZIP_ENTRY_BYTES) {
+                        failed += 1;
+                        summaries.add("⚠ " + name + " — imagem grande demais para análise.");
+                        zip.closeEntry();
+                        continue;
+                    }
+
+                    try {
+                        byte[] bytes = readZipImage(zip, MAX_ZIP_ENTRY_BYTES);
+                        PreparedImage prepared = prepareImageForVision(bytes);
+                        if (prepared == null) {
+                            failed += 1;
+                            summaries.add("⚠ " + name + " — formato de imagem não reconhecido.");
+                            continue;
+                        }
+
+                        JSONObject response = callDocumentIntake(name, prepared);
+                        analyzed += 1;
+                        summaries.add(formatDocumentAnalysis(name, response));
+
+                        if (summaries.size() >= 6) {
+                            ArrayList<String> batch = new ArrayList<>(summaries);
+                            summaries.clear();
+                            runOnUiThread(() -> addChatMessage("assistant", joinSummaries(batch), true));
+                        }
+                    } catch (Exception itemError) {
+                        failed += 1;
+                        summaries.add("⚠ " + name + " — " + safeArchiveError(itemError));
+                    } finally {
+                        try { zip.closeEntry(); } catch (Exception ignored) {}
+                    }
+                }
+            } catch (Exception e) {
+                final String message = safeArchiveError(e);
+                runOnUiThread(() -> addChatMessage("assistant",
+                        "Não consegui concluir a leitura do ZIP: " + message + " Nenhum documento foi lançado automaticamente.",
+                        true));
+            } finally {
+                if (!summaries.isEmpty()) {
+                    ArrayList<String> batch = new ArrayList<>(summaries);
+                    runOnUiThread(() -> addChatMessage("assistant", joinSummaries(batch), true));
+                }
+                final int imageCount = images;
+                final int successCount = analyzed;
+                final int failCount = failed;
+                runOnUiThread(() -> {
+                    processingArchive = false;
+                    status.setText("Online • Conectado ao Trans Salomão");
+                    if (imageCount == 0) {
+                        addChatMessage("assistant",
+                                "Não encontrei fotos compatíveis dentro do ZIP. Use JPG, JPEG, PNG, WEBP, HEIC ou HEIF.",
+                                true);
+                    } else {
+                        addChatMessage("assistant",
+                                "✅ ZIP analisado: " + successCount + " documento(s) reconhecido(s)"
+                                        + (failCount > 0 ? " e " + failCount + " que precisam de revisão." : ".")
+                                        + "\nOs itens marcados como prontos têm dados suficientes para o módulo indicado; os demais mostram exatamente o que falta.",
+                                true);
+                    }
+                });
+            }
+        });
+    }
+
+    private String joinSummaries(List<String> rows) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < rows.size(); i++) {
+            if (i > 0) out.append("\n\n");
+            out.append(rows.get(i));
+        }
+        return out.toString();
+    }
+
+    private String safeZipEntryName(String value) {
+        if (value == null || value.trim().isEmpty()) return "imagem";
+        String normalized = value.replace('\\', '/');
+        int slash = normalized.lastIndexOf('/');
+        String name = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+        return name.length() > 120 ? name.substring(name.length() - 120) : name;
+    }
+
+    private boolean isImageArchiveEntry(String name) {
+        String n = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        return n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png")
+                || n.endsWith(".webp") || n.endsWith(".heic") || n.endsWith(".heif");
+    }
+
+    private byte[] readZipImage(ZipInputStream zip, int maxBytes) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int total = 0;
+        int read;
+        while ((read = zip.read(buffer)) != -1) {
+            total += read;
+            if (total > maxBytes) throw new IllegalArgumentException("imagem excede o limite de 12 MB");
+            out.write(buffer, 0, read);
+        }
+        return out.toByteArray();
+    }
+
+    private PreparedImage prepareImageForVision(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) return null;
+        Bitmap source = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        if (source == null) return null;
+
+        Bitmap image = source;
+        int width = source.getWidth();
+        int height = source.getHeight();
+        int max = Math.max(width, height);
+        if (max > 2000) {
+            float ratio = 2000f / max;
+            int w = Math.max(1, Math.round(width * ratio));
+            int h = Math.max(1, Math.round(height * ratio));
+            image = Bitmap.createScaledBitmap(source, w, h, true);
+        }
+
+        byte[] encoded = compressJpeg(image, 88);
+        if (encoded.length > 2_700_000) encoded = compressJpeg(image, 76);
+        if (encoded.length > 3_500_000) encoded = compressJpeg(image, 64);
+
+        if (image != source) image.recycle();
+        source.recycle();
+
+        return new PreparedImage("image/jpeg", Base64.encodeToString(encoded, Base64.NO_WRAP));
+    }
+
+    private byte[] compressJpeg(Bitmap image, int quality) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        image.compress(Bitmap.CompressFormat.JPEG, quality, out);
+        return out.toByteArray();
+    }
+
+    private JSONObject callDocumentIntake(String fileName, PreparedImage prepared) throws Exception {
+        HttpURLConnection c = openJsonConnection(DOCUMENT_INTAKE_URL, "POST");
+        applyAssistantAuth(c);
+        c.setRequestProperty("X-Salomao-App", "1");
+
+        JSONObject body = new JSONObject();
+        body.put("fileName", fileName);
+        body.put("mime", prepared.mime);
+        body.put("imageBase64", prepared.base64);
+        writeJson(c, body);
+
+        int code = c.getResponseCode();
+        String raw = readAll(code >= 400 ? c.getErrorStream() : c.getInputStream());
+        JSONObject response = raw.isEmpty() ? new JSONObject() : new JSONObject(raw);
+        if (code < 200 || code >= 300) {
+            String message = response.optString("message", "Falha na leitura visual.");
+            throw new IllegalArgumentException(message);
+        }
+        return response;
+    }
+
+    private String formatDocumentAnalysis(String fileName, JSONObject response) {
+        JSONObject r = response.optJSONObject("result");
+        JSONObject routing = response.optJSONObject("routing");
+        if (r == null || routing == null) return "⚠ " + fileName + " — leitura inválida.";
+
+        String category = r.optString("category", "desconhecido");
+        String target = routing.optString("target", "Revisar");
+        int confidence = (int) Math.round(r.optDouble("confidence", 0) * 100);
+        boolean ready = routing.optBoolean("readyToLaunch", false);
+
+        StringBuilder b = new StringBuilder();
+        b.append("📄 ").append(fileName).append("\n");
+        b.append("→ ").append(categoryLabel(category)).append(" • ").append(target)
+                .append(" • confiança ").append(confidence).append("%");
+
+        ArrayList<String> details = new ArrayList<>();
+        addDetail(details, "Data", jsonText(r, "date"));
+        addDetail(details, "Motorista", firstNonEmpty(jsonText(r, "driver_name"), jsonText(r, "recipient_name")));
+        String plates = firstNonEmpty(jsonText(r, "tractor_plate"), jsonText(r, "trailer_plate"));
+        addDetail(details, "Placa", plates);
+
+        if ("abastecimento".equals(category)) {
+            addNumberDetail(details, "Litros", r, "liters", " L", 3);
+            addMoneyDetail(details, "Preço/L", r, "price_per_liter");
+            addMoneyDetail(details, "Total", r, "amount_total");
+            addDetail(details, "Posto", firstNonEmpty(jsonText(r, "station"), jsonText(r, "supplier")));
+        } else if ("viagem".equals(category)) {
+            addDetail(details, "Ticket", jsonText(r, "ticket_number"));
+            if (!r.isNull("net_weight_kg")) {
+                double tons = r.optDouble("net_weight_kg", 0) / 1000.0;
+                details.add("Peso " + String.format(new Locale("pt", "BR"), "%.3f t", tons));
+            }
+            addDetail(details, "Cliente", jsonText(r, "client"));
+            addDetail(details, "Origem", jsonText(r, "origin"));
+            addDetail(details, "Destino", jsonText(r, "destination"));
+        } else {
+            addMoneyDetail(details, "Valor", r, "amount_total");
+            addDetail(details, "Fornecedor", jsonText(r, "supplier"));
+            addDetail(details, "Descrição", jsonText(r, "description"));
+        }
+
+        if (!details.isEmpty()) b.append("\n").append(String.join(" • ", details));
+
+        JSONArray missing = routing.optJSONArray("missingFields");
+        if (ready) {
+            b.append("\n✅ Dados suficientes para o lançamento no módulo indicado.");
+        } else if (missing != null && missing.length() > 0) {
+            ArrayList<String> fields = new ArrayList<>();
+            for (int i = 0; i < missing.length(); i++) fields.add(missing.optString(i));
+            b.append("\n⚠ Revisar antes de lançar. Falta: ").append(String.join(", ", fields)).append(".");
+        } else {
+            b.append("\n⚠ Revisar antes de lançar.");
+        }
+        return b.toString();
+    }
+
+    private String categoryLabel(String category) {
+        if ("viagem".equals(category)) return "Viagem";
+        if ("abastecimento".equals(category)) return "Abastecimento";
+        if ("adiantamento".equals(category)) return "Adiantamento";
+        if ("mecanica".equals(category)) return "Mecânica";
+        if ("despesa".equals(category)) return "Despesa";
+        return "Revisar";
+    }
+
+    private String jsonText(JSONObject object, String key) {
+        if (object == null || object.isNull(key)) return "";
+        String value = object.optString(key, "").trim();
+        return "null".equalsIgnoreCase(value) ? "" : value;
+    }
+
+    private String firstNonEmpty(String a, String b) {
+        return a != null && !a.trim().isEmpty() ? a.trim() : (b == null ? "" : b.trim());
+    }
+
+    private void addDetail(List<String> rows, String label, String value) {
+        if (value != null && !value.trim().isEmpty()) rows.add(label + " " + value.trim());
+    }
+
+    private void addMoneyDetail(List<String> rows, String label, JSONObject object, String key) {
+        if (object == null || object.isNull(key)) return;
+        double value = object.optDouble(key, Double.NaN);
+        if (!Double.isNaN(value) && value > 0) {
+            rows.add(label + " " + String.format(new Locale("pt", "BR"), "R$ %.2f", value));
+        }
+    }
+
+    private void addNumberDetail(List<String> rows, String label, JSONObject object, String key, String suffix, int decimals) {
+        if (object == null || object.isNull(key)) return;
+        double value = object.optDouble(key, Double.NaN);
+        if (!Double.isNaN(value) && value > 0) {
+            String format = decimals == 3 ? "%.3f" : "%.2f";
+            rows.add(label + " " + String.format(new Locale("pt", "BR"), format, value) + suffix);
+        }
+    }
+
+    private String safeArchiveError(Exception error) {
+        String m = error == null ? "" : error.getMessage();
+        return m == null || m.trim().isEmpty() ? "não foi possível analisar este arquivo" : m;
+    }
+
+    private static class PreparedImage {
+        final String mime;
+        final String base64;
+
+        PreparedImage(String mime, String base64) {
+            this.mime = mime;
+            this.base64 = base64;
+        }
+    }
+
     private void configureWebView() {
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -467,7 +811,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.2.2");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.3.0");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -1119,7 +1463,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v522");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v530");
     }
 
     @Override
