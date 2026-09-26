@@ -35,17 +35,66 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
       return "Tudo";
     })();
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Planilha Geral", { views: [{ state: "frozen", ySplit: 6 }], pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 8 } });
-    const lightBlue = "DCEEFF", blue = "A9CBEA", dark = lightBlue, white = lightBlue, black = "111111", pale = lightBlue, totalFill = lightBlue;
+    const sheet = workbook.addWorksheet("Planilha Geral", {
+      views: [{ state: "frozen", ySplit: 6 }],
+      pageSetup: {
+        orientation: "landscape",
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        paperSize: 8,
+        margins: { left: 0.25, right: 0.25, top: 0.35, bottom: 0.35, header: 0.15, footer: 0.15 },
+      },
+    });
+    const lightBlue = "EAF3FB", blue = "C9DDF0", dark = "DCEAF7", white = "FFFFFF", black = "111111", pale = "F8FAFC", totalFill = "EEF5FB";
     const logoId = workbook.addImage({ base64: REPORT_LOGO_JPEG, extension: "jpeg" });
-    sheet.addImage(logoId, { tl: { col: 0.02, row: 0.01 }, ext: { width: 600, height: 300 } });
-    sheet.mergeCells("D1:H2"); sheet.getCell("D1").value = driverScope ? `PLANILHA ${driverScope.name.toLocaleUpperCase("pt-BR")} - TRANS SALOMÃO` : "PLANILHA GERAL - TRANS SALOMÃO"; sheet.getCell("D1").font = { bold: true, size: 26, color: { argb: black } }; sheet.getCell("D1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } }; sheet.getCell("D1").alignment = { horizontal: "center", vertical: "middle" };
-    sheet.mergeCells("D3:H4"); sheet.getCell("D3").value = `${excelPeriodLabel} • Relatórios • Operador: ${excelOperator}`; sheet.getCell("D3").font = { bold: true, size: 16, color: { argb: black } }; sheet.getCell("D3").fill = { type: "pattern", pattern: "solid", fgColor: { argb: pale } }; sheet.getCell("D3").alignment = { horizontal: "center", vertical: "middle" };
-    sheet.getRow(1).height = 104; sheet.getRow(2).height = 92; sheet.getRow(3).height = 40; sheet.getRow(4).height = 40;
+
+    // Cabeçalho compacto: logo no canto superior esquerdo, com a mesma altura visual do título.
+    sheet.addImage(logoId, { tl: { col: 0.12, row: 0.12 }, ext: { width: 150, height: 68 } });
+    sheet.mergeCells("C1:M2");
+    sheet.getCell("C1").value = driverScope ? `PLANILHA ${driverScope.name.toLocaleUpperCase("pt-BR")} - TRANS SALOMÃO` : "PLANILHA GERAL - TRANS SALOMÃO";
+    sheet.getCell("C1").font = { bold: true, size: 18, color: { argb: black } };
+    sheet.getCell("C1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } };
+    sheet.getCell("C1").alignment = { horizontal: "center", vertical: "middle" };
+    sheet.mergeCells("C3:M3");
+    sheet.getCell("C3").value = `${excelPeriodLabel} • Relatórios • Operador: ${excelOperator}`;
+    sheet.getCell("C3").font = { bold: true, size: 11, color: { argb: black } };
+    sheet.getCell("C3").fill = { type: "pattern", pattern: "solid", fgColor: { argb: pale } };
+    sheet.getCell("C3").alignment = { horizontal: "center", vertical: "middle" };
+    sheet.getRow(1).height = 28;
+    sheet.getRow(2).height = 28;
+    sheet.getRow(3).height = 22;
+    sheet.getRow(4).height = 8;
+
     const border = { top: { style: "thin", color: { argb: blue } }, bottom: { style: "thin", color: { argb: blue } }, left: { style: "thin", color: { argb: blue } }, right: { style: "thin", color: { argb: blue } } };
-    const styleHeader = (row: any) => row.eachCell((cell: any) => { cell.font = { bold: true, color: { argb: black }, size: 16 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: blue } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.border = border; });
-    const styleRow = (row: any, index: number) => row.eachCell((cell: any) => { cell.font = { color: { argb: black }, size: 16 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: index % 2 ? pale : white } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.border = border; });
-    const addSection = (title: string, headers: string[]) => { sheet.addRow([]); const titleRow = sheet.addRow([title]); sheet.mergeCells(titleRow.number, 1, titleRow.number, 8); titleRow.height = 34; const cell = sheet.getCell(titleRow.number, 1); cell.font = { bold: true, size: 18, color: { argb: black } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } }; cell.alignment = { horizontal: "center", vertical: "middle" }; const header = sheet.addRow(headers); header.height = 38; styleHeader(header); };
+    const styleHeader = (row: any) => row.eachCell((cell: any) => {
+      cell.font = { bold: true, color: { argb: black }, size: 11 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: blue } };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = border;
+    });
+    const styleRow = (row: any, index: number) => {
+      row.height = 22;
+      row.eachCell((cell: any) => {
+        cell.font = { color: { argb: black }, size: 10 };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: index % 2 ? pale : white } };
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        cell.border = border;
+      });
+    };
+    const addSection = (title: string, headers: string[]) => {
+      sheet.addRow([]);
+      const titleRow = sheet.addRow([title]);
+      sheet.mergeCells(titleRow.number, 1, titleRow.number, Math.max(8, headers.length));
+      titleRow.height = 24;
+      const cell = sheet.getCell(titleRow.number, 1);
+      cell.font = { bold: true, size: 12, color: { argb: black } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } };
+      cell.alignment = { horizontal: "left", vertical: "middle" };
+      const header = sheet.addRow(headers);
+      header.height = 26;
+      styleHeader(header);
+    };
     const normalize = (value: any) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
     const modeName = (mode: string) => mode === "ton" ? "Por tonelada" : mode === "trip" ? "Diária" : mode === "cegonha" ? "Cegonha" : "Caixinha";
     const grouped = new Map<string, any>();
@@ -59,21 +108,33 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
     const totalNetRevenue = totalRevenue - totalFueling - totalCommission;
     const summary = sheet.getRow(5);
     summary.values = ["Faturamento total", totalRevenue, "Faturamento líquido", totalNetRevenue, "Total de comissão", totalCommission, "Custo diesel", totalFueling];
-    summary.height = 42;
-    summary.eachCell((cell: any, col: number) => { cell.font = { bold: true, color: { argb: black }, size: 16 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: totalFill } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.border = border; if (col % 2 === 0) cell.numFmt = 'R$ #,##0.00'; });
+    summary.height = 28;
+    summary.eachCell((cell: any, col: number) => {
+      cell.font = { bold: true, color: { argb: black }, size: 10 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: totalFill } };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = border;
+      if (col % 2 === 0) cell.numFmt = 'R$ #,##0.00';
+    });
     const dieselByDriver = new Map<string, number>();
     excelFuelings.forEach((f: any) => { const driver = (data?.drivers ?? []).find((d: any) => String(d.id) === String(f.driverId ?? "")); const key = String(f.driverId ?? normalize(driver?.name)); if (!key) return; dieselByDriver.set(key, (dieselByDriver.get(key) ?? 0) + Number(f.liters ?? 0) * Number(f.pricePerLiter ?? 0)); });
-    const tripHeader = sheet.getRow(6); tripHeader.values = ["Motorista", "Modalidade", "Fretes", "Faturamento", "Comissão", "Adiantamentos", "Custo diesel", "Faturamento líquido"]; tripHeader.height = 42; styleHeader(tripHeader);
+    const tripHeader = sheet.getRow(6);
+    tripHeader.values = ["Motorista", "Modalidade", "Fretes", "Faturamento", "Comissão", "Adiantamentos", "Custo diesel", "Faturamento líquido"];
+    tripHeader.height = 26;
+    styleHeader(tripHeader);
     const seenDrivers = new Set<string>();
-    Array.from(grouped.values()).sort((a: any, b: any) => a.driverName.localeCompare(b.driverName, "pt-BR") || modeName(a.mode).localeCompare(modeName(b.mode), "pt-BR")).forEach((item: any, index: number) => { const driverKey = String(item.driverId ?? normalize(item.driverName)); const firstDriverRow = !seenDrivers.has(driverKey); const advance = firstDriverRow ? (advancesByDriver.get(driverKey) ?? advancesByDriver.get(normalize(item.driverName)) ?? 0) : 0; const diesel = firstDriverRow ? (dieselByDriver.get(driverKey) ?? dieselByDriver.get(normalize(item.driverName)) ?? 0) : 0; seenDrivers.add(driverKey); const row = sheet.addRow([item.driverName, modeName(item.mode), item.count, item.revenue, item.commission, advance, diesel, item.revenue - item.commission - diesel]); styleRow(row, index); for (let c = 4; c <= 8; c += 1) { row.getCell(c).numFmt = 'R$ #,##0.00'; row.getCell(c).font = { bold: true, color: { argb: black }, size: 16 }; } });
+    Array.from(grouped.values()).sort((a: any, b: any) => a.driverName.localeCompare(b.driverName, "pt-BR") || modeName(a.mode).localeCompare(modeName(b.mode), "pt-BR")).forEach((item: any, index: number) => { const driverKey = String(item.driverId ?? normalize(item.driverName)); const firstDriverRow = !seenDrivers.has(driverKey); const advance = firstDriverRow ? (advancesByDriver.get(driverKey) ?? advancesByDriver.get(normalize(item.driverName)) ?? 0) : 0; const diesel = firstDriverRow ? (dieselByDriver.get(driverKey) ?? dieselByDriver.get(normalize(item.driverName)) ?? 0) : 0; seenDrivers.add(driverKey); const row = sheet.addRow([item.driverName, modeName(item.mode), item.count, item.revenue, item.commission, advance, diesel, item.revenue - item.commission - diesel]); styleRow(row, index); for (let c = 4; c <= 8; c += 1) {
+      row.getCell(c).numFmt = 'R$ #,##0.00';
+      row.getCell(c).font = { bold: true, color: { argb: black }, size: 10 };
+    } });
 
     const excelModeInfo = (mode: string) => mode === "ton"
-      ? { label: "POR TONELADA", fill: "D9EAD3", accent: "6AA84F", order: 1 }
+      ? { label: "POR TONELADA", fill: "DDEBF7", accent: "5B9BD5", order: 1 }
       : mode === "trip"
-        ? { label: "DIÁRIA", fill: "D9EAF7", accent: "3D85C6", order: 2 }
+        ? { label: "DIÁRIA", fill: "F2F2F2", accent: "A6A6A6", order: 2 }
         : mode === "cegonha"
-          ? { label: "CEGONHA", fill: "FCE5CD", accent: "E69138", order: 3 }
-          : { label: "CAIXINHA", fill: "EADCF8", accent: "8E7CC3", order: 4 };
+          ? { label: "CEGONHA", fill: "FFF2CC", accent: "D6B656", order: 3 }
+          : { label: "CAIXINHA", fill: "E2F0D9", accent: "70AD47", order: 4 };
     const excelDateKey = (value: any) => {
       const raw = String(value ?? "").trim();
       const iso = raw.match(/^(\d{4}-\d{2}-\d{2})/); if (iso) return iso[1];
@@ -107,14 +168,25 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
     const excelLegend = sheet.addRow(["LEGENDA", "POR TONELADA", "DIÁRIA", "CEGONHA", "CAIXINHA"]);
     [2,3,4,5].forEach((col, i) => { const info = excelModeInfo(["ton","trip","cegonha","caixinha"][i]); const cell = excelLegend.getCell(col); cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.font = { bold: true, color: { argb: "111111" } }; cell.alignment = { horizontal: "center" }; });
     const excelTripHeader = sheet.addRow(["Data", "Ticket / Grupo", "Motorista", "Modalidade", "Qtd.", "Cliente", "Origem", "Destino", "Peso líquido (t)", "Faturamento", "Comissão", "Total líquido", "Resultado bruto"]);
-    excelTripHeader.height = 30;
-    excelTripHeader.eachCell((cell: any) => { cell.font = { bold: true, color: { argb: "111111" }, size: 11 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "C9D7E5" } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; });
+    excelTripHeader.height = 26;
+    excelTripHeader.eachCell((cell: any) => {
+      cell.font = { bold: true, color: { argb: "111111" }, size: 10 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "C9DDF0" } };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = border;
+    });
     excelChronological.forEach((item: any) => {
       const info = excelModeInfo(item.mode), grouped = item.kind === "group", trip = item.trip;
       const groupDate = item.firstDate === item.lastDate ? formatDate(item.firstDate) : formatDate(item.firstDate) + " a " + formatDate(item.lastDate);
       const row = sheet.addRow(grouped ? [groupDate, item.count + " viagens", item.driverName ?? "Sem motorista", info.label, item.count, excelSame(item.items, "client"), excelSame(item.items, "origin"), excelSame(item.items, "destination"), item.items.reduce((sum: number, x: any) => sum + Number(x.netWeight ?? 0), 0), item.freight, item.commission, item.after, item.result] : [formatDate(item.date), String(trip.code ?? "—"), String(trip.driverName ?? "Sem motorista"), info.label, 1, String(trip.client ?? "—"), String(trip.origin ?? "—"), String(trip.destination ?? "—"), Number(trip.netWeight ?? 0), Number(trip.freight ?? 0), Number(trip.commissionValue ?? trip.commission ?? 0), Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))), Number(trip.grossResult ?? 0)]);
-      row.eachCell((cell: any) => { cell.font = { color: { argb: "111111" }, size: 11, bold: grouped }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } }; cell.alignment = { vertical: "middle", wrapText: true }; });
-      row.getCell(4).font = { bold: true, color: { argb: "111111" }, size: 11 };
+      row.height = 22;
+      row.eachCell((cell: any) => {
+        cell.font = { color: { argb: "111111" }, size: 10, bold: grouped };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } };
+        cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } };
+        cell.alignment = { vertical: "middle", wrapText: true };
+      });
+      row.getCell(4).font = { bold: true, color: { argb: "111111" }, size: 10 };
       row.getCell(9).numFmt = '0.000 "t"'; [10,11,12,13].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; });
     });
 
@@ -128,7 +200,11 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
     addSection("CADASTROS - MOTORISTAS E CONJUNTOS", ["Tipo", "Nome", "CPF / Cavalo", "Telefone / Carreta", "CNH / Modelo", "Categoria", "Comissão", "Status"]);
     (data?.drivers ?? []).filter((d: any) => !driverScope || String(d.id) === String(driverScope.id)).forEach((d: any, index: number) => { const row = sheet.addRow(["Motorista", d.name, d.cpf ?? "—", d.phone ?? "—", d.cnh ?? "—", d.cnhCategory ?? d.category ?? "—", Number(d.commissionPct ?? 0), d.status]); styleRow(row, index); row.getCell(7).numFmt = '0.0%'; });
     (data?.fleets ?? []).filter((f: any) => !driverScope || excelTrips.some((t: any) => String(t.fleetId ?? "") === String(f.id))).forEach((f: any, index: number) => { const row = sheet.addRow(["Conjunto", f.name, f.tractorPlate ?? "—", f.trailerPlate ?? "—", f.model ?? f.type ?? "—", "—", "—", f.status]); styleRow(row, index); });
-    [14, 20, 28, 24, 9, 24, 22, 22, 18, 18, 18, 18, 18].forEach((width, i) => { sheet.getColumn(i + 1).width = width; }); sheet.autoFilter = { from: "A6", to: `H${Math.max(6, 6 + grouped.size)}` }; sheet.printArea = `A1:M${sheet.rowCount}`;
+    [13, 18, 22, 16, 9, 20, 18, 18, 16, 16, 16, 16, 16].forEach((width, i) => {
+      sheet.getColumn(i + 1).width = width;
+    });
+    sheet.autoFilter = { from: "A6", to: `H${Math.max(6, 6 + grouped.size)}` };
+    sheet.printArea = `A1:M${sheet.rowCount}`;
 
     if (driverScope) {
       const detailedTrips = excelTrips
@@ -157,15 +233,17 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
           pageSetup: { orientation: "landscape", paperSize: 8, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
         });
         tonSheet.orderNo = 1;
-        tonSheet.addImage(logoId, { tl: { col: 0.05, row: 0.05 }, ext: { width: 480, height: 225 } });
-        tonSheet.mergeCells("D1:Q2");
-        tonSheet.getCell("D1").value = "RELATÓRIO COMPLETO DO MOTORISTA - TRANS SALOMÃO";
-        tonSheet.getCell("D1").font = { bold: true, size: 20, color: { argb: "111111" } };
-        tonSheet.getCell("D1").alignment = { horizontal: "center", vertical: "middle" };
-        tonSheet.mergeCells("D3:Q3");
-        tonSheet.getCell("D3").value = driverScope.name + " • " + excelPeriodLabel + " • Relatórios • Operador: " + excelOperator;
-        tonSheet.getCell("D3").font = { bold: true, size: 13, color: { argb: "111111" } };
-        tonSheet.getCell("D3").alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+        tonSheet.addImage(logoId, { tl: { col: 0.12, row: 0.12 }, ext: { width: 150, height: 68 } });
+        tonSheet.mergeCells("C1:Q2");
+        tonSheet.getCell("C1").value = "RELATÓRIO COMPLETO DO MOTORISTA - TRANS SALOMÃO";
+        tonSheet.getCell("C1").font = { bold: true, size: 18, color: { argb: "111111" } };
+        tonSheet.getCell("C1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "DCEAF7" } };
+        tonSheet.getCell("C1").alignment = { horizontal: "center", vertical: "middle" };
+        tonSheet.mergeCells("C3:Q3");
+        tonSheet.getCell("C3").value = driverScope.name + " • " + excelPeriodLabel + " • Relatórios • Operador: " + excelOperator;
+        tonSheet.getCell("C3").font = { bold: true, size: 11, color: { argb: "111111" } };
+        tonSheet.getCell("C3").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "F8FAFC" } };
+        tonSheet.getCell("C3").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
 
         const countMode = (mode: string) => excelTrips.filter((trip: any) => String(trip.freightMode ?? "ton") === mode).length;
         const totalFreightDriver = excelTrips.reduce((sum: number, trip: any) => sum + Number(trip.freight ?? 0), 0);
@@ -193,11 +271,11 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
         tonSheet.getCell("A5").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2CC" } };
         tonSheet.getCell("A5").alignment = { horizontal: "center", vertical: "middle", wrapText: false };
 
-        tonSheet.getRow(1).height = 72;
-        tonSheet.getRow(2).height = 58;
-        tonSheet.getRow(3).height = 28;
-        tonSheet.getRow(4).height = 24;
-        tonSheet.getRow(5).height = 24;
+        tonSheet.getRow(1).height = 28;
+        tonSheet.getRow(2).height = 28;
+        tonSheet.getRow(3).height = 22;
+        tonSheet.getRow(4).height = 22;
+        tonSheet.getRow(5).height = 22;
 
         const tonHeader = tonSheet.getRow(6);
         tonHeader.values = [
@@ -205,11 +283,11 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
           "Peso carregado (t)", "Peso bruto (t)", "Peso líquido (t)", "Preço/t ou diária",
           "Frete", "Comissão (%)", "Comissão", "Após comissão", "Resultado bruto"
         ];
-        tonHeader.height = 30;
+        tonHeader.height = 28;
         tonHeader.eachCell((cell: any) => {
-          cell.font = { bold: true, size: 13, color: { argb: "111111" } };
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "A9CBEA" } };
-          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+          cell.font = { bold: true, size: 10, color: { argb: "111111" } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "C9DDF0" } };
+          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
           cell.border = border;
         });
 
@@ -220,8 +298,8 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
             const values = (key: string) => { const list = [...new Set(group.items.map((x: any) => String(x?.[key] ?? "").trim()).filter(Boolean))]; return list.length === 1 ? list[0] : list.length > 1 ? "Vários" : ""; };
             const groupDate = group.firstDate === group.lastDate ? formatDate(group.firstDate) : formatDate(group.firstDate) + " a " + formatDate(group.lastDate);
             const row = tonSheet.addRow([groupDate, String(group.count) + " viagens", values("client"), values("origin"), values("destination"), driverScope.name, values("fleetName"), info.label, "", "", "", "", group.freight, "", group.commission, group.after, group.result]);
-            row.height = 24;
-            row.eachCell((cell: any) => { cell.font = { bold: true, color: { argb: "111111" }, size: 12 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.alignment = { vertical: "middle", wrapText: false }; cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } }; });
+            row.height = 22;
+            row.eachCell((cell: any) => { cell.font = { bold: true, color: { argb: "111111" }, size: 10 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.alignment = { vertical: "middle", wrapText: false }; cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } }; });
             [13, 15, 16, 17].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; });
             return;
           }
@@ -230,9 +308,9 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
           const commission = Number(trip.commissionValue ?? trip.commission ?? 0);
           const dieselCost = Number(trip.dieselCost ?? 0);
           const row = tonSheet.addRow([formatDate(trip.date), String(trip.code ?? "—"), String(trip.client ?? "—"), String(trip.origin ?? "—"), String(trip.destination ?? "—"), String(trip.driverName ?? driverScope.name), String(trip.fleetName ?? "—"), info.label, Number(trip.loadedTons ?? 0), Number(trip.grossWeight ?? 0), Number(trip.netWeight ?? 0), item.mode === "trip" ? Number(trip.pricePerTrip ?? freight) : Number(trip.pricePerTon ?? 0), freight, freight > 0 ? commission / freight : 0, commission, Number(trip.afterCommission ?? (freight - commission)), Number(trip.grossResult ?? (freight - dieselCost))]);
-          row.height = 24;
-          row.eachCell((cell: any) => { cell.font = { color: { argb: "111111" }, size: 12 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.alignment = { vertical: "middle", wrapText: false }; cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } }; });
-          [9, 10, 11].forEach((c) => { row.getCell(c).numFmt = '0.000 "t"'; }); [12, 13, 15, 16, 17].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; }); row.getCell(14).numFmt = '0.00%'; row.getCell(8).font = { bold: true, color: { argb: "111111" }, size: 12 };
+          row.height = 22;
+          row.eachCell((cell: any) => { cell.font = { color: { argb: "111111" }, size: 10 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.alignment = { vertical: "middle", wrapText: false }; cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } }; });
+          [9, 10, 11].forEach((c) => { row.getCell(c).numFmt = '0.000 "t"'; }); [12, 13, 15, 16, 17].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; }); row.getCell(14).numFmt = '0.00%'; row.getCell(8).font = { bold: true, color: { argb: "111111" }, size: 10 };
         });
 
         const totalRow = tonSheet.addRow([
@@ -247,9 +325,9 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
           excelTrips.reduce((sum: number, trip: any) => sum + Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))), 0),
           excelTrips.reduce((sum: number, trip: any) => sum + Number(trip.grossResult ?? (Number(trip.freight ?? 0) - Number(trip.dieselCost ?? 0))), 0),
         ]);
-        totalRow.height = 26;
+        totalRow.height = 24;
         totalRow.eachCell((cell: any) => {
-          cell.font = { bold: true, size: 12, color: { argb: "111111" } };
+          cell.font = { bold: true, size: 10, color: { argb: "111111" } };
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "A9CBEA" } };
           cell.border = border;
           cell.alignment = { vertical: "middle", wrapText: false };
@@ -257,7 +335,7 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
         [9, 10, 11].forEach((c) => { totalRow.getCell(c).numFmt = '0.000 "t"'; });
         [13, 15, 16, 17].forEach((c) => { totalRow.getCell(c).numFmt = 'R$ #,##0.00'; });
 
-        [14, 14, 24, 22, 22, 26, 26, 18, 19, 19, 19, 22, 22, 17, 22, 22, 22]
+        [12, 12, 20, 17, 17, 20, 18, 16, 14, 14, 14, 15, 15, 12, 15, 15, 15]
           .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });
         tonSheet.views = [{ state: "frozen", ySplit: 6 }];
         tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, tonSheet.rowCount - 1), column: 17 } };
