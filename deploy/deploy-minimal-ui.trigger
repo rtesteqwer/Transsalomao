@@ -24,3 +24,5 @@ salomao-autonomous-agent=1
 2026-09-26 exact-ticket-weight-link
 2026-09-26 persist-photo-before-ocr-v3
 2026-09-26 chunked-photo-upload-server
+
+salomao-developer-pipeline=1
