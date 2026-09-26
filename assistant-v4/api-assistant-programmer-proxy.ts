@@ -260,7 +260,7 @@ async function importAxorSamples(body:any){
     rowsOut.push({id:reportId,ticket,caption,mode});
   }
 
-  const caixinhaPriceRows=await sql<any>\`select price from freight_prices where mode='caixinha' limit 1`;
+  const caixinhaPriceRows=await sql<any>`select price from freight_prices where mode='caixinha' limit 1`;
   const caixinhaPrice=Number(caixinhaPriceRows[0]?.price??0);
   if(!Number.isFinite(caixinhaPrice)||caixinhaPrice<=0){
     return Response.json({ok:false,code:"CAIXINHA_PRICE_MISSING",message:"Preço de Caixinha não está configurado no site."},{status:409});
@@ -288,7 +288,7 @@ async function importAxorSamples(body:any){
           where id=${reportId}
         `;
       }else{
-        const inserted=await sql<any>\`
+        const inserted=await sql<any>`
           insert into reports(id,ticket,driver_id,fleet_id,km,tons,daily_value,freight_mode,status,loading_date)
           values(${reportId},${ticket},${driver.id},${fleet.id},0,0,${caixinhaPrice},'caixinha','pendente',${group.date})
           on conflict(id) do nothing returning id
