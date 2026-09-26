@@ -88,6 +88,21 @@ jobs:
           cat /tmp/trans-source/migrations/0005_cegonha_caixinha_despesas.sql
           cat /tmp/trans-source/migrations/0006_motorista_campos_opcionais.sql
 
+      - name: Upload reconstructed source snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reconstructed-source
+          path: |
+            /tmp/trans-source/src/routes/dono/lancamentos.tsx
+            /tmp/trans-source/src/routes/dono/viagens.tsx
+            /tmp/trans-source/src/routes/dono/abastecimentos.tsx
+            /tmp/trans-source/src/routes/dono/despesas.tsx
+            /tmp/trans-source/src/lib/api.ts
+            /tmp/trans-source/src/lib/types.ts
+            /tmp/trans-source/src/lib/use-fleet.ts
+          retention-days: 1
+
       - name: Compile final source
         shell: bash
         run: |
