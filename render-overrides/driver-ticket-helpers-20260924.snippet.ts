@@ -141,6 +141,7 @@ async function lerTicket(
   freightMode: "ton" | "trip" | "cegonha" | "caixinha",
   selectedFleet?: { tractorPlate: string; trailerPlate: string },
   fileName = "ticket.jpg",
+  autoDetectMode = false,
 ): Promise<TicketData> {
   const primary = await postTicketRead({
     imagem: imageDataUrl,
@@ -148,6 +149,7 @@ async function lerTicket(
     freightMode,
     fileName,
     selectedFleet,
+    autoDetectMode,
   });
   if (primary.response.ok) return primary.result as TicketData;
 
@@ -172,6 +174,7 @@ async function lerTicket(
     freightMode,
     fileName,
     selectedFleet,
+    autoDetectMode,
     fallbackReason: primary.response.status,
   });
   if (!fallback.response.ok) {
