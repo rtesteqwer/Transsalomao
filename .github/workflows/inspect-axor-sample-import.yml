@@ -1,0 +1,64 @@
+name: Inspect AXOR sample import target
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/axor-sample-inspect.trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Pull production environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN" >/dev/null
+      - name: Inspect driver fleet and report schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          DB_URL="${DATABASE_URL:-${POSTGRES_URL:-}}"
+          if [[ ! "$DB_URL" =~ ^postgres(ql)?:// ]]; then
+            for NAME in DATABASE_URL POSTGRES_URL DATABASE_URL_UNPOOLED POSTGRES_URL_NON_POOLING NEON_DATABASE_URL; do
+              VALUE="${!NAME:-}"
+              if [[ "$VALUE" =~ ^postgres(ql)?:// ]]; then DB_URL="$VALUE"; break; fi
+            done
+          fi
+          test -n "$DB_URL"
+          mkdir -p "$RUNNER_TEMP/db"
+          npm install --prefix "$RUNNER_TEMP/db" --package-lock=false --no-save postgres@3 >/dev/null
+          export DB_URL
+          node <<'NODE'
+          const path = require("path");
+          const { createRequire } = require("module");
+          const req = createRequire(path.join(process.env.RUNNER_TEMP,"db","package.json"));
+          const postgres = req("postgres");
+          const sql = postgres(process.env.DB_URL,{ssl:"require",max:1});
+          (async()=>{
+            const drivers = await sql`select id,name,status,commission_pct from drivers where lower(name) like '%luis%' or lower(name) like '%luís%' order by name`;
+            const fleets = await sql`select id,name,tractor_plate,trailer_plate,status from fleets where lower(name) like '%axor%' or lower(model) like '%axor%' order by name`;
+            const cols = await sql`select table_name,column_name,data_type,is_nullable from information_schema.columns where table_schema='public' and table_name in ('reports','tickets_balanca','expenses','fuelings','trips') order by table_name,ordinal_position`;
+            const pending = await sql`select id,ticket,driver_id,fleet_id,status,freight_mode,tons,daily_value,km,loading_date,created_at from reports where status='pendente' order by created_at desc limit 10`;
+            console.log("DRIVERS",JSON.stringify(drivers));
+            console.log("FLEETS",JSON.stringify(fleets));
+            console.log("COLUMNS",JSON.stringify(cols));
+            console.log("PENDING",JSON.stringify(pending));
+            await sql.end({timeout:2});
+          })().catch(async e=>{console.error(e);try{await sql.end({timeout:2})}catch{};process.exit(1)});
+          NODE
