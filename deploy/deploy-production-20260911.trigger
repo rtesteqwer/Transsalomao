@@ -20,3 +20,4 @@ security-hardening-2026-09-25
 caixa-delete-selected-2026-09-26
 route-memory-ticket-caixa-2026-09-26
 route-memory-adubos-eco-map-ras-2026-09-26
+automatic-ocr-fallback-2026-09-26
