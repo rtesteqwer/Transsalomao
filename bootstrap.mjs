@@ -237,6 +237,13 @@ if (!original.includes("apply-css-cache-bust-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-css-cache-bust-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Compatibilidade com navegadores que ainda tentam registrar /sw.js.
+// Um service worker mínimo e sem cache evita 404 e remove caches antigos do app.
+if (!original.includes("apply-service-worker-reset-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing service worker reset insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-service-worker-reset-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
