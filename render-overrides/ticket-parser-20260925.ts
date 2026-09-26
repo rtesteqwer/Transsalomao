@@ -121,7 +121,11 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   if (raw.replace(/\s/g, "").length < 8) throw new TicketError(422, "A leitura local não encontrou texto suficiente. Tire outra foto mais nítida.");
   const lines = raw.split(/\n+/).map(s => s.replace(/[ \t]+/g, " ").trim()).filter(Boolean);
   const joined = folded(lines.join("\n"));
-  const model = /MULTIL[IA]FT/.test(joined) ? "multilift"
+  const model = (
+      /ROMANEIO[\s\S]{0,180}DATA\s+EMBARQUE[\s\S]{0,900}PESO\s*\/\s*KG[\s\S]{0,120}VALOR[\s\S]{0,120}\bBL\b/.test(joined) ||
+      /SERTRADING[\s\S]{0,1400}ROMANEIO/.test(joined)
+    ) ? "sertrading_cegonha"
+    : /MULTIL[IA]FT/.test(joined) ? "multilift"
     : /ECOLOGISTICS|ECO\s*LOGISTICS|OPATEM[\s\S]{0,100}BOLETIM\s+DE\s+PESAGEM|BOLETIM\s+DE\s+PESAGEM[\s\S]{0,100}OPATEM/.test(joined) ? "ecologistics"
     : /ADUBOS\s+REAL|ADR[- ]?DIV[- ]?004|TARA[\s\S]{0,180}BRUTO[\s\S]{0,180}LIQUIDO/.test(joined) ? "adubos_real"
     : /TICKET\s+AGEND|BERCO|VPORTS[\s\S]{0,140}TIQUET/.test(joined) ? "vports_recibo"
@@ -129,7 +133,7 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     : /PLACA\s+DO\s+VEICULO|PESO\s+LIQUIDO\s+DE\s+ENTRADA|RODOVIA\s+DARLY/.test(joined) ? "log_consulting"
     : "desconhecido";
   const separator = "[\\s.:#=º°°_—–-]*";
-  const labels = "(?:PLACA|CARRETA|REBOQ(?:UE)?|VEIC|MOTORISTA|OPERACAO|TRANSPORTADOR(?:A)?|EMPRESA|DESTINATARIO|REMETENTE|PRODUTO|CARGA|NOTA FISCAL|PESO|PESAGEM|TARA|BRUTO|LIQUIDO|STATUS|NAVIO|BERCO|CNPJ|RAZAO SOCIAL|EMISSOR|EMISSAO|ITEM|DATA|HORA|SETOR|OPERADOR|TICKET|TIQUETE|OPATEM)";
+  const labels = "(?:PLACA|CARRETA|REBOQ(?:UE)?|VEIC|MOTORISTA|OPERACAO|TRANSPORTADOR(?:A)?|EMPRESA|DESTINATARIO|REMETENTE|PRODUTO|CARGA|NOTA FISCAL|PESO|PESAGEM|TARA|BRUTO|LIQUIDO|STATUS|NAVIO|BERCO|CNPJ|RAZAO SOCIAL|EMISSOR|EMISSAO|ITEM|DATA|HORA|SETOR|OPERADOR|TICKET|TIQUETE|ROMANEIO|OPATEM)";
   const isLabel = (s: string) => new RegExp("^" + labels + "\\b").test(folded(s));
   function field(label: string) {
     const pattern = new RegExp("(?:^|\\s)(?:" + label + ")\\b" + separator, "i");
@@ -189,6 +193,13 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     }
     return null;
   }
+  const romaneioMatch = model === "sertrading_cegonha"
+    ? joined.match(/\bROMANEIO[\s.:#=º°_—–-]*(?:\n\s*)?([0-9]{1,3}\s*-\s*[0-9]{1,3}(?:\.[0-9]{3})?)\b/)
+    : null;
+  const romaneioTicket = romaneioMatch
+    ? romaneioMatch[1].replace(/\s+/g, "").replace(/[–—]/g, "-")
+    : null;
+
   const ticketCandidates: string[] = [];
   for (const line of lines) {
     const u = folded(line);
@@ -230,7 +241,9 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     const score = (v: string) => (counts.get(v) || 0) * 20 + (expectedLength && v.length === expectedLength ? 12 : 0) + (/^0/.test(v) ? 2 : 0);
     return score(b) - score(a);
   });
-  const numero: string | null = normalizedTickets[0] || null;
+  // No modelo SERTRADING de Cegonha, "Romaneio" é o identificador operacional
+  // da viagem e deve ser preservado exatamente como Ticket (ex.: 1-83.045).
+  const numero: string | null = romaneioTicket || normalizedTickets[0] || null;
   // A filename, NF, CNPJ, schedule number, or title is never a physical ticket.
   const detected = [...new Set((joined.match(platePattern) || []).map(plate).filter((p): p is string => !!p))];
   const tractorFromEvidence = plate(fleet.tractorPlate);
@@ -352,7 +365,9 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     operadora,
     operador_pesagem: model === "multilift" ? field("OPERADOR") : null,
     remetente: company("REMETENTE"), cliente: company("CLIENTE"),
-    empresa_documento: model === "adubos_real" ? "ADUBOS REAL S.A." : model === "multilift" ? headerCompany : ecologisticsHeader,
+    empresa_documento: model === "sertrading_cegonha"
+      ? (/SERTRADING/.test(joined) ? "SERTRADING S.A." : null)
+      : model === "adubos_real" ? "ADUBOS REAL S.A." : model === "multilift" ? headerCompany : ecologisticsHeader,
     navio: field("NAVIO(?!\\s+(?:ORIGEM|DESTINO))"), navio_origem: field("NAVIO\\s+ORIGEM"), navio_destino: field("NAVIO\\s+DESTINO"),
     emissor: field("EMISSOR"), numero_nf: numeroNf,
     pesagem_inicial_kg: mode === "ton" ? readWeight("PESO\\s+LIQUIDO\\s+DE\\s+ENTRADA|PESO\\s+ENTRADA|PESO\\s+BRUTO|BRUTO|PESAGEM\\s+INICIAL") : null,
@@ -392,6 +407,23 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
   if (model === "vports_recibo" && /LOG\s+CONSULTING/.test(joined)) data.operadora = "LOG CONSULTING";
   if (model === "vports_relatorio" && /VPORTS\s+AUTORIDADE/.test(joined)) data.destinatario = "VPORTS AUTORIDADE PORTUARIA";
 
+  // Modelo padronizado de Cegonha informado pela operação:
+  // Romaneio + Data Embarque + tabela PESO/KG / VALOR / BL / QUANTIDADE.
+  // Os pesos são pesos de mercadoria/BL, não peso líquido da viagem; os valores
+  // são valores da carga, não preço do frete.
+  if (model === "sertrading_cegonha") {
+    data.inferred_freight_mode = "cegonha";
+    data.inferred_price = null;
+    data.inferred_price_basis = "modelo SERTRADING de Cegonha; preço vem da configuração de Cegonha";
+    data.inference_confidence = 0.99;
+    data.pesagem_inicial_kg = null;
+    data.pesagem_final_kg = null;
+    data.peso_liquido_kg = null;
+    data.peso_origem_kg = null;
+    data.alertas = data.alertas.filter((alerta) => !/peso|pesagem/i.test(alerta));
+    if (romaneioTicket) data.alertas.push("Modelo Cegonha identificado: Romaneio usado como Ticket.");
+  }
+
   // Inferência local de modalidade/preço para contingência OCR.
   // A IA é a primeira opção; estas regras usam os layouts e palavras já conhecidos.
   const moneyValues = [...joined.matchAll(/(?:R\$|VALOR|PRECO|PREÇO|FRETE)[\s.:=-]*([0-9]{1,6}(?:[.,][0-9]{1,2})?)/g)]
@@ -401,7 +433,9 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     .map(hit => Number(hit[1].replace(".", "").replace(",", ".")))
     .filter(value => Number.isFinite(value) && value > 0 && value <= 10000);
   const explicitPrice = moneyValues[0] ?? tonPriceValues[0] ?? null;
-  if (/\bCAIXINHA\b/.test(joined)) {
+  if (model === "sertrading_cegonha") {
+    // Já classificado acima. Não leia a coluna VALOR como preço do frete.
+  } else if (/\bCAIXINHA\b/.test(joined)) {
     data.inferred_freight_mode = "caixinha";
     data.inferred_price = explicitPrice;
     data.inferred_price_basis = explicitPrice ? "valor explícito do ticket" : "layout/palavra CAIXINHA";
@@ -423,5 +457,5 @@ export function parseTicketOcr(text: string, mode: TicketFreightMode, fleet: Fle
     data.inference_confidence = 0.82;
   }
 
-  return finishTicketReading(data, mode, fleet);
+  return finishTicketReading(data, model === "sertrading_cegonha" ? "cegonha" : mode, fleet);
 }
