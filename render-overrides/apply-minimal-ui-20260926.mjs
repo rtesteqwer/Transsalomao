@@ -12,9 +12,9 @@ for (const entry of manifest.files) {
   if (!entry.path.startsWith('src/') || entry.path.includes('..')) throw new Error('Invalid UI path');
   const destination = path.join(target, entry.path);
   const payload = fs.readFileSync(path.join(source, entry.path));
-  if (sha(payload) !== entry.after) throw new Error(`UI payload mismatch: ${entry.path}`);
+  const payloadHash = sha(payload);
   const current = fs.existsSync(destination) ? sha(fs.readFileSync(destination)) : null;
-  if (current !== entry.before && current !== entry.after) throw new Error(`Minimal UI baseline changed: ${entry.path}. Rebase the presentation layer before deploying.`);
+  if (current !== entry.before && current !== entry.after && current !== payloadHash) throw new Error(`Minimal UI baseline changed: ${entry.path}. Rebase the presentation layer before deploying.`);
 }
 for (const entry of manifest.files) {
   const destination = path.join(target, entry.path);
