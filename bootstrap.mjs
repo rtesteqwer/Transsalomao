@@ -230,6 +230,13 @@ if (!original.includes("apply-monthly-operation-import-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-monthly-operation-import-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Força um novo arquivo CSS versionado no build final para eliminar cópias
+// antigas/corrompidas mantidas pelo navegador entre deploys.
+if (!original.includes("apply-css-cache-bust-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing CSS cache bust insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-css-cache-bust-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
