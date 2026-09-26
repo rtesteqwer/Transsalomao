@@ -180,6 +180,12 @@ if (!original.includes("apply-report-download-repair-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-report-download-repair-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Abastecimentos: exibir os litros exatamente como estão armazenados, sem arredondar na tela.
+if (!original.includes("apply-exact-fueling-liters-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing exact fueling liters insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-exact-fueling-liters-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
