@@ -58,16 +58,23 @@ jobs:
           set -a
           source .vercel/.env.production.local
           set +a
-          DB_URL="${DATABASE_URL:-${POSTGRES_URL:-}}"
+          DB_URL=""
+          for NAME in DATABASE_URL POSTGRES_URL DATABASE_URL_UNPOOLED POSTGRES_URL_NON_POOLING NEON_DATABASE_URL; do
+            VALUE="${!NAME:-}"
+            if [[ "$VALUE" =~ ^postgres(ql)?:// ]]; then
+              DB_URL="$VALUE"
+              echo "Banco selecionado pela variável: $NAME"
+              break
+            fi
+          done
           AI_KEY="${OPENAI_API_KEY:-${SALOMAO_OPENAI_API_KEY:-}}"
           test -n "$DB_URL"
           test -n "$AI_KEY"
           echo "::add-mask::$DB_URL"
           echo "::add-mask::$AI_KEY"
+          printf '%s' "$DB_URL" > "$RUNNER_TEMP/salomao-db-url"
+          chmod 600 "$RUNNER_TEMP/salomao-db-url"
           {
-            echo "db_url<<SALOMAO_EOF"
-            echo "$DB_URL"
-            echo "SALOMAO_EOF"
             echo "openai_key<<SALOMAO_EOF"
             echo "$AI_KEY"
             echo "SALOMAO_EOF"
@@ -85,10 +92,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          set -a
-          source .vercel/.env.production.local
-          set +a
-          export DATABASE_URL="${DATABASE_URL:-${POSTGRES_URL:-}}"
+          export DATABASE_URL="$(cat "$RUNNER_TEMP/salomao-db-url")"
           test -n "$DATABASE_URL"
           node <<'NODE'
           const fs = require("fs");
@@ -184,7 +188,6 @@ jobs:
           VERCEL: "1"
           VERCEL_PROJECT_PRODUCTION_URL: transsalomao.vercel.app
           TRANS_UI_ONLY_DEPLOY: "1"
-          DATABASE_URL: ${{ steps.env.outputs.db_url }}
         shell: bash
         run: |
           set -euo pipefail
@@ -246,7 +249,6 @@ jobs:
       - name: Record tested PR
         if: steps.claim.outputs.found == 'true'
         env:
-          DATABASE_URL: ${{ steps.env.outputs.db_url }}
           CHANGE_ID: ${{ steps.claim.outputs.change_id }}
           BRANCH: ${{ steps.claim.outputs.branch }}
           COMMIT_SHA: ${{ steps.pr.outputs.commit_sha }}
@@ -255,6 +257,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export DATABASE_URL="$(cat "$RUNNER_TEMP/salomao-db-url")"
           node <<'NODE'
           const path=require("path");
           const {createRequire}=require("module");
@@ -297,12 +300,12 @@ jobs:
       - name: Record production result
         if: steps.claim.outputs.found == 'true' && steps.claim.outputs.publish == 'true' && steps.deploy.outputs.url != ''
         env:
-          DATABASE_URL: ${{ steps.env.outputs.db_url }}
           CHANGE_ID: ${{ steps.claim.outputs.change_id }}
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
         shell: bash
         run: |
           set -euo pipefail
+          export DATABASE_URL="$(cat "$RUNNER_TEMP/salomao-db-url")"
           node <<'NODE'
           const path=require("path");
           const {createRequire}=require("module");
@@ -319,10 +322,10 @@ jobs:
       - name: Record failure
         if: failure() && steps.claim.outputs.found == 'true'
         env:
-          DATABASE_URL: ${{ steps.env.outputs.db_url }}
           CHANGE_ID: ${{ steps.claim.outputs.change_id }}
         shell: bash
         run: |
+          export DATABASE_URL="$(cat "$RUNNER_TEMP/salomao-db-url")"
           node <<'NODE'
           const path=require("path");
           const {createRequire}=require("module");
