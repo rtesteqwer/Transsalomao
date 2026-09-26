@@ -3,6 +3,7 @@ import { inPeriod } from "@/lib/calc";
 import { brl, formatDate } from "@/lib/format";
 import type { ComputedTrip, FleetState, PeriodKey } from "@/lib/types";
 import type { ReportFueling } from "@/lib/pdf";
+import ExcelJS from "exceljs";
 
 export async function downloadFleetExcel({ data, computed, fuelings, period, driverScope }: {
   data: FleetState | undefined;
@@ -33,8 +34,6 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
       if (allDates.length > 0) return `Tudo (${formatDate(allDates[0])} a ${formatDate(allDates[allDates.length - 1])})`;
       return "Tudo";
     })();
-    const ExcelJSModule: any = await import("exceljs");
-    const ExcelJS: any = ExcelJSModule.default ?? ExcelJSModule;
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Planilha Geral", { views: [{ state: "frozen", ySplit: 6 }], pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 8 } });
     const lightBlue = "DCEEFF", blue = "A9CBEA", dark = lightBlue, white = lightBlue, black = "111111", pale = lightBlue, totalFill = lightBlue;
@@ -270,5 +269,28 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
     }
 
     workbook.eachSheet((excelSheet: any) => { excelSheet.eachRow({ includeEmpty: true }, (excelRow: any) => { excelRow.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } }; }); }); });
-    const buffer = await workbook.xlsx.writeBuffer(); const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); const link = document.createElement("a"); const url = URL.createObjectURL(blob); link.href = url; const safeDriverName = driverScope?.name ? driverScope.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "_") : "Geral"; link.download = driverScope ? `Planilha_${safeDriverName}_Trans_Salomao.xlsx` : "Planilha_Geral_Trans_Salomao.xlsx"; link.style.display = "none"; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const safeDriverName = driverScope?.name
+      ? driverScope.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "_")
+      : "Geral";
+    const fileName = driverScope ? `Planilha_${safeDriverName}_Trans_Salomao.xlsx` : "Planilha_Geral_Trans_Salomao.xlsx";
+    const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const blob = new Blob([buffer], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.rel = "noopener";
+    link.style.position = "fixed";
+    link.style.left = "-9999px";
+    link.style.top = "0";
+    document.body.appendChild(link);
+    link.click();
+
+    // Android/Chrome can start the download asynchronously. Keep the Blob URL alive
+    // long enough for the system download manager to take ownership of the file.
+    window.setTimeout(() => {
+      link.remove();
+      URL.revokeObjectURL(url);
+    }, 60_000);
 }
