@@ -245,8 +245,8 @@ execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', en
 // browser kept retrying framed responses and remained on "Verificando acesso".
 // Prefer the non-streaming JSON transport for every server function in the final
 // client bundle. The runtime already supports this fallback.
-{
-  const assetsDir = path.join(cwd, '.vercel', 'output', 'static', 'assets');
+if (!process.env.TRANS_SOURCE_DUMP) {
+  const assetsDir = path.join(repo, '.vercel', 'output', 'static', 'assets');
   if (fs.existsSync(assetsDir)) {
     let changed = 0;
     for (const name of fs.readdirSync(assetsDir)) {
