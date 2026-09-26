@@ -190,7 +190,13 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                             composer.setLayoutParams(lp);
                             composer.requestLayout();
                             if (input != null && input.hasFocus() && imeInsets.bottom > 0) {
-                                handler.postDelayed(MainActivity.this::scrollBottom, 80);
+                                handler.postDelayed(() -> {
+                                    if (input != null) {
+                                        input.requestFocus();
+                                        input.setCursorVisible(true);
+                                    }
+                                    MainActivity.this.scrollBottom();
+                                }, 80);
                             }
                         }
                     }
@@ -332,9 +338,14 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
         chatScroll = new ScrollView(this);
         chatScroll.setFillViewport(true);
+        chatScroll.setFocusable(false);
+        chatScroll.setFocusableInTouchMode(false);
         chatScroll.setBackgroundColor(0xFF0B141A);
         chatMessages = new LinearLayout(this);
         chatMessages.setOrientation(LinearLayout.VERTICAL);
+        chatMessages.setFocusable(false);
+        chatMessages.setFocusableInTouchMode(false);
+        chatMessages.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         chatMessages.setPadding(dp(10), dp(10), dp(10), dp(18));
         chatScroll.addView(chatMessages, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         content.addView(chatScroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -794,7 +805,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.4.1");
+        s.setUserAgentString(s.getUserAgentString() + " SalomaoAssistant/5.4.2");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient());
@@ -1238,7 +1249,11 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     }
 
     private void scrollBottom() {
-        handler.postDelayed(() -> chatScroll.fullScroll(View.FOCUS_DOWN), 100);
+        if (chatScroll == null || chatMessages == null) return;
+        handler.postDelayed(() -> {
+            int y = Math.max(0, chatMessages.getHeight() - chatScroll.getHeight());
+            chatScroll.smoothScrollTo(0, y);
+        }, 100);
     }
 
     private void showChat() {
@@ -1446,7 +1461,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
         String spoken = text.length() > 1800 ? text.substring(0, 1800) : text;
-        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v541");
+        if (tts != null && speechReady) tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "salomao-v542");
     }
 
     @Override
