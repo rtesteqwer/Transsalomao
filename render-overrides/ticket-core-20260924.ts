@@ -10,7 +10,7 @@ export const freightModes = ["ton", "trip", "cegonha", "caixinha"] as const;
 export type TicketFreightMode = typeof freightModes[number];
 const textFields = ["numero_ticket", "status", "placa_veiculo", "placa_carreta", "produto", "pesagem_inicial_data", "pesagem_final_data", "numero_nf", "data_ticket", "hora_ticket", "transportadora", "motorista", "cliente", "destinatario", "anotacoes_manuscritas", "operadora", "contratante", "remetente", "empresa_documento", "transportadora_cnpj", "destinatario_cnpj", "navio", "navio_origem", "navio_destino", "operador_pesagem", "emissor", "model_type", "route_group", "route_origin", "route_destination"] as const;
 const weightFields = ["pesagem_inicial_kg", "pesagem_final_kg", "peso_liquido_kg", "peso_origem_kg"] as const;
-export type TicketData = Record<typeof textFields[number], string | null> & Record<typeof weightFields[number], number | null> & { alertas: string[]; placas_detectadas?: string[]; campos_ausentes?: string[]; route_price_per_ton?: number | null; route_confidence?: number | null };
+export type TicketData = Record<typeof textFields[number], string | null> & Record<typeof weightFields[number], number | null> & { alertas: string[]; placas_detectadas?: string[]; campos_ausentes?: string[]; route_price_per_ton?: number | null; route_confidence?: number | null; inferred_freight_mode?: TicketFreightMode | null; inferred_price?: number | null; inferred_price_basis?: string | null; inference_confidence?: number | null };
 
 export function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
@@ -98,6 +98,12 @@ export function normalizeTicket(value: unknown): TicketData {
   result.route_price_per_ton = Number.isFinite(routePrice) && routePrice > 0 && routePrice <= 100_000_000 ? routePrice : null;
   const routeConfidence = Number(source.route_confidence);
   result.route_confidence = Number.isFinite(routeConfidence) && routeConfidence >= 0 && routeConfidence <= 1 ? routeConfidence : null;
+  result.inferred_freight_mode = freightModes.includes(source.inferred_freight_mode as TicketFreightMode) ? source.inferred_freight_mode as TicketFreightMode : null;
+  const inferredPrice = Number(source.inferred_price);
+  result.inferred_price = Number.isFinite(inferredPrice) && inferredPrice > 0 && inferredPrice <= 100_000_000 ? inferredPrice : null;
+  result.inferred_price_basis = nullableText(source.inferred_price_basis);
+  const inferenceConfidence = Number(source.inference_confidence);
+  result.inference_confidence = Number.isFinite(inferenceConfidence) && inferenceConfidence >= 0 && inferenceConfidence <= 1 ? inferenceConfidence : null;
   const { pesagem_inicial_kg: ini, pesagem_final_kg: fim, peso_liquido_kg: liq } = result;
   if (ini != null && fim != null && liq != null && Math.abs(ini - fim) !== liq) result.alertas.push(`Peso líquido (${liq} kg) diferente das pesagens (${Math.abs(ini - fim)} kg). Confira o valor impresso.`);
   if (!result.numero_ticket) result.alertas.push("Número do ticket não identificado. Confira na foto.");
