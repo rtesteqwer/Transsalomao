@@ -41,3 +41,5 @@ axor-sample-import-route=1
 axor-sample-import-proxy=1
 
 axor-37-caixinha-reconcile=1
+
+axor-37-caixinha-reconcile-fix=1
