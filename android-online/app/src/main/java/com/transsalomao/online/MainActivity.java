@@ -3,6 +3,7 @@ package com.transsalomao.online;
 import android.Manifest;
 import android.app.Activity;
 import android.app.DownloadManager;
+import android.content.ClipData;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -92,7 +93,7 @@ public class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setTextZoom(100);
-        settings.setUserAgentString(settings.getUserAgentString() + " TransSalomaoApp/1.6");
+        settings.setUserAgentString(settings.getUserAgentString() + " TransSalomaoApp/1.7");
 
         // O site gera Excel/PDF colorido como blob:. O bridge entrega os bytes ao Android,
         // e o próprio sistema usa a área padrão de Downloads, sem subpasta forçada pelo app.
@@ -130,6 +131,13 @@ public class MainActivity extends Activity {
                     pickerIntent.addCategory(Intent.CATEGORY_OPENABLE);
                     pickerIntent.setType("image/*");
                 }
+
+                // Some Android/Samsung photo pickers do not propagate the HTML multiple flag
+                // correctly through WebView's default intent. Force it for <input multiple>.
+                if (fileChooserParams.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+                    pickerIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                }
+                pickerIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
                 // The page uses two separate inputs: capture=true for camera, capture=false for gallery.
                 if (fileChooserParams.isCaptureEnabled()) {
@@ -390,8 +398,20 @@ public class MainActivity extends Activity {
         if (requestCode == FILE_CHOOSER_REQUEST) {
             Uri[] result = null;
             if (resultCode == RESULT_OK) {
-                if (data != null && (data.getData() != null || data.getClipData() != null)) {
-                    result = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+                if (data != null) {
+                    ClipData clipData = data.getClipData();
+                    if (clipData != null && clipData.getItemCount() > 0) {
+                        int count = clipData.getItemCount();
+                        result = new Uri[count];
+                        for (int index = 0; index < count; index++) {
+                            result[index] = clipData.getItemAt(index).getUri();
+                        }
+                    } else if (data.getData() != null) {
+                        result = new Uri[]{data.getData()};
+                    } else {
+                        // Keep Android's parser as a last-resort fallback for OEM pickers.
+                        result = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+                    }
                 } else if (cameraImageUri != null) {
                     result = new Uri[]{cameraImageUri};
                 }
