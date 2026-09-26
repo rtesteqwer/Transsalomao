@@ -31,6 +31,7 @@ must(
     '  id: string;\n' +
     '  fileName: string;\n' +
     '  imageData: string;\n' +
+    '  photoId: string;\n' +
     '  ticket: ReadTicketData | null;\n' +
     '  linked: boolean;\n' +
     '  error: string;\n' +
@@ -106,12 +107,24 @@ const replacement = [
 '    return best.source;',
 '  }',
 '',
-'  async function archivePhoto(source: SourceItem, image: string, fileName: string) {',
+'  async function uploadPendingPhoto(image: string, fileName: string) {',
 '    const response = await fetch("/api/photo-intake", {',
 '      method: "POST",',
 '      credentials: "same-origin",',
 '      headers: { "Content-Type": "application/json" },',
-'      body: JSON.stringify({ image, fileName, relationType: source.relationType, relationId: source.relationId, tripCode: source.code, driverId: source.driverId, driverName: source.driverName, fleetId: source.fleetId, fleetName: source.fleetName, tripDate: source.date, freightMode: source.freightMode, netWeight: source.netWeight, reportStatus: source.status }),',
+'      body: JSON.stringify({ image, fileName, relationType: "unlinked", relationId: "pending", tripCode: "Aguardando vínculo" }),',
+'    });',
+'    const result = await response.json().catch(() => ({ ok: false, message: "Resposta inválida do servidor." }));',
+'    if (!response.ok) throw new Error(result?.message || "Não foi possível enviar a foto.");',
+'    return String(result?.id || "");',
+'  }',
+'',
+'  async function archivePhoto(source: SourceItem, image: string, fileName: string, photoId = "") {',
+'    const response = await fetch("/api/photo-intake", {',
+'      method: "POST",',
+'      credentials: "same-origin",',
+'      headers: { "Content-Type": "application/json" },',
+'      body: JSON.stringify({ image, fileName, photoId, relationType: source.relationType, relationId: source.relationId, tripCode: source.code, driverId: source.driverId, driverName: source.driverName, fleetId: source.fleetId, fleetName: source.fleetName, tripDate: source.date, freightMode: source.freightMode, netWeight: source.netWeight, reportStatus: source.status }),',
 '    });',
 '    const result = await response.json().catch(() => ({ ok: false, message: "Resposta inválida do servidor." }));',
 '    if (!response.ok) throw new Error(result?.message || "Não foi possível relacionar a foto.");',
@@ -123,7 +136,7 @@ const replacement = [
 '    if (!item) return;',
 '    if (!source) return toast.error("Escolha acima a viagem correta para esta foto.");',
 '    try {',
-'      await archivePhoto(source, item.imageData, item.fileName);',
+'      await archivePhoto(source, item.imageData, item.fileName, item.photoId);',
 '      setBatchResults((current) => current.map((entry) => entry.id === id ? { ...entry, linked: true, error: "" } : entry));',
 '      toast.success("Foto relacionada à viagem " + source.code + ".");',
 '      await loadSaved();',
@@ -132,35 +145,37 @@ const replacement = [
 '    }',
 '  }',
 '',
-'  async function savePhotos() {',
-'    if (files.length === 0) return toast.error("Selecione pelo menos uma foto do ticket.");',
+'  async function savePhotos(incomingFiles?: File[]) {',
+'    const selectedFiles = incomingFiles?.length ? incomingFiles : files;',
+'    if (selectedFiles.length === 0) return toast.error("Selecione pelo menos uma foto do ticket.");',
 '    setBusy(true);',
 '    setBatchResults([]);',
-'    setBatchProgress({ done: 0, total: files.length });',
+'    setBatchProgress({ done: 0, total: selectedFiles.length });',
 '    let linked = 0;',
 '    let failed = 0;',
 '    try {',
-'      for (let offset = 0; offset < files.length; offset += 3) {',
-'        const chunk = files.slice(offset, offset + 3);',
+'      for (let offset = 0; offset < selectedFiles.length; offset += 3) {',
+'        const chunk = selectedFiles.slice(offset, offset + 3);',
 '        const results = await Promise.all(chunk.map(async (file, chunkIndex): Promise<BatchPhotoResult> => {',
 '          const id = Date.now().toString(36) + "-" + (offset + chunkIndex) + "-" + Math.random().toString(36).slice(2, 8);',
 '          try {',
 '            const imageData = await imageToDataUrl(file);',
+'            const pendingId = await uploadPendingPhoto(imageData, file.name);',
 '            const ticket = await readTicketImage(imageData, file.name);',
 '            const matched = automaticSource(ticket);',
-'            if (matched) { await archivePhoto(matched, imageData, file.name); linked += 1; }',
-'            return { id, fileName: file.name || "ticket.jpg", imageData, ticket, linked: !!matched, error: "" };',
+'            if (matched) { await archivePhoto(matched, imageData, file.name, pendingId); linked += 1; }',
+'            return { id, fileName: file.name || "ticket.jpg", imageData, photoId: pendingId, ticket, linked: !!matched, error: "" };',
 '          } catch (error) {',
 '            failed += 1;',
-'            return { id, fileName: file.name || "ticket.jpg", imageData: "", ticket: null, linked: false, error: error instanceof Error ? error.message : "Não foi possível processar a foto." };',
+'            return { id, fileName: file.name || "ticket.jpg", imageData: "", photoId: "", ticket: null, linked: false, error: error instanceof Error ? error.message : "Não foi possível processar a foto." };',
 '          }',
 '        }));',
 '        setBatchResults((current) => [...current, ...results]);',
-'        setBatchProgress({ done: Math.min(offset + chunk.length, files.length), total: files.length });',
+'        setBatchProgress({ done: Math.min(offset + chunk.length, selectedFiles.length), total: selectedFiles.length });',
 '      }',
-'      const total = files.length;',
+'      const total = selectedFiles.length;',
 '      setFiles([]);',
-'      if (linked > 0) await loadSaved();',
+'      await loadSaved();',
 '      const manual = total - linked - failed;',
 '      if (failed === 0 && manual === 0) toast.success(linked + (linked === 1 ? " foto lida e relacionada automaticamente." : " fotos lidas e relacionadas automaticamente."));',
 '      else toast.success("Leitura concluída: " + linked + " vinculada(s), " + manual + " aguardando vínculo e " + failed + " com erro.");',
@@ -178,6 +193,20 @@ s = s.replace(
 );
 s = s.replace('Field label="Relacionar foto à viagem"', 'Field label="Vínculo manual (para fotos sem correspondência automática)"');
 s = s.replace("Selecione uma ou várias fotos do ticket recebidas do motorista.", "Selecione várias fotos. Todas serão lidas pelo ChatGPT em lote.");
+
+
+s = s.replace(
+  '              onChange={(e) => {\\n                setFiles(Array.from(e.currentTarget.files ?? []));\\n                e.currentTarget.value = "";\\n              }}',
+  '              onChange={(e) => {\\n                const selectedFiles = Array.from(e.currentTarget.files ?? []);\\n                e.currentTarget.value = "";\\n                if (!selectedFiles.length) return;\\n                setFiles(selectedFiles);\\n                void savePhotos(selectedFiles);\\n              }}',
+);
+s = s.replace(
+  '              onChange={(e) => {\\n                const selectedFiles = Array.from(e.currentTarget.files ?? []);\\n                if (selectedFiles.length) setFiles((current) => [...current, ...selectedFiles]);\\n                e.currentTarget.value = "";\\n              }}',
+  '              onChange={(e) => {\\n                const selectedFiles = Array.from(e.currentTarget.files ?? []);\\n                e.currentTarget.value = "";\\n                if (!selectedFiles.length) return;\\n                setFiles(selectedFiles);\\n                void savePhotos(selectedFiles);\\n              }}',
+);
+s = s.replace(
+  '{files.length} foto(s) pronta(s) para salvar',
+  '{busy ? "Enviando e lendo " + batchProgress.done + "/" + batchProgress.total : files.length + " foto(s) selecionada(s)"}',
+);
 
 must(
   '<Button type="button" size="lg" disabled={busy || !selected || files.length === 0} onClick={() => void savePhotos()}>\n          {busy ? <LoaderCircle className="size-5 animate-spin" /> : <ImagePlus className="size-5" />}\n          {busy ? "Salvando fotos…" : "Salvar foto e relacionar à viagem"}\n        </Button>',
