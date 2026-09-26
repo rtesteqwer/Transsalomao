@@ -30,10 +30,10 @@ if (!after.includes(routeMarker)) {
 const helper = `const exactLiters = (value: unknown) => {
   const numeric = Number(value ?? 0);
   if (!Number.isFinite(numeric)) return "0 L";
-  return \`${new Intl.NumberFormat("pt-BR", {
+  return new Intl.NumberFormat("pt-BR", {
     useGrouping: true,
     maximumFractionDigits: 20,
-  }).format(numeric)} L\`;
+  }).format(numeric) + " L";
 };
 
 `;
