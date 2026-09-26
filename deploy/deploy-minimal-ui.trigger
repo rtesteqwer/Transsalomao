@@ -1,1 +1,1 @@
-2026-09-26: Apply the approved minimal white/blue interface; preserve all registered data. Build with TRANS_UI_ONLY_DEPLOY=1 and compare read-only database fingerprints before/after.
+2026-09-26: Re-run approved minimal white/blue interface deployment. Preserve registered data; enforce TRANS_UI_ONLY_DEPLOY=1 and verify the generated build script contains no db:migrate. Production database secrets are not pulled into GitHub Actions.
