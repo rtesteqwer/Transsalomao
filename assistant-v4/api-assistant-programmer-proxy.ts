@@ -260,6 +260,90 @@ async function importAxorSamples(body:any){
     rowsOut.push({id:reportId,ticket,caption,mode});
   }
 
+  const caixinhaPriceRows=await sql<any>\`select price from freight_prices where mode='caixinha' limit 1\`;
+  const caixinhaPrice=Number(caixinhaPriceRows[0]?.price??0);
+  if(!Number.isFinite(caixinhaPrice)||caixinhaPrice<=0){
+    return Response.json({ok:false,code:"CAIXINHA_PRICE_MISSING",message:"Preço de Caixinha não está configurado no site."},{status:409});
+  }
+
+  const caixinhaGroups=[
+    {key:"20260911-141416",date:"2026-09-11",count:16,caption:"16 viagem"},
+    {key:"20260911-141742",date:"2026-09-11",count:6,caption:"6 viagem"},
+    {key:"20260913-095118",date:"2026-09-13",count:15,caption:"15 viagem"},
+  ];
+  let caixinhaCreated=0,caixinhaExisting=0;
+  for(const group of caixinhaGroups){
+    for(let seq=1;seq<=group.count;seq++){
+      const seqText=String(seq).padStart(2,"0");
+      const originalReportId="rep_axor_sample_"+group.key.replace(/-/g,"");
+      const originalTicket="AMOSTRA-AXOR-"+group.key;
+      const reportId=seq===1?originalReportId:"rep_axor_cx_"+group.key.replace(/-/g,"")+"_"+seqText;
+      const ticket=seq===1?originalTicket:"AMOSTRA-AXOR-CX-"+group.key+"-"+seqText;
+
+      if(seq===1){
+        await sql\`
+          update reports
+          set driver_id=\${driver.id},fleet_id=\${fleet.id},freight_mode='caixinha',daily_value=\${caixinhaPrice},
+              tons=0,km=0,loading_date=\${group.date},status='pendente'
+          where id=\${reportId}
+        \`;
+      }else{
+        const inserted=await sql<any>\`
+          insert into reports(id,ticket,driver_id,fleet_id,km,tons,daily_value,freight_mode,status,loading_date)
+          values(\${reportId},\${ticket},\${driver.id},\${fleet.id},0,0,\${caixinhaPrice},'caixinha','pendente',\${group.date})
+          on conflict(id) do nothing returning id
+        \`;
+        if(inserted[0])caixinhaCreated++;else caixinhaExisting++;
+      }
+
+      const ticketData={
+        sample:true,source_name:"AXOR TRABALHO.zip",source_file_id:txtId,sender:"Luís António",
+        chat_date:group.date,caption:group.caption,group_mode:"caixinha",group_count:group.count,group_sequence:seq,
+        inferred_freight_mode:"caixinha",inferred_price:caixinhaPrice,
+        inferred_price_basis:"Preço global de Caixinha já cadastrado em freight_prices",
+        inference_confidence:1,
+        media_status:"quantidade confirmada pelo Felipe; imagem original não veio no ZIP",
+        alertas:["Quantidade e modalidade confirmadas pelo Felipe: "+group.count+" viagens de Caixinha.","Preço usado: configuração atual de Caixinha do Trans Salomão."]
+      };
+      if(seq===1){
+        await sql\`
+          update tickets_balanca
+          set driver_id=\${driver.id},fleet_id=\${fleet.id},motorista=\${driver.name},
+              placa_veiculo=coalesce(\${fleet.tractor_plate||null},placa_veiculo),
+              placa_carreta=coalesce(\${fleet.trailer_plate||null},placa_carreta),
+              freight_mode='caixinha',
+              ticket_data=coalesce(ticket_data,'{}'::jsonb)||\${JSON.stringify(ticketData)}::jsonb
+          where report_id=\${reportId}
+        \`;
+      }else{
+        await sql\`
+          insert into tickets_balanca(
+            numero_ticket,placa_veiculo,placa_carreta,produto,pesagem_inicial_kg,pesagem_final_kg,peso_liquido_kg,
+            data_pesagem,numero_nf,transportadora,destinatario,motorista,km_carreta,driver_id,fleet_id,report_id,ticket_data,freight_mode
+          )
+          values(
+            \${ticket},\${fleet.tractor_plate||null},\${fleet.trailer_plate||null},null,null,null,null,
+            \${group.date},null,null,null,\${driver.name},0,\${driver.id},\${fleet.id},\${reportId},\${JSON.stringify(ticketData)}::jsonb,'caixinha'
+          )
+          on conflict(numero_ticket) do update set
+            driver_id=excluded.driver_id,fleet_id=excluded.fleet_id,motorista=excluded.motorista,
+            freight_mode='caixinha',
+            ticket_data=coalesce(tickets_balanca.ticket_data,'{}'::jsonb)||excluded.ticket_data
+        \`;
+      }
+
+      const fp=axorHash("caixinha|"+group.key+"|"+seqText);
+      await sql\`
+        insert into operation_import_items(id,fingerprint,file_id,kind,status,entity_type,entity_id,result_json)
+        values(\${"imp_"+fp.slice(0,24)},\${fp},\${txtId},'trip','saved','report',\${reportId},
+          \${JSON.stringify({sample:true,driver:driver.name,fleet:fleet.name,mode:"caixinha",groupCount:group.count,sequence:seq,price:caixinhaPrice,sourceCaption:group.caption})}::jsonb)
+        on conflict(fingerprint) do update set status='saved',entity_type='report',entity_id=excluded.entity_id,result_json=excluded.result_json
+      \`;
+    }
+  }
+  caixinhaExisting += 3;
+  const caixinhaSummary={count:37,price:caixinhaPrice,created:caixinhaCreated,existing:caixinhaExisting,groups:caixinhaGroups.map((g)=>({caption:g.caption,count:g.count,date:g.date}))};
+
   const fuelId="fuel_axor_sample_20260915_175742";
   let fuelingInserted=false;
   try{
@@ -320,6 +404,7 @@ async function importAxorSamples(body:any){
     fleet:{id:fleet.id,name:fleet.name,tractorPlate:fleet.tractor_plate,trailerPlate:fleet.trailer_plate,model:fleet.model},
     sourceFiles:[txtId,mdId],
     tripSamples:{created,existing,rows:rowsOut},
+    caixinha:caixinhaSummary,
     fuelingSample:{id:fuelId,inserted:fuelingInserted},
     advanceSamples:advanceRows,
     reviewNote:"O ZIP não continha bytes das imagens/PDFs; valores visuais ausentes ficaram sem preenchimento e marcados para revisão."
