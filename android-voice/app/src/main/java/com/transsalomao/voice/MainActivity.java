@@ -137,42 +137,61 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
     }
 
     private void buildUi() {
+        getWindow().setStatusBarColor(0xFF0B141A);
+        getWindow().setNavigationBarColor(0xFF0B141A);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xFF0B0B0C);
+        root.setBackgroundColor(0xFF0B141A);
 
+        // Cabeçalho inspirado no WhatsApp: avatar, nome, estado online e acesso rápido.
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(16), dp(10), dp(16), dp(8));
-        header.setBackgroundColor(0xFF111214);
+        header.setPadding(dp(12), dp(8), dp(12), dp(6));
+        header.setBackgroundColor(0xFF111B21);
+
+        LinearLayout identityRow = new LinearLayout(this);
+        identityRow.setOrientation(LinearLayout.HORIZONTAL);
+        identityRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView avatar = new TextView(this);
+        avatar.setText("🚛");
+        avatar.setTextSize(24);
+        avatar.setGravity(Gravity.CENTER);
+        avatar.setBackground(roundRectStroke(0xFF172A33, 0xFF00A884, dp(28), dp(1)));
+        LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(dp(56), dp(56));
+        avatarParams.setMargins(0, 0, dp(10), 0);
+        identityRow.addView(avatar, avatarParams);
+
+        LinearLayout identity = new LinearLayout(this);
+        identity.setOrientation(LinearLayout.VERTICAL);
 
         TextView title = new TextView(this);
-        title.setText("SALOMÃO IA");
+        title.setText("SALOMÃO IA  ✓");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(21);
+        title.setTextSize(20);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        title.setGravity(Gravity.CENTER_HORIZONTAL);
-        header.addView(title);
+        identity.addView(title);
 
         modeInfo = new TextView(this);
-        modeInfo.setText("Agente operacional • Trans Salomão");
-        modeInfo.setTextColor(0xFFAAAAAA);
-        modeInfo.setTextSize(11);
-        modeInfo.setGravity(Gravity.CENTER_HORIZONTAL);
-        header.addView(modeInfo);
+        modeInfo.setText("Agente operacional • GPT-5.6 Sol");
+        modeInfo.setTextColor(0xFFB7C3C9);
+        modeInfo.setTextSize(11.5f);
+        identity.addView(modeInfo);
 
         status = new TextView(this);
-        status.setText("Conectando ao sistema…");
-        status.setTextColor(0xFFE0E0E0);
-        status.setTextSize(12);
-        status.setGravity(Gravity.CENTER_HORIZONTAL);
-        header.addView(status);
-        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(86)));
+        status.setText("Online • Conectando ao Trans Salomão…");
+        status.setTextColor(0xFF00A884);
+        status.setTextSize(11.5f);
+        identity.addView(status);
+
+        identityRow.addView(identity, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        header.addView(identityRow);
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabs.setPadding(dp(5), dp(4), dp(5), dp(4));
-        tabs.setBackgroundColor(0xFF111214);
+        tabs.setPadding(0, dp(8), 0, 0);
+        tabs.setGravity(Gravity.CENTER_VERTICAL);
 
         chatButton = smallButton("💬 Chat");
         chatButton.setOnClickListener(v -> showChat());
@@ -202,17 +221,51 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         });
         tabs.addView(assistantButton, tabParams());
 
-        root.addView(tabs, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)));
+        header.addView(tabs, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // Cartão de conexão acima da conversa.
+        LinearLayout connectedCard = new LinearLayout(this);
+        connectedCard.setOrientation(LinearLayout.HORIZONTAL);
+        connectedCard.setGravity(Gravity.CENTER_VERTICAL);
+        connectedCard.setPadding(dp(14), dp(10), dp(14), dp(10));
+        connectedCard.setBackground(roundRectStroke(0xFF18252D, 0xFF263A43, dp(14), dp(1)));
+
+        TextView connectedIcon = new TextView(this);
+        connectedIcon.setText("▥");
+        connectedIcon.setTextSize(22);
+        connectedIcon.setTextColor(0xFF00A884);
+        connectedIcon.setGravity(Gravity.CENTER);
+        connectedCard.addView(connectedIcon, new LinearLayout.LayoutParams(dp(36), dp(36)));
+
+        LinearLayout connectedText = new LinearLayout(this);
+        connectedText.setOrientation(LinearLayout.VERTICAL);
+        TextView connectedTitle = new TextView(this);
+        connectedTitle.setText("Conectado ao Trans Salomão");
+        connectedTitle.setTextColor(Color.WHITE);
+        connectedTitle.setTextSize(13.5f);
+        connectedTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        connectedText.addView(connectedTitle);
+        TextView connectedSub = new TextView(this);
+        connectedSub.setText("Consultas, lançamentos, relatórios e comandos operacionais.");
+        connectedSub.setTextColor(0xFF9FB0B8);
+        connectedSub.setTextSize(11.5f);
+        connectedText.addView(connectedSub);
+        connectedCard.addView(connectedText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        LinearLayout.LayoutParams connectedParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        connectedParams.setMargins(dp(10), dp(8), dp(10), dp(6));
+        root.addView(connectedCard, connectedParams);
 
         FrameLayout content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         chatScroll = new ScrollView(this);
         chatScroll.setFillViewport(true);
-        chatScroll.setBackgroundColor(0xFF0B0B0C);
+        chatScroll.setBackgroundColor(0xFF0B141A);
         chatMessages = new LinearLayout(this);
         chatMessages.setOrientation(LinearLayout.VERTICAL);
-        chatMessages.setPadding(dp(12), dp(14), dp(12), dp(20));
+        chatMessages.setPadding(dp(10), dp(10), dp(10), dp(18));
         chatScroll.addView(chatMessages, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         content.addView(chatScroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -220,35 +273,71 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         webView.setVisibility(View.GONE);
         content.addView(webView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        // Composer no padrão WhatsApp.
         LinearLayout composer = new LinearLayout(this);
         composer.setOrientation(LinearLayout.HORIZONTAL);
         composer.setGravity(Gravity.CENTER_VERTICAL);
-        composer.setPadding(dp(8), dp(7), dp(8), dp(8));
-        composer.setBackgroundColor(0xFF111214);
+        composer.setPadding(dp(8), dp(6), dp(8), dp(8));
+        composer.setBackgroundColor(0xFF0B141A);
+
+        Button quick = smallButton("＋");
+        quick.setTextSize(22);
+        quick.setOnClickListener(v -> {
+            new AlertDialog.Builder(this)
+                    .setTitle("Ações rápidas")
+                    .setItems(new String[]{
+                            "Lançar viagem",
+                            "Consultar motorista",
+                            "Abastecimentos",
+                            "Despesas",
+                            "Relatórios",
+                            "Abrir site"
+                    }, (dialog, which) -> {
+                        if (which == 5) {
+                            showSite();
+                            return;
+                        }
+                        String[] prompts = new String[]{
+                                "Quero lançar uma viagem",
+                                "Quero consultar um motorista",
+                                "Quero consultar abastecimentos",
+                                "Quero consultar despesas",
+                                "Quero ver os relatórios"
+                        };
+                        input.setText(prompts[which]);
+                        input.setSelection(input.getText().length());
+                    }).show();
+        });
+        composer.addView(quick, new LinearLayout.LayoutParams(dp(46), dp(52)));
 
         input = new EditText(this);
-        input.setHint("Peça dados ou mande executar uma função…");
-        input.setHintTextColor(0xFF777777);
-        input.setTextColor(Color.WHITE);
-        input.setTextSize(14);
+        input.setHint("Digite sua mensagem…");
+        input.setHintTextColor(0xFF8696A0);
+        input.setTextColor(0xFFE9EDEF);
+        input.setTextSize(14.5f);
         input.setSingleLine(false);
-        input.setMaxLines(3);
-        input.setPadding(dp(12), dp(8), dp(12), dp(8));
-        input.setBackground(roundRect(0xFF1D1F22, dp(18)));
-        composer.addView(input, new LinearLayout.LayoutParams(0, dp(54), 1f));
+        input.setMaxLines(4);
+        input.setPadding(dp(14), dp(8), dp(14), dp(8));
+        input.setBackground(roundRect(0xFF202C33, dp(24)));
+        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, dp(52), 1f);
+        inputParams.setMargins(dp(5), 0, dp(5), 0);
+        composer.addView(input, inputParams);
 
         micButton = smallButton("🎤");
-        micButton.setTextSize(20);
+        micButton.setTextSize(18);
+        micButton.setBackground(roundRect(0xFF202C33, dp(26)));
         micButton.setOnClickListener(v -> toggleListening());
-        LinearLayout.LayoutParams icon = new LinearLayout.LayoutParams(dp(54), dp(54));
-        icon.setMargins(dp(5), 0, dp(3), 0);
-        composer.addView(micButton, icon);
+        LinearLayout.LayoutParams micParams = new LinearLayout.LayoutParams(dp(52), dp(52));
+        micParams.setMargins(0, 0, dp(5), 0);
+        composer.addView(micButton, micParams);
 
         Button send = smallButton("➤");
-        send.setTextSize(20);
+        send.setTextSize(19);
+        send.setBackground(roundRect(0xFF00A884, dp(26)));
         send.setOnClickListener(v -> sendTyped());
-        composer.addView(send, new LinearLayout.LayoutParams(dp(54), dp(54)));
-        root.addView(composer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)));
+        composer.addView(send, new LinearLayout.LayoutParams(dp(52), dp(52)));
+
+        root.addView(composer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(68)));
 
         setContentView(root);
         setTabVisuals();
@@ -258,14 +347,20 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         Button b = new Button(this);
         b.setText(text);
         b.setAllCaps(false);
-        b.setTextSize(11);
-        b.setTextColor(Color.WHITE);
-        b.setBackground(roundRect(0xFF25272A, dp(12)));
+        b.setTextSize(10.5f);
+        b.setTextColor(0xFFE9EDEF);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(dp(5), 0, dp(5), 0);
+        b.setMinWidth(0);
+        b.setMinimumWidth(0);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setBackground(roundRectStroke(0xFF202C33, 0xFF2A3942, dp(18), dp(1)));
         return b;
     }
 
     private LinearLayout.LayoutParams tabParams() {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(40), 1f);
         p.setMargins(dp(2), 0, dp(2), 0);
         return p;
     }
@@ -274,6 +369,12 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         GradientDrawable d = new GradientDrawable();
         d.setColor(color);
         d.setCornerRadius(radius);
+        return d;
+    }
+
+    private GradientDrawable roundRectStroke(int color, int strokeColor, int radius, int strokeWidth) {
+        GradientDrawable d = roundRect(color, radius);
+        d.setStroke(strokeWidth, strokeColor);
         return d;
     }
 
@@ -628,7 +729,7 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                     if (code == 200) {
                         if (!username.isEmpty()) setAccessReady(username);
                         modeInfo.setText(configured ? "Agente operacional • GPT-5.6 Sol" : "Agente operacional • roteador local");
-                        if (!showingSite && !asking) status.setText("Conectado ao Trans Salomão");
+                        if (!showingSite && !asking) status.setText("Online • Conectado ao Trans Salomão");
                     } else if (!showingSite && !asking) {
                         setAccessMissing();
                     }
@@ -676,20 +777,60 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
 
     private TextView makeBubble(String role, String content) {
         TextView v = new TextView(this);
-        v.setText(content);
-        v.setTextSize(15);
-        v.setTextColor(Color.WHITE);
-        v.setLineSpacing(0, 1.08f);
-        v.setPadding(dp(14), dp(11), dp(14), dp(11));
+        v.setText(formatChatText(content));
+        v.setTextSize(14.5f);
+        v.setTextColor(0xFFE9EDEF);
+        v.setLineSpacing(0, 1.12f);
+        v.setPadding(dp(12), dp(9), dp(12), dp(9));
+
         boolean user = "user".equals(role);
-        v.setBackground(roundRect(user ? 0xFF255BC7 : 0xFF202226, dp(16)));
+        v.setBackground(roundRect(user ? 0xFF005C4B : 0xFF202C33, dp(14)));
+
+        int maxWidth = (int) (getResources().getDisplayMetrics().widthPixels * (user ? 0.82f : 0.90f));
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                user ? (int)(getResources().getDisplayMetrics().widthPixels * 0.78f) : ViewGroup.LayoutParams.MATCH_PARENT,
+                maxWidth,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         p.gravity = user ? Gravity.END : Gravity.START;
-        p.setMargins(user ? dp(46) : 0, dp(5), user ? 0 : dp(20), dp(5));
+        p.setMargins(user ? dp(42) : dp(2), dp(4), user ? dp(2) : dp(30), dp(4));
         v.setLayoutParams(p);
+        v.setTextIsSelectable(true);
         return v;
+    }
+
+    private CharSequence formatChatText(String content) {
+        String source = content == null ? "" : content;
+        ArrayList<int[]> boldRanges = new ArrayList<>();
+        StringBuilder clean = new StringBuilder();
+        int cursor = 0;
+        while (cursor < source.length()) {
+            int open = source.indexOf("**", cursor);
+            if (open < 0) {
+                clean.append(source.substring(cursor));
+                break;
+            }
+            clean.append(source.substring(cursor, open));
+            int close = source.indexOf("**", open + 2);
+            if (close < 0) {
+                clean.append(source.substring(open));
+                break;
+            }
+            int start = clean.length();
+            clean.append(source, open + 2, close);
+            boldRanges.add(new int[]{start, clean.length()});
+            cursor = close + 2;
+        }
+
+        android.text.SpannableString styled = new android.text.SpannableString(clean.toString());
+        for (int[] range : boldRanges) {
+            if (range[0] < range[1]) {
+                styled.setSpan(
+                        new android.text.style.StyleSpan(Typeface.BOLD),
+                        range[0],
+                        range[1],
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+        }
+        return styled;
     }
 
     private void scrollBottom() {
@@ -710,13 +851,15 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
         webView.setVisibility(View.VISIBLE);
         setTabVisuals();
         if (!siteLoaded) webView.loadUrl(HOME_URL);
-        status.setText("Site aberto • você pode usar o login normal da Gerência");
+        status.setText("Site aberto • conectado ao Trans Salomão");
     }
 
     private void setTabVisuals() {
         if (chatButton == null || siteButton == null) return;
-        chatButton.setBackground(roundRect(!showingSite ? 0xFF255BC7 : 0xFF25272A, dp(12)));
-        siteButton.setBackground(roundRect(showingSite ? 0xFF255BC7 : 0xFF25272A, dp(12)));
+        chatButton.setBackground(roundRectStroke(!showingSite ? 0xFF005C4B : 0xFF202C33,
+                !showingSite ? 0xFF00A884 : 0xFF2A3942, dp(18), dp(1)));
+        siteButton.setBackground(roundRectStroke(showingSite ? 0xFF005C4B : 0xFF202C33,
+                showingSite ? 0xFF00A884 : 0xFF2A3942, dp(18), dp(1)));
     }
 
     private void configureSpeech() {
