@@ -164,6 +164,7 @@ async function importAxorSamples(body:any){
   if(String(body?.sourceName??"")!=="AXOR TRABALHO.zip"){
     return Response.json({ok:false,code:"SOURCE_NOT_ALLOWED"},{status:400});
   }
+
   const sql=await getSql();
   await sql`
     create table if not exists operation_import_files(
@@ -197,217 +198,107 @@ async function importAxorSamples(body:any){
   const txtId=await saveAxorSource(sql,"AXOR TRABALHO/chat.txt","text/plain",String(body?.chatText??"").slice(0,200000));
   const mdId=await saveAxorSource(sql,"AXOR TRABALHO/chat.md","text/markdown",String(body?.chatMd??"").slice(0,200000));
 
-  const events=[
-    ["20260911-141243","2026-09-11","14:12:43","Imagem sem legenda",null],
-    ["20260911-141416","2026-09-11","14:14:16","16 viagem",null],
-    ["20260911-141642","2026-09-11","14:16:42","Imagem sem legenda",null],
-    ["20260911-141742","2026-09-11","14:17:42","6 viagem",null],
-    ["20260913-094934","2026-09-13","09:49:34","Imagem sem legenda",null],
-    ["20260913-095118","2026-09-13","09:51:18","15 viagem",null],
-    ["20260913-170023","2026-09-13","17:00:23","Imagem sem legenda",null],
-    ["20260914-053630","2026-09-14","05:36:30","Imagem sem legenda",null],
-    ["20260917-064739","2026-09-17","06:47:39","Imagem sem legenda",null],
-    ["20260919-052320","2026-09-19","05:23:20","7 viagem cegonha","cegonha"],
-    ["20260919-113620","2026-09-19","11:36:20","Imagem sem legenda",null],
-    ["20260919-113843","2026-09-19","11:38:43","Imagem sem legenda",null],
-  ];
-
-  let created=0,existing=0;
-  const rowsOut:any[]=[];
-  for(const raw of events){
-    const key=String(raw[0]),date=String(raw[1]),time=String(raw[2]),caption=String(raw[3]),mode=raw[4] as string|null;
-    const reportId="rep_axor_sample_"+key.replace(/-/g,"");
-    const ticket="AMOSTRA-AXOR-"+key;
-    const inserted=await sql<any>`
-      insert into reports(id,ticket,driver_id,fleet_id,km,tons,daily_value,freight_mode,status)
-      values(${reportId},${ticket},${driver.id},${fleet.id},0,0,0,${mode},'pendente')
-      on conflict(id) do nothing returning id
-    `;
-    if(inserted[0])created++;else existing++;
-
-    const ticketData={
-      sample:true,source_name:"AXOR TRABALHO.zip",source_file_id:txtId,sender:"Luís António",
-      chat_date:date,chat_time:time,caption,
-      media_status:"imagem ocultada na exportação; arquivo original ausente no ZIP",
-      alertas:["AMOSTRA importada da conversa AXOR TRABALHO.","Peso, preço e demais dados visuais não foram inventados."],
-      inferred_freight_mode:mode,inference_confidence:mode==="cegonha"?0.99:null
-    };
-    await sql`
-      insert into tickets_balanca(
-        numero_ticket,placa_veiculo,placa_carreta,produto,pesagem_inicial_kg,pesagem_final_kg,peso_liquido_kg,
-        data_pesagem,numero_nf,transportadora,destinatario,motorista,km_carreta,driver_id,fleet_id,report_id,ticket_data,freight_mode
-      )
-      values(
-        ${ticket},${fleet.tractor_plate||null},${fleet.trailer_plate||null},null,null,null,null,
-        ${date+" "+time},null,null,null,${driver.name},0,${driver.id},${fleet.id},${reportId},${JSON.stringify(ticketData)}::jsonb,${mode}
-      )
-      on conflict(numero_ticket) do update set
-        driver_id=excluded.driver_id,fleet_id=excluded.fleet_id,motorista=excluded.motorista,
-        placa_veiculo=coalesce(excluded.placa_veiculo,tickets_balanca.placa_veiculo),
-        placa_carreta=coalesce(excluded.placa_carreta,tickets_balanca.placa_carreta),
-        ticket_data=coalesce(tickets_balanca.ticket_data,'{}'::jsonb)||excluded.ticket_data,
-        freight_mode=coalesce(excluded.freight_mode,tickets_balanca.freight_mode)
-    `;
-    const fp=axorHash("trip|"+ticket);
-    await sql`
-      insert into operation_import_items(id,fingerprint,file_id,kind,status,entity_type,entity_id,result_json)
-      values(${"imp_"+fp.slice(0,24)},${fp},${txtId},'trip','review','report',${reportId},${JSON.stringify({
-        sample:true,ticket,caption,driver:driver.name,fleet:fleet.name,mediaMissing:true,
-        note:mode==="cegonha"?"Modalidade Cegonha comprovada pela legenda.":"Modalidade, peso e preço aguardam a foto original."
-      })}::jsonb)
-      on conflict(fingerprint) do nothing
-    `;
-    rowsOut.push({id:reportId,ticket,caption,mode});
-  }
-
-  const caixinhaPriceRows=await sql<any>`select price from freight_prices where mode='caixinha' limit 1`;
-  const caixinhaPrice=Number(caixinhaPriceRows[0]?.price??0);
+  const priceRows=await sql<any>`select price from freight_prices where mode='caixinha' limit 1`;
+  const caixinhaPrice=Number(priceRows[0]?.price??0);
   if(!Number.isFinite(caixinhaPrice)||caixinhaPrice<=0){
     return Response.json({ok:false,code:"CAIXINHA_PRICE_MISSING",message:"Preço de Caixinha não está configurado no site."},{status:409});
   }
 
-  const caixinhaGroups=[
-    {key:"20260911-141416",date:"2026-09-11",count:16,caption:"16 viagem"},
-    {key:"20260911-141742",date:"2026-09-11",count:6,caption:"6 viagem"},
-    {key:"20260913-095118",date:"2026-09-13",count:15,caption:"15 viagem"},
+  // Felipe confirmou que estes lançamentos do Luís são viagens reais:
+  // 16 + 6 + 15 = 37 viagens, todas na modalidade Caixinha.
+  const groups=[
+    {key:"20260911-141416",date:"2026-09-11",batch:"A",count:16,caption:"16 viagem"},
+    {key:"20260911-141742",date:"2026-09-11",batch:"B",count:6,caption:"6 viagem"},
+    {key:"20260913-095118",date:"2026-09-13",batch:"C",count:15,caption:"15 viagem"},
   ];
-  let caixinhaCreated=0,caixinhaExisting=0;
-  for(const group of caixinhaGroups){
+
+  // Remove somente os registros sintéticos criados pela importação anterior
+  // ("AMOSTRA"), sem tocar em qualquer viagem operacional cadastrada por outro fluxo.
+  await sql`
+    delete from tickets_balanca
+    where report_id in (
+      select id from reports
+      where driver_id=${driver.id}
+        and fleet_id=${fleet.id}
+        and (id like 'rep_axor_sample_%' or id like 'rep_axor_cx_%' or id like 'rep_axor_real_cx_%')
+    )
+  `;
+  await sql`
+    delete from reports
+    where driver_id=${driver.id}
+      and fleet_id=${fleet.id}
+      and (id like 'rep_axor_sample_%' or id like 'rep_axor_cx_%' or id like 'rep_axor_real_cx_%')
+  `;
+  await sql`
+    delete from operation_import_items
+    where file_id=${txtId}
+      and kind='trip'
+      and coalesce(result_json->>'source','')='AXOR TRABALHO.zip'
+  `;
+
+  let created=0;
+  const rowsOut:any[]=[];
+  for(const group of groups){
     for(let seq=1;seq<=group.count;seq++){
       const seqText=String(seq).padStart(2,"0");
-      const originalReportId="rep_axor_sample_"+group.key.replace(/-/g,"");
-      const originalTicket="AMOSTRA-AXOR-"+group.key;
-      const reportId=seq===1?originalReportId:"rep_axor_cx_"+group.key.replace(/-/g,"")+"_"+seqText;
-      const ticket=seq===1?originalTicket:"AMOSTRA-AXOR-CX-"+group.key+"-"+seqText;
+      const reportId="rep_axor_real_cx_"+group.key+"_"+seqText;
+      const internalCode="CAIXINHA-LUIS-"+group.date.replaceAll("-","")+"-"+group.batch+"-"+seqText;
+      const inserted=await sql<any>`
+        insert into reports(id,ticket,driver_id,fleet_id,km,tons,daily_value,freight_mode,status,loading_date)
+        values(${reportId},${internalCode},${driver.id},${fleet.id},0,0,${caixinhaPrice},'caixinha','pendente',${group.date})
+        on conflict(id) do update set
+          ticket=excluded.ticket,
+          driver_id=excluded.driver_id,
+          fleet_id=excluded.fleet_id,
+          km=0,
+          tons=0,
+          daily_value=excluded.daily_value,
+          freight_mode='caixinha',
+          status='pendente',
+          loading_date=excluded.loading_date
+        returning id
+      `;
+      if(inserted[0])created++;
 
-      if(seq===1){
-        await sql`
-          update reports
-          set driver_id=${driver.id},fleet_id=${fleet.id},freight_mode='caixinha',daily_value=${caixinhaPrice},
-              tons=0,km=0,loading_date=${group.date},status='pendente'
-          where id=${reportId}
-        `;
-      }else{
-        const inserted=await sql<any>`
-          insert into reports(id,ticket,driver_id,fleet_id,km,tons,daily_value,freight_mode,status,loading_date)
-          values(${reportId},${ticket},${driver.id},${fleet.id},0,0,${caixinhaPrice},'caixinha','pendente',${group.date})
-          on conflict(id) do nothing returning id
-        `;
-        if(inserted[0])caixinhaCreated++;else caixinhaExisting++;
-      }
-
-      const ticketData={
-        sample:true,source_name:"AXOR TRABALHO.zip",source_file_id:txtId,sender:"Luís António",
-        chat_date:group.date,caption:group.caption,group_mode:"caixinha",group_count:group.count,group_sequence:seq,
-        inferred_freight_mode:"caixinha",inferred_price:caixinhaPrice,
-        inferred_price_basis:"Preço global de Caixinha já cadastrado em freight_prices",
-        inference_confidence:1,
-        media_status:"quantidade confirmada pelo Felipe; imagem original não veio no ZIP",
-        alertas:["Quantidade e modalidade confirmadas pelo Felipe: "+group.count+" viagens de Caixinha.","Preço usado: configuração atual de Caixinha do Trans Salomão."]
+      const fp=axorHash("real-caixinha|"+group.key+"|"+seqText);
+      const evidence={
+        sample:false,
+        confirmed:true,
+        confirmed_by:"Felipe",
+        source:"AXOR TRABALHO.zip",
+        driver:driver.name,
+        fleet:fleet.name,
+        mode:"caixinha",
+        price:caixinhaPrice,
+        price_basis:"Preço de Caixinha cadastrado no Trans Salomão",
+        group_count:group.count,
+        group_sequence:seq,
+        source_caption:group.caption,
+        source_date:group.date,
+        note:"Viagem confirmada como verdadeira pelo Felipe. Caixinha não exige número de ticket."
       };
-      if(seq===1){
-        await sql`
-          update tickets_balanca
-          set driver_id=${driver.id},fleet_id=${fleet.id},motorista=${driver.name},
-              placa_veiculo=coalesce(${fleet.tractor_plate||null},placa_veiculo),
-              placa_carreta=coalesce(${fleet.trailer_plate||null},placa_carreta),
-              freight_mode='caixinha',
-              ticket_data=coalesce(ticket_data,'{}'::jsonb)||${JSON.stringify(ticketData)}::jsonb
-          where report_id=${reportId}
-        `;
-      }else{
-        await sql`
-          insert into tickets_balanca(
-            numero_ticket,placa_veiculo,placa_carreta,produto,pesagem_inicial_kg,pesagem_final_kg,peso_liquido_kg,
-            data_pesagem,numero_nf,transportadora,destinatario,motorista,km_carreta,driver_id,fleet_id,report_id,ticket_data,freight_mode
-          )
-          values(
-            ${ticket},${fleet.tractor_plate||null},${fleet.trailer_plate||null},null,null,null,null,
-            ${group.date},null,null,null,${driver.name},0,${driver.id},${fleet.id},${reportId},${JSON.stringify(ticketData)}::jsonb,'caixinha'
-          )
-          on conflict(numero_ticket) do update set
-            driver_id=excluded.driver_id,fleet_id=excluded.fleet_id,motorista=excluded.motorista,
-            freight_mode='caixinha',
-            ticket_data=coalesce(tickets_balanca.ticket_data,'{}'::jsonb)||excluded.ticket_data
-        `;
-      }
-
-      const fp=axorHash("caixinha|"+group.key+"|"+seqText);
       await sql`
         insert into operation_import_items(id,fingerprint,file_id,kind,status,entity_type,entity_id,result_json)
-        values(${"imp_"+fp.slice(0,24)},${fp},${txtId},'trip','saved','report',${reportId},
-          ${JSON.stringify({sample:true,driver:driver.name,fleet:fleet.name,mode:"caixinha",groupCount:group.count,sequence:seq,price:caixinhaPrice,sourceCaption:group.caption})}::jsonb)
-        on conflict(fingerprint) do update set status='saved',entity_type='report',entity_id=excluded.entity_id,result_json=excluded.result_json
+        values(${"imp_"+fp.slice(0,24)},${fp},${txtId},'trip','saved','report',${reportId},${JSON.stringify(evidence)}::jsonb)
+        on conflict(fingerprint) do update set
+          status='saved',
+          entity_type='report',
+          entity_id=excluded.entity_id,
+          result_json=excluded.result_json
       `;
+
+      rowsOut.push({id:reportId,code:internalCode,date:group.date,mode:"caixinha",price:caixinhaPrice});
     }
   }
-  caixinhaExisting += 3;
-  const caixinhaSummary={count:37,price:caixinhaPrice,created:caixinhaCreated,existing:caixinhaExisting,groups:caixinhaGroups.map((g)=>({caption:g.caption,count:g.count,date:g.date}))};
-
-  const fuelId="fuel_axor_sample_20260915_175742";
-  let fuelingInserted=false;
-  try{
-    const result=await sql<any>`
-      insert into fuelings(id,date,driver_id,fleet_id,station,km,liters,price_per_liter,notes)
-      values(${fuelId},'2026-09-15',${driver.id},${fleet.id},'AMOSTRA — Diesel',0,0,0,
-        'AMOSTRA importada de AXOR TRABALHO.zip. Imagem Diesel omitida; litros, preço e odômetro aguardam a mídia original.')
-      on conflict(id) do nothing returning id
-    `;
-    fuelingInserted=!!result[0];
-  }catch{}
-  const fuelFp=axorHash("fuel|2026-09-15|17:57:42|diesel");
-  await sql`
-    insert into operation_import_items(id,fingerprint,file_id,kind,status,entity_type,entity_id,result_json)
-    values(${"imp_"+fuelFp.slice(0,24)},${fuelFp},${txtId},'fueling','review',${fuelingInserted?"fueling":null},${fuelingInserted?fuelId:null},
-      ${JSON.stringify({sample:true,driver:driver.name,fleet:fleet.name,caption:"Diesel",mediaMissing:true,message:"Imagem ausente; aguardando litros, preço/L e odômetro."})}::jsonb)
-    on conflict(fingerprint) do nothing
-  `;
-
-  const advances=[
-    ["exp_axor_sample_20260916_163304","2026-09-16","Vale ar"],
-    ["exp_axor_sample_20260926_184945","2026-09-26","Vale"],
-  ];
-  const advanceRows:any[]=[];
-  for(const raw of advances){
-    const expId=String(raw[0]),date=String(raw[1]),label=String(raw[2]);
-    let inserted=false;
-    try{
-      const result=await sql<any>`
-        insert into expenses(id,date,fleet_id,asset_type,driver_id,category,description,amount,notes)
-        values(${expId},${date},null,null,${driver.id},'Adiantamento',${"AMOSTRA — "+label},0,
-          ${"AMOSTRA importada de AXOR TRABALHO.zip. Documento "+label+" omitido; valor aguardando o arquivo original."})
-        on conflict(id) do nothing returning id
-      `;
-      inserted=!!result[0];
-    }catch{}
-    const fp=axorHash("advance|"+date+"|"+label);
-    await sql`
-      insert into operation_import_items(id,fingerprint,file_id,kind,status,entity_type,entity_id,result_json)
-      values(${"imp_"+fp.slice(0,24)},${fp},${txtId},'advance','review',${inserted?"expense":null},${inserted?expId:null},
-        ${JSON.stringify({sample:true,driver:driver.name,fleet:fleet.name,label,mediaMissing:true,message:"Documento do vale ausente; valor não foi inventado."})}::jsonb)
-      on conflict(fingerprint) do nothing
-    `;
-    advanceRows.push({id:expId,label,inserted});
-  }
-
-  const forwardedFp=axorHash("review|2026-09-17|09:55:38|forwarded-image");
-  await sql`
-    insert into operation_import_items(id,fingerprint,file_id,kind,status,result_json)
-    values(${"imp_"+forwardedFp.slice(0,24)},${forwardedFp},${txtId},'other','review',
-      ${JSON.stringify({sample:true,driver:driver.name,fleet:fleet.name,sender:"Pai",caption:"Imagem encaminhada",mediaMissing:true,message:"Imagem de 17/09 não está no ZIP; classificação aguarda a mídia original."})}::jsonb)
-    on conflict(fingerprint) do nothing
-  `;
 
   return Response.json({
     ok:true,
+    confirmedReal:true,
     driver:{id:driver.id,name:driver.name,commissionPct:Number(driver.commission_pct||0)},
     fleet:{id:fleet.id,name:fleet.name,tractorPlate:fleet.tractor_plate,trailerPlate:fleet.trailer_plate,model:fleet.model},
     sourceFiles:[txtId,mdId],
-    tripSamples:{created,existing,rows:rowsOut},
-    caixinha:caixinhaSummary,
-    fuelingSample:{id:fuelId,inserted:fuelingInserted},
-    advanceSamples:advanceRows,
-    reviewNote:"O ZIP não continha bytes das imagens/PDFs; valores visuais ausentes ficaram sem preenchimento e marcados para revisão."
+    caixinha:{count:37,price:caixinhaPrice,created,rows:rowsOut},
+    note:"As 37 viagens do Luís foram gravadas como viagens reais de Caixinha, pendentes no Caixa, sem exigir ticket."
   },{headers:{"Cache-Control":"no-store"}});
 }
 
