@@ -95,6 +95,61 @@ function json(value: unknown, status = 200) {
   });
 }
 
+type RouteMemory = {
+  route_key: string;
+  route_name: string;
+  origin: string | null;
+  destination: string | null;
+  price_per_ton: number | string;
+  match_hints: string;
+};
+
+async function loadRouteMemories(): Promise<RouteMemory[]> {
+  const sql = await getSql();
+  try {
+    return await sql<RouteMemory>`
+      select route_key, route_name, origin, destination, price_per_ton, match_hints
+      from ticket_route_memory
+      where active=true
+      order by updated_at desc
+      limit 30
+    `;
+  } catch {
+    return [
+      { route_key:"sportos-eco-festipar", route_name:"Sportos - Eco x Festipar", origin:"Sportos - Eco", destination:"Festipar", price_per_ton:40, match_hints:"SPORTOS;ECO;FESTIPAR;FERTIPAR" },
+      { route_key:"papaleguas-ureia-adubos-real", route_name:"Papaléguas - Uréia (Adubos Real)", origin:null, destination:null, price_per_ton:35, match_hints:"ADUBOS REAL;UREIA;PAPALEGUAS" },
+      { route_key:"rota-do-sol-eco", route_name:"Rota do Sol - Eco", origin:null, destination:null, price_per_ton:17, match_hints:"ECOLOGISTICS;ROTA DO SOL;OPATEM" },
+      { route_key:"papaleguas-rota-do-sol-map", route_name:"Papaléguas / Rota do Sol - MAP", origin:null, destination:null, price_per_ton:33, match_hints:"ADUBOS REAL;MAP;ROTA DO SOL" },
+      { route_key:"transportadora-ras", route_name:"Transportadora - RAS", origin:null, destination:null, price_per_ton:14, match_hints:"LOG CONSULTING;SPORTOS;YARA VIX 1;NITRABOR;CAN 27;YARAMILA;BELISLAND" },
+      { route_key:"ras-vports-26", route_name:"RAS - VPORTS", origin:null, destination:"VPORTS Autoridade Portuária", price_per_ton:26, match_hints:"RAS TRANSPORTES;VPORTS;PC2;PESO ORIGEM;KCL;MAP" },
+    ];
+  }
+}
+
+function routeMemoryPrompt(routes: RouteMemory[]) {
+  return routes.map(r => "- " + r.route_key + ": " + r.route_name + "; preço/t=" + r.price_per_ton + "; pistas=" + r.match_hints).join("\n");
+}
+
+function enrichWithRouteMemory(result: DocResult, routes: RouteMemory[]) {
+  if (result.category !== "viagem" || result.freight_mode !== "ton") return result;
+  const confidence = Number(result.route_confidence);
+  const route = Number.isFinite(confidence) && confidence >= 0.85 && result.route_key
+    ? routes.find(r => r.route_key === result.route_key)
+    : undefined;
+  if (!route) return result;
+
+  const handwritten = /manuscrit/i.test(String(result.price_basis || "")) && Number(result.price_per_ton) > 0;
+  const learned = Number(route.price_per_ton);
+  if (!handwritten) {
+    result.price_per_ton = learned;
+    result.price_basis = "preço aprendido da rota identificada";
+  } else if (Math.abs(Number(result.price_per_ton) - learned) > 0.001) {
+    result.warnings = [...result.warnings, "Preço manuscrito diverge da memória da rota; foi mantido o valor escrito no ticket."].slice(0, 8);
+  }
+  if (!result.origin && route.origin) result.origin = route.origin;
+  if (!result.destination && route.destination) result.destination = route.destination;
+  return result;
+}
 async function analyzeDocument(key: string, mime: string, base64: string, routeMemories: RouteMemory[]): Promise<DocResult> {
   const nullableString = { type: ["string", "null"] };
   const nullableNumber = { type: ["number", "null"] };
