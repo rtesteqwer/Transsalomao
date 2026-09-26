@@ -702,7 +702,10 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
                 .append(" • confiança ").append(confidence).append("%");
 
         ArrayList<String> details = new ArrayList<>();
-        addDetail(details, "Data", jsonText(r, "date"));
+        String dateTime = jsonText(r, "date");
+        String time = jsonText(r, "time");
+        if (!time.isEmpty()) dateTime = dateTime.isEmpty() ? time : dateTime + " " + time;
+        addDetail(details, "Data/hora", dateTime);
         addDetail(details, "Motorista", firstNonEmpty(jsonText(r, "driver_name"), jsonText(r, "recipient_name")));
         String plates = firstNonEmpty(jsonText(r, "tractor_plate"), jsonText(r, "trailer_plate"));
         addDetail(details, "Placa", plates);
@@ -714,10 +717,19 @@ public class MainActivity extends Activity implements TextToSpeech.OnInitListene
             addDetail(details, "Posto", firstNonEmpty(jsonText(r, "station"), jsonText(r, "supplier")));
         } else if ("viagem".equals(category)) {
             addDetail(details, "Ticket", jsonText(r, "ticket_number"));
+            String mode = jsonText(r, "freight_mode");
+            if ("ton".equals(mode)) addDetail(details, "Modalidade", "Por tonelada");
+            else if ("trip".equals(mode)) addDetail(details, "Modalidade", "Por viagem");
+            else if ("cegonha".equals(mode)) addDetail(details, "Modalidade", "Cegonha");
+            else if ("caixinha".equals(mode)) addDetail(details, "Modalidade", "Caixinha");
             if (!r.isNull("net_weight_kg")) {
                 double tons = r.optDouble("net_weight_kg", 0) / 1000.0;
                 details.add("Peso " + String.format(new Locale("pt", "BR"), "%.3f t", tons));
             }
+            if ("ton".equals(mode)) addMoneyDetail(details, "Preço/t", r, "price_per_ton");
+            else addMoneyDetail(details, "Preço/viagem", r, "price_per_trip");
+            addDetail(details, "Preço por", jsonText(r, "price_basis"));
+            addDetail(details, "Manuscrito", jsonText(r, "handwritten_notes"));
             addDetail(details, "Cliente", jsonText(r, "client"));
             addDetail(details, "Origem", jsonText(r, "origin"));
             addDetail(details, "Destino", jsonText(r, "destination"));

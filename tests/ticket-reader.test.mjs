@@ -404,3 +404,23 @@ test('handwritten route price is considered valid and preferred over route memor
   assert.equal(d.inferred_price, 33);
   assert.match(d.inferred_price_basis || '', /anotação|manuscrita|explícito/i);
 });
+
+
+test('Salomao IA uses the same route, handwritten price, mode and weight variable tactics', () => {
+  const salomaoReader = readFileSync(path.resolve('render-overrides/salomao-ticket-reader-20260924.server.ts'), 'utf8');
+  const intake = readFileSync(path.resolve('assistant-v4/api-document-intake.ts'), 'utf8');
+
+  assert.match(salomaoReader, /TÁTICA DE VARIÁVEIS DA TRANS SALOMÃO/);
+  assert.match(salomaoReader, /PREÇO MANUSCRITO/);
+  assert.match(salomaoReader, /loadSalomaoRouteMemories/);
+  assert.match(salomaoReader, /applyKnownSalomaoOcrVariables/);
+  assert.match(salomaoReader, /ras-vports-26/);
+  assert.match(salomaoReader, /transportadora-ras/);
+
+  assert.match(intake, /Cruze TODAS as variáveis/);
+  assert.match(intake, /PREÇO MANUSCRITO/);
+  assert.match(intake, /price_per_trip/);
+  assert.match(intake, /route_confidence/);
+  assert.match(intake, /routeMemoryPrompt/);
+  assert.match(intake, /somente peso líquido bloqueia o lançamento/);
+});
