@@ -31,8 +31,18 @@ function copy(relSource, relTarget) {
 // 2) Nova rota visual Fotos IA.
 copy("render-overrides/photo-intake-page-20260923.tsx", "src/routes/dono/fotos.tsx");
 
-// 3) Endpoint do arquivo de fotos de tickets da Gerência, sem OpenAI.
+// 3) Endpoints de fotos: arquivo da Gerência + upload em blocos com conversão no servidor.
 copy("render-overrides/photo-ticket-api-20260924.ts", "src/routes/api/photo-intake.ts");
+copy("render-overrides/photo-upload-api-20260926.ts", "src/routes/api/photo-upload.ts");
+
+// O upload em blocos converte fotos grandes/HEIC no servidor para JPEG antes da leitura.
+{
+  const packagePath = path.join(target, "package.json");
+  const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+  pkg.dependencies = pkg.dependencies || {};
+  pkg.dependencies.sharp = pkg.dependencies.sharp || "^0.34.4";
+  fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
+}
 
 // 4) Acrescenta a aba Fotos dos Tickets à navegação da Gerência.
 function walk(dir) {
