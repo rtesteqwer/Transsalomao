@@ -14,6 +14,7 @@ const copies = [
   ['assistant-v4/api-assistant-status.ts', 'src/routes/api/assistant/status.ts'],
   ['assistant-v4/api-document-intake.ts', 'src/routes/api/assistant/document-intake.ts'],
   ['assistant-v4/api-assistant-developer.ts', 'src/routes/api/assistant/developer.ts'],
+  ['assistant-v4/api-assistant-programmer-proxy.ts', 'src/routes/api/assistant/programmer-proxy.ts'],
   ['assistant-v4/salomao-web.tsx', 'src/routes/salomao-ia.tsx'],
   ['assistant-v4/0012_management_users_assistant_sessions.sql', 'migrations/0012_management_users_assistant_sessions.sql'],
 ];
