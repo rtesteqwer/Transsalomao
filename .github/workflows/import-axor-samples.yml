@@ -1,0 +1,54 @@
+name: Import AXOR samples
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/axor-sample-import.trigger"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Import AXOR WhatsApp samples
+        env:
+          CHAT_TXT_B64: QXMgbWVuc2FnZW5zIGUgYXMgbGlnYcOnw7VlcyBzw6NvIHByb3RlZ2lkYXMgY29tIGEgY3JpcHRvZ3JhZmlhIGRlIHBvbnRhIGEgcG9udGEgZSBmaWNhbSBzb21lbnRlIGVudHJlIHZvY8OqIGUgb3MgcGFydGljaXBhbnRlcyBkZXN0YSBjb252ZXJzYS4gTmVtIG1lc21vIG8gV2hhdHNBcHAgcG9kZSBsw6otbGFzIG91IG91dmktbGFzLgpbOS8xMS8yNiwgMTo1NjoyMiBQTV0gLSBFbWFudWVsIGNyaW91IG8gZ3J1cG8KWzkvMTEvMjYsIDE6NTY6MjIgUE1dIC0gRW1hbnVlbCBhZGljaW9ub3UgVm9jw6oKWzkvMTEvMjYsIDE6NTY6MjMgUE1dIC0gQXMgbWVuc2FnZW5zIGUgYXMgbGlnYcOnw7VlcyBzw6NvIHByb3RlZ2lkYXMgY29tIGEgY3JpcHRvZ3JhZmlhIGRlIHBvbnRhIGEgcG9udGEgZSBmaWNhbSBzb21lbnRlIGVudHJlIHZvY8OqIGUgb3MgcGFydGljaXBhbnRlcyBkZXN0YSBjb252ZXJzYS4gTmVtIG1lc21vIG8gV2hhdHNBcHAgcG9kZSBsw6otbGFzIG91IG91dmktbGFzLiBUb3F1ZSBwYXJhIHNhYmVyIG1haXMuCls5LzExLzI2LCAxOjU2OjUyIFBNXSBMdcOtcyBBbnTDs25pbzogb2sKWzkvMTEvMjYsIDI6MDI6MzQgUE1dIFBhaTogPG1lbnNhZ2VtIGRlIHZveiBvbWl0aWRhPgpbOS8xMS8yNiwgMjowOTozOSBQTV0gTHXDrXMgQW50w7NuaW86IDxtZW5zYWdlbSBkZSB2b3ogb21pdGlkYT4KWzkvMTEvMjYsIDI6MTE6NDcgUE1dIFZvY8OqOiA8bWVuc2FnZW0gZGUgdm96IG9taXRpZGE+Cls5LzExLzI2LCAyOjEyOjAyIFBNXSBWb2PDqjogPG1lbnNhZ2VtIGRlIHZveiBvbWl0aWRhPgpbOS8xMS8yNiwgMjoxMjoyMiBQTV0gTHXDrXMgQW50w7NuaW86IDxtZW5zYWdlbSBkZSB2b3ogb21pdGlkYT4KWzkvMTEvMjYsIDI6MTI6NDMgUE1dIEx1w61zIEFudMOzbmlvOiA8aW1hZ2VtIG9jdWx0YWRhPgpbOS8xMS8yNiwgMjoxNDoxNiBQTV0gTHXDrXMgQW50w7NuaW86IDxpbWFnZW0gb2N1bHRhZGE+IDE2IHZpYWdlbQpbOS8xMS8yNiwgMjoxNjo0MiBQTV0gTHXDrXMgQW50w7NuaW86IDxpbWFnZW0gb2N1bHRhZGE+Cls5LzExLzI2LCAyOjE3OjQyIFBNXSBMdcOtcyBBbnTDs25pbzogPGltYWdlbSBvY3VsdGFkYT4gNiB2aWFnZW0KWzkvMTEvMjYsIDI6MjA6NTYgUE1dIFBhaTogPG1lbnNhZ2VtIGRlIHZveiBvbWl0aWRhPgpbOS8xMS8yNiwgMjoyMzoxNiBQTV0gTHXDrXMgQW50w7NuaW86IDxtZW5zYWdlbSBkZSB2b3ogb21pdGlkYT4KWzkvMTEvMjYsIDI6MjM6MzIgUE1dIEx1w61zIEFudMOzbmlvOiA8bWVuc2FnZW0gZGUgdm96IG9taXRpZGE+Cls5LzEzLzI2LCA5OjQ5OjM0IEFNXSBMdcOtcyBBbnTDs25pbzogPGltYWdlbSBvY3VsdGFkYT4KWzkvMTMvMjYsIDk6NTE6MTggQU1dIEx1w61zIEFudMOzbmlvOiA8aW1hZ2VtIG9jdWx0YWRhPiAxNSB2aWFnZW0KWzkvMTMvMjYsIDU6MDA6MjMgUE1dIEx1w61zIEFudMOzbmlvOiA8aW1hZ2VtIG9jdWx0YWRhPgpbOS8xNC8yNiwgNTozNjozMCBBTV0gTHXDrXMgQW50w7NuaW86IDxpbWFnZW0gb2N1bHRhZGE+Cls5LzE1LzI2LCA1OjU3OjQyIFBNXSBQYWk6IDxpbWFnZW0gb2N1bHRhZGE+IERpZXNlbApbOS8xNS8yNiwgNTo1ODoxNiBQTV0gTHXDrXMgQW50w7NuaW86IHNpbQpbOS8xNi8yNiwgNDozMzowNCBQTV0gUGFpOiA8ZG9jdW1lbnRvIG9taXRpZG8+IFZhbGUgYXIKWzkvMTYvMjYsIDQ6MzM6MTQgUE1dIEx1w61zIEFudMOzbmlvOiBvYnJpZ2FkbwpbOS8xNy8yNiwgNjo0NzozOSBBTV0gTHXDrXMgQW50w7NuaW86IDxpbWFnZW0gb2N1bHRhZGE+Cls5LzE3LzI2LCA5OjU1OjM4IEFNXSBQYWk6IFtFbmNhbWluaGFkYV0gPGltYWdlbSBvY3VsdGFkYT4KWzkvMTkvMjYsIDU6MjM6MjAgQU1dIEx1w61zIEFudMOzbmlvOiA8aW1hZ2VtIG9jdWx0YWRhPiA3IHZpYWdlbSBjZWdvbmhhCls5LzE5LzI2LCAxMTozNjoyMCBBTV0gTHXDrXMgQW50w7NuaW86IDxpbWFnZW0gb2N1bHRhZGE+Cls5LzE5LzI2LCAxMTozODo0MyBBTV0gTHXDrXMgQW50w7NuaW86IDxpbWFnZW0gb2N1bHRhZGE+Cls5LzI2LzI2LCA2OjQ5OjQ1IFBNXSBQYWk6IDxkb2N1bWVudG8gb21pdGlkbz4gVmFsZQpbOS8yNi8yNiwgNjo0OTo1OCBQTV0gTHXDrXMgQW50w7NuaW86IG9icmlnYWRvCg==
+          CHAT_MD_B64: IyBFeHBvcnRhw6fDo28gZGUgY29udmVyc2FzIGRvIFdoYXRzQXBwOiBBWE9SIFRSQUJBTEhPCkRhdGEgZGUgZXhwb3J0YcOnw6NvOiAyNiBkZSBzZXRlbWJybyBkZSAyMDI2IMOgcyAxOToyMQoKLS0tCgojIyAxMSBkZSBzZXRlbWJybyBkZSAyMDI2CgpbMTM6NTZdIF9fRW1hbnVlbCBjcmlvdSBvIGdydXBvX18KClsxMzo1Nl0gX19FbWFudWVsIGFkaWNpb25vdSBWb2PDql9fCgpbMTM6NTZdIF9fQXMgbWVuc2FnZW5zIGUgYXMgbGlnYcOnw7VlcyBzw6NvIHByb3RlZ2lkYXMgY29tIGEgY3JpcHRvZ3JhZmlhIGRlIHBvbnRhIGEgcG9udGEgZSBmaWNhbSBzb21lbnRlIGVudHJlIHZvY8OqIGUgb3MgcGFydGljaXBhbnRlcyBkZXN0YSBjb252ZXJzYS4gTmVtIG1lc21vIG8gV2hhdHNBcHAgcG9kZSBsw6otbGFzIG91IG91dmktbGFzLiBUb3F1ZSBwYXJhIHNhYmVyIG1haXMuX18KClsxMzo1Nl0gKipMdcOtcyBBbnTDs25pbzoqKiBvawoKWzE0OjAyXSAqKlBhaToqKiBbTWVuc2FnZW0gZGUgdm96XQoKWzE0OjA5XSAqKkx1w61zIEFudMOzbmlvOioqIFtNZW5zYWdlbSBkZSB2b3pdCgpbMTQ6MTFdICoqVm9jw6o6KiogW01lbnNhZ2VtIGRlIHZvel0KClsxNDoxMl0gKipWb2PDqjoqKiBbTWVuc2FnZW0gZGUgdm96XQoKWzE0OjEyXSAqKkx1w61zIEFudMOzbmlvOioqIFtNZW5zYWdlbSBkZSB2b3pdCgpbMTQ6MTJdICoqTHXDrXMgQW50w7NuaW86KiogW0ltYWdlbV0KClsxNDoxNF0gKipMdcOtcyBBbnTDs25pbzoqKiBbSW1hZ2VtXSAxNiB2aWFnZW0KClsxNDoxNl0gKipMdcOtcyBBbnTDs25pbzoqKiBbSW1hZ2VtXQoKWzE0OjE3XSAqKkx1w61zIEFudMOzbmlvOioqIFtJbWFnZW1dIDYgdmlhZ2VtCgpbMTQ6MjBdICoqUGFpOioqIFtNZW5zYWdlbSBkZSB2b3pdCgpbMTQ6MjNdICoqTHXDrXMgQW50w7NuaW86KiogW01lbnNhZ2VtIGRlIHZvel0KClsxNDoyM10gKipMdcOtcyBBbnTDs25pbzoqKiBbTWVuc2FnZW0gZGUgdm96XQoKLS0tCgojIyAxMyBkZSBzZXRlbWJybyBkZSAyMDI2CgpbOTo0OV0gKipMdcOtcyBBbnTDs25pbzoqKiBbSW1hZ2VtXQoKWzk6NTFdICoqTHXDrXMgQW50w7NuaW86KiogW0ltYWdlbV0gMTUgdmlhZ2VtCgpbMTc6MDBdICoqTHXDrXMgQW50w7NuaW86KiogW0ltYWdlbV0KCi0tLQoKIyMgMTQgZGUgc2V0ZW1icm8gZGUgMjAyNgoKWzU6MzZdICoqTHXDrXMgQW50w7NuaW86KiogW0ltYWdlbV0KCi0tLQoKIyMgMTUgZGUgc2V0ZW1icm8gZGUgMjAyNgoKWzE3OjU3XSAqKlBhaToqKiBbSW1hZ2VtXSBEaWVzZWwKClsxNzo1OF0gKipMdcOtcyBBbnTDs25pbzoqKiBzaW0KCi0tLQoKIyMgMTYgZGUgc2V0ZW1icm8gZGUgMjAyNgoKWzE2OjMzXSAqKlBhaToqKiBbRG9jdW1lbnRvXSBWYWxlIGFyCgpbMTY6MzNdICoqTHXDrXMgQW50w7NuaW86Kiogb2JyaWdhZG8KCi0tLQoKIyMgMTcgZGUgc2V0ZW1icm8gZGUgMjAyNgoKWzY6NDddICoqTHXDrXMgQW50w7NuaW86KiogW0ltYWdlbV0KCls5OjU1XSAqKlBhaToqKiBbRW5jYW1pbmhhZGFdIFtJbWFnZW1dCgotLS0KCiMjIDE5IGRlIHNldGVtYnJvIGRlIDIwMjYKCls1OjIzXSAqKkx1w61zIEFudMOzbmlvOioqIFtJbWFnZW1dIDcgdmlhZ2VtIGNlZ29uaGEKClsxMTozNl0gKipMdcOtcyBBbnTDs25pbzoqKiBbSW1hZ2VtXQoKWzExOjM4XSAqKkx1w61zIEFudMOzbmlvOioqIFtJbWFnZW1dCgotLS0KCiMjIDI2IGRlIHNldGVtYnJvIGRlIDIwMjYKClsxODo0OV0gKipQYWk6KiogW0RvY3VtZW50b10gVmFsZQoKWzE4OjQ5XSAqKkx1w61zIEFudMOzbmlvOioqIG9icmlnYWRvCg==
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async()=>{
+            const base=process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+            const bearer=process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+            if(!base||!bearer)throw new Error("OIDC indisponível");
+            const u=new URL(base);
+            u.searchParams.set("audience","transsalomao-axor-sample-import");
+            const tokenResp=await fetch(u,{headers:{Authorization:"Bearer "+bearer}});
+            const tokenData=await tokenResp.json();
+            if(!tokenResp.ok||!tokenData.value)throw new Error("Falha OIDC");
+            const payload={
+              sourceName:"AXOR TRABALHO.zip",
+              chatText:Buffer.from(process.env.CHAT_TXT_B64,"base64").toString("utf8"),
+              chatMd:Buffer.from(process.env.CHAT_MD_B64,"base64").toString("utf8")
+            };
+            const r=await fetch("https://transsalomao.vercel.app/api/assistant/axor-sample-import",{
+              method:"POST",
+              headers:{Authorization:"Bearer "+tokenData.value,"Content-Type":"application/json"},
+              body:JSON.stringify(payload)
+            });
+            const data=await r.json().catch(()=>({}));
+            console.log(JSON.stringify(data,null,2));
+            if(!r.ok||data.ok===false)process.exit(1);
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
