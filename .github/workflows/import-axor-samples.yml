@@ -38,11 +38,12 @@ jobs:
             const tokenData=await tokenResp.json();
             if(!tokenResp.ok||!tokenData.value)throw new Error("Falha OIDC");
             const payload={
+              action:"axor_sample_import",
               sourceName:"AXOR TRABALHO.zip",
               chatText:Buffer.from(process.env.CHAT_TXT_B64,"base64").toString("utf8"),
               chatMd:Buffer.from(process.env.CHAT_MD_B64,"base64").toString("utf8")
             };
-            const r=await fetch("https://transsalomao.vercel.app/api/assistant/axor-sample-import",{
+            const r=await fetch("https://transsalomao.vercel.app/api/assistant/programmer-proxy",{
               method:"POST",
               headers:{Authorization:"Bearer "+tokenData.value,"Content-Type":"application/json"},
               body:JSON.stringify(payload)
