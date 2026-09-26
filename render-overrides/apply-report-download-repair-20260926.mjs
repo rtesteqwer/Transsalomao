@@ -73,38 +73,80 @@ function write(rel, value) {
     const fileNameExpr = fileMatch[1];
     const replacement = `const fileName = ${fileNameExpr};
   const blob = ${docVar}.output("blob");
-  const pdfFile = new File([blob], fileName, { type: "application/pdf" });
   const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
-  const canSharePdf =
-    isAndroid &&
-    typeof navigator.share === "function" &&
-    typeof navigator.canShare === "function" &&
-    navigator.canShare({ files: [pdfFile] });
+  let downloadStarted = false;
+  let downloadUrl = "";
 
-  if (canSharePdf) {
+  // Caminho principal: download direto. Mantemos a URL viva porque Chrome/Android
+  // e WebViews podem entregar o Blob ao gerenciador de downloads de forma assíncrona.
+  try {
+    downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = fileName;
+    link.rel = "noopener";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    downloadStarted = true;
+    window.setTimeout(() => link.remove(), 60_000);
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 120_000);
+  } catch (downloadError) {
+    console.warn("[pdf-report] direct download failed", downloadError);
+  }
+
+  // Fallback do próprio jsPDF.
+  if (!downloadStarted) {
     try {
-      await navigator.share({
-        files: [pdfFile],
-        title: fileName,
-        text: "Relatório Trans Salomão",
-      });
+      ${docVar}.save(fileName);
+      downloadStarted = true;
+    } catch (saveError) {
+      console.warn("[pdf-report] jsPDF save failed", saveError);
+    }
+  }
+
+  // Em Android, tente compartilhamento de arquivo somente como fallback. Alguns
+  // WebViews expõem canShare mas lançam exceção; por isso toda a checagem fica protegida.
+  if (!downloadStarted && isAndroid && typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      const pdfFile = new File([blob], fileName, { type: "application/pdf" });
+      const canSharePdf =
+        typeof navigator.canShare !== "function" ||
+        navigator.canShare({ files: [pdfFile] });
+      if (canSharePdf) {
+        await navigator.share({
+          files: [pdfFile],
+          title: fileName,
+          text: "Relatório Trans Salomão",
+        });
+        downloadStarted = true;
+      }
     } catch (shareError) {
       const errorName = shareError instanceof Error ? shareError.name : "";
-      if (errorName !== "AbortError") {
-        const viewerUrl = ${docVar}.output("bloburl");
-        const viewer = window.open(viewerUrl, "_blank");
-        if (!viewer) window.location.href = viewerUrl;
-        window.setTimeout(() => URL.revokeObjectURL(viewerUrl), 120_000);
-      }
+      if (errorName === "AbortError") downloadStarted = true;
+      else console.warn("[pdf-report] share failed", shareError);
     }
-  } else if (isAndroid) {
+  }
+
+  // Último fallback: abre o PDF no visualizador do navegador.
+  if (!downloadStarted) {
     const viewerUrl = ${docVar}.output("bloburl");
-    const viewer = window.open(viewerUrl, "_blank");
-    if (!viewer) window.location.href = viewerUrl;
-    window.setTimeout(() => URL.revokeObjectURL(viewerUrl), 120_000);
-  } else {
-    ${docVar}.save(fileName);
-  }`;
+    try {
+      const viewer = window.open(viewerUrl, "_blank");
+      if (viewer) downloadStarted = true;
+      else {
+        window.location.href = viewerUrl;
+        downloadStarted = true;
+      }
+      window.setTimeout(() => URL.revokeObjectURL(viewerUrl), 120_000);
+    } catch (viewerError) {
+      console.error("[pdf-report] viewer fallback failed", viewerError);
+    }
+  }
+
+  if (!downloadStarted) {
+    throw new Error("Não foi possível iniciar o download do PDF.");
+  }`
 
     write(rel, before.slice(0, startIndex) + replacement + before.slice(endIndex + 1));
   }
