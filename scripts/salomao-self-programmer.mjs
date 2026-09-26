@@ -162,16 +162,27 @@ async function program(change){
 function output(name,value){if(process.env.GITHUB_OUTPUT)fs.appendFileSync(process.env.GITHUB_OUTPUT,name+"="+String(value).replace(/\n/g," ")+"\n");}
 
 const mode=process.argv[2]||"program";
-if(mode==="program"){
-  let change;
-  try{
-    const claimed=await proxy("claim");
-    change=claimed.change;
-    if(!change){output("found","false");console.log("Nenhuma tarefa Felipe autorizada.");process.exit(0);}
+if(mode==="claim"){
+  const claimed=await proxy("claim");
+  const change=claimed.change;
+  if(!change){
+    output("found","false");
+    console.log("Nenhuma tarefa Felipe autorizada.");
+  }else{
+    const taskFile=path.join(process.env.RUNNER_TEMP||repo,"salomao-change.json");
+    fs.writeFileSync(taskFile,JSON.stringify(change),"utf8");
     output("found","true");
     output("change_id",change.id);
     output("branch","salomao-auto/"+String(change.id).replace(/[^A-Za-z0-9._-]/g,"-"));
     output("publish",change.publish_requested===true?"true":"false");
+  }
+}else if(mode==="program"){
+  let change;
+  try{
+    const taskFile=path.join(process.env.RUNNER_TEMP||repo,"salomao-change.json");
+    if(fs.existsSync(taskFile))change=JSON.parse(fs.readFileSync(taskFile,"utf8"));
+    else change=(await proxy("claim")).change;
+    if(!change){console.log("Nenhuma tarefa Felipe autorizada.");process.exit(0);}
     const summary=await program(change);
     if(!execFileSync("git",["status","--porcelain"],{cwd:repo,encoding:"utf8"}).trim())throw new Error("Nenhuma alteração de código foi produzida");
     fs.writeFileSync(path.join(process.env.RUNNER_TEMP||repo,"salomao-summary.txt"),summary,"utf8");
