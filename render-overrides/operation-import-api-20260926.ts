@@ -18,6 +18,7 @@ export const Route = createFileRoute("/api/operation-import")({
       const mime=String(body?.mime??"application/octet-stream").slice(0,120);
       const text=typeof body?.text==="string" ? body.text.slice(0,180000) : "";
       const base64=typeof body?.base64==="string" ? body.base64 : "";
+      const contextText=typeof body?.contextText==="string" ? body.contextText.slice(0,12000) : "";
       if (!text && !base64) return json({ok:false,message:"Arquivo vazio."},400);
       if (base64.length>16000000) return json({ok:false,message:"Arquivo grande demais. Divida o material em arquivos menores."},413);
 
@@ -36,6 +37,7 @@ export const Route = createFileRoute("/api/operation-import")({
           selectedFleetName:selectedFleet?.name??null,
           tractorPlate:selectedFleet?.tractor_plate??null,
           trailerPlate:selectedFleet?.trailer_plate??null,
+          contextText,
         });
       } catch (error:any) {
         return json({ok:false,message:String(error?.message??error??"Não consegui interpretar o arquivo.")},503);
