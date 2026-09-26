@@ -224,6 +224,12 @@ if (!original.includes("apply-smart-ops-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-smart-ops-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Importação mensal de WhatsApp/PDF/fotos, adiantamentos, mecânica e odômetro.
+if (!original.includes("apply-monthly-operation-import-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing monthly import insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-monthly-operation-import-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
