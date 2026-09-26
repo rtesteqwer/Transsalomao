@@ -33,3 +33,5 @@ salomao-developer-pipeline=1
 salomao-oidc-proxy=1
 
 sertrading-cegonha-romaneio-ticket=1
+
+smart-search-caixa-monthly-import-history=1
