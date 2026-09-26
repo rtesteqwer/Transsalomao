@@ -1,0 +1,70 @@
+{
+  "baseCommit": "bf4af4c38503599420320f1352767c3733e8f680",
+  "files": [
+    {
+      "path": "src/styles.css",
+      "before": "a59dffd5c02565209234e1a58b571177c0a25a272c75309f11ad14c58010d622",
+      "after": "7e34222516e3e3baf0b063be7cc03cfaf3cf7a2390ee4a7b33d1f58d69cbfa68"
+    },
+    {
+      "path": "src/components/brand.tsx",
+      "before": "866b0b8d5aab82594345e1f635d4bab8e089e8e261df581d12ca604c74ce34b6",
+      "after": "c189c116eba32801e0cb0c650f84d407c0b3e21cbd21a9001669620cfd60df2e"
+    },
+    {
+      "path": "src/components/ui/badge.tsx",
+      "before": "1fd56cd8c167d7efc7bfa260295571276235703eaa16394b04c74ddd7a4aba64",
+      "after": "71f4b48a43b4bf08630b1fe25fb81daf5c91cadcf1f519292c5914a25b25cb06"
+    },
+    {
+      "path": "src/components/owner/shell.tsx",
+      "before": "b6ad6a3fffa2a400ab338c77778535f39e3ab300d6f076241a1994c9e3a1e6bd",
+      "after": "048d5539959254329afb426b58134ea1a84da15b811fe1f8c615e889f5782f71"
+    },
+    {
+      "path": "src/components/owner/freight-mode-badge.tsx",
+      "before": null,
+      "after": "9c1a6d0b21b8b5aa7ee3c2a6f0efeba9b4ed740dfbb02f88a909a545b522ae0a"
+    },
+    {
+      "path": "src/components/owner/felipe-share-panel.tsx",
+      "before": "e312c56deff0a192b98a1cc0cf36b8c143d9f42119ba53e2e828a68503d9aebe",
+      "after": "48b8c28d0d53b53d4b48776d7f79dda3329592049f57596c81859a974e644712"
+    },
+    {
+      "path": "src/routes/__root.tsx",
+      "before": "e956ade57c5193b9a303f27b942f96d2bcd677f171baab570295a8a07dd64719",
+      "after": "564470a6d80d2cc56e7c24cc5222934cd853878bf92bbef0e6dec90f47e96bda"
+    },
+    {
+      "path": "src/routes/dono/route.tsx",
+      "before": "8dca392cf48369184895b80f52a0acb2880807ef56c9ee4aac98c62660679906",
+      "after": "976558f8035d36c7ebe57acd091e967754cd269d14a20cb848136bdb341d8dea"
+    },
+    {
+      "path": "src/routes/dono/index.tsx",
+      "before": "f184e616cd90f44220f0f05c7b6dbca828d7ea4f0fe1960a5a06727b175ccd44",
+      "after": "72274802e9ea90a67d0790f45f4fbc3fd20a94d9bc48101fd36cbb784fb9a575"
+    },
+    {
+      "path": "src/routes/dono/viagens.tsx",
+      "before": "faab5a4a673536fb33ecf48399783b4984d8c33b2935e39084613b4525ee6ff0",
+      "after": "4cf313f15dcc69190fcf0f3a4766159839213cbeca16d4cf638bc11e7571d4f1"
+    },
+    {
+      "path": "src/routes/dono/lancamentos.tsx",
+      "before": "bfb77cca70fb27bae56852908d0a7196f072b3407f1a583254d2eee72493ceb7",
+      "after": "9bc8e13076d8b7b621d89e18f1721cf95671dd08b6735f67a02fbefc7e4aa989"
+    },
+    {
+      "path": "src/routes/dono/totais.tsx",
+      "before": "08bf6d2b91cc7b477d090c058c0acaa47b15dba28d6ba18fe339c16d1de5fdf2",
+      "after": "98e06f7bdcbc42e49df26b086a3997426e472ca9609e1c65b6cb9d9d4ef5fafc"
+    },
+    {
+      "path": "src/lib/excel-report.ts",
+      "before": null,
+      "after": "b6e5cf9ed51ae1cafc17f97c60dc72d78cfb33d3a3ea57f4084fbe82d2c516d3"
+    }
+  ]
+}

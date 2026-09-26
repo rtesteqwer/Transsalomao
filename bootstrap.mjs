@@ -166,6 +166,13 @@ if (!original.includes("apply-fixed-photo-batch-20260925.mjs")) {
   original = original.replace(dailyMarker, `const fixedPhotoBatch = path.join(repo, 'render-overrides', 'apply-fixed-photo-batch-20260925.mjs');\nif (!fs.existsSync(fixedPhotoBatch)) throw new Error('Missing fixed photo batch patch');\nexecFileSync(process.execPath, [fixedPhotoBatch, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
+// Approved minimal interface; applied after the existing functional layers.
+// Baseline hashes reject stale overlays instead of overwriting future functional changes.
+if (installOwnerShare && !original.includes("apply-minimal-ui-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing minimal UI insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-minimal-ui-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });

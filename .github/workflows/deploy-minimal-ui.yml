@@ -1,0 +1,58 @@
+name: Deploy approved minimal UI without data changes
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/deploy-minimal-ui.trigger'
+permissions:
+  contents: read
+concurrency:
+  group: transsalomao-minimal-ui-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TRANS_TEST_APP: ${{ github.workspace }}/.ui-build-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reconstruct current app and verify ticket flows
+        env:
+          VERCEL: '1'
+          VERCEL_PROJECT_PRODUCTION_URL: transsalomao.vercel.app
+          TRANS_UI_ONLY_DEPLOY: '1'
+        run: |
+          set -euo pipefail
+          TRANS_SOURCE_DUMP="$TRANS_TEST_APP" node bootstrap.mjs
+          npm --prefix "$TRANS_TEST_APP" install --ignore-scripts --no-audit --no-fund
+          node --test tests/ticket-reader.test.mjs tests/tickets.test.mjs
+          git restore bootstrap.original.mjs
+      - name: Link existing production project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+      - name: Record existing data using read-only queries
+        run: node scripts/check-ui-data.mjs before "$RUNNER_TEMP/minimal-ui-data.json"
+      - name: Publish UI with migrations disabled
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="$(npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --build-env TRANS_UI_ONLY_DEPLOY=1 --token="$VERCEL_TOKEN")"
+          echo "DEPLOYMENT_URL=$URL" >> "$GITHUB_ENV"
+          echo "Published: $URL"
+      - name: Confirm data unchanged
+        run: node scripts/check-ui-data.mjs after "$RUNNER_TEMP/minimal-ui-data.json"
+      - name: Verify production response
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --max-time 30 https://transsalomao.vercel.app/dono >/dev/null
+          echo "MINIMAL_UI_PRODUCTION_HTTP_OK"
