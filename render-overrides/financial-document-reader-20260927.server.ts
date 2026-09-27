@@ -233,7 +233,48 @@ function analyzePdfTextLocally(input: {
   };
 }
 
-function extractPdfText(bytes: Buffer) {
+async function extractPdfText(bytes: Buffer) {
+  try {
+    const task: any = getDocument({
+      data: new Uint8Array(bytes),
+      disableWorker: true,
+      useSystemFonts: true,
+      isEvalSupported: false,
+    });
+    const pdf: any = await task.promise;
+    const pages: string[] = [];
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page: any = await pdf.getPage(pageNumber);
+      const content: any = await page.getTextContent();
+      let line = "";
+      const lines: string[] = [];
+      for (const item of Array.isArray(content?.items) ? content.items : []) {
+        if (!item || typeof item.str !== "string") continue;
+        const value = item.str.replace(/\u0000/g, "").trim();
+        if (!value) continue;
+        line += (line ? " " : "") + value;
+        if (item.hasEOL) {
+          lines.push(line);
+          line = "";
+        }
+      }
+      if (line) lines.push(line);
+      pages.push(lines.join("\n"));
+      try { page.cleanup(); } catch {}
+    }
+
+    try { await pdf.destroy(); } catch {}
+    const extracted = pages.join("\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+    if (extracted.length >= 20) return extracted;
+  } catch (error) {
+    console.warn("[financial-pdf-text] PDF.js falhou; usando parser de compatibilidade", error);
+  }
+
+  return extractPdfTextFallback(bytes);
+}
+
+function extractPdfTextFallback(bytes: Buffer) {
   const latin = bytes.toString("latin1");
   const chunks: string[] = [latin];
   const streamPattern = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
