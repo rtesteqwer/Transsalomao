@@ -1,0 +1,26 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'br.com.transsalomao.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "br.com.transsalomao.app"
+        minSdk 24
+        targetSdk 35
+        versionCode 20260927
+        versionName "2026.09.27"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+dependencies {
+}

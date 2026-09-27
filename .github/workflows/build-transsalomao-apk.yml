@@ -1,0 +1,46 @@
+name: Build Trans Salomao APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android-app/**"
+      - ".github/workflows/build-transsalomao-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Install Android SDK
+        run: yes | sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
+      - name: Build signed release APK
+        working-directory: android-app
+        run: gradle :app:assembleRelease --no-daemon
+
+      - name: Prepare APK
+        run: cp android-app/app/build/outputs/apk/release/app-release.apk TransSalomao-2026-09-27.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TransSalomao-APK
+          path: TransSalomao-2026-09-27.apk
+          if-no-files-found: error
