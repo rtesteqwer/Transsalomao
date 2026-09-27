@@ -13,6 +13,7 @@ export type FuelingPhotoReading = {
   liters: string | null;
   price_per_liter: string | null;
   total_amount: string | null;
+  discount_amount: string | null;
   odometer_km: number | null;
   plate: string | null;
   driver_name: string | null;
@@ -32,25 +33,44 @@ export class FuelingPhotoError extends Error {
 }
 
 export async function ensureFuelingPhotoTables(sql: any) {
-  await sql.unsafe(
-    "create table if not exists fueling_photo_files (" +
-      "id text primary key, source_hash text unique not null, file_name text not null, " +
-      "mime_type text not null, image_base64 text not null, created_at timestamptz not null default now())",
-  );
-  await sql.unsafe(
-    "create table if not exists fueling_photo_reads (" +
-      "id text primary key, file_id text unique not null references fueling_photo_files(id), " +
-      "fueling_id text, driver_id text, fleet_id text, document_type text, confidence numeric, " +
-      "status text not null, read_json jsonb not null, created_at timestamptz not null default now(), " +
-      "confirmed_at timestamptz)",
-  );
-  await sql.unsafe("create index if not exists fueling_photo_reads_fueling_idx on fueling_photo_reads(fueling_id)");
-  await sql.unsafe(
-    "create table if not exists fueling_photo_memory (" +
-      "memory_key text primary key, station_name text, station_cnpj text, fuel_type text, " +
-      "pump_number text, document_type text, uses integer not null default 1, " +
-      "last_seen_at timestamptz not null default now())",
-  );
+  await sql`
+    create table if not exists fueling_photo_files (
+      id text primary key,
+      source_hash text unique not null,
+      file_name text not null,
+      mime_type text not null,
+      image_base64 text not null,
+      created_at timestamptz not null default now()
+    )
+  `;
+  await sql`
+    create table if not exists fueling_photo_reads (
+      id text primary key,
+      file_id text unique not null references fueling_photo_files(id),
+      fueling_id text,
+      driver_id text,
+      fleet_id text,
+      document_type text,
+      confidence numeric,
+      status text not null,
+      read_json jsonb not null,
+      created_at timestamptz not null default now(),
+      confirmed_at timestamptz
+    )
+  `;
+  await sql`create index if not exists fueling_photo_reads_fueling_idx on fueling_photo_reads(fueling_id)`;
+  await sql`
+    create table if not exists fueling_photo_memory (
+      memory_key text primary key,
+      station_name text,
+      station_cnpj text,
+      fuel_type text,
+      pump_number text,
+      document_type text,
+      uses integer not null default 1,
+      last_seen_at timestamptz not null default now()
+    )
+  `;
 }
 
 export function validateFuelingImage(value: unknown) {
@@ -142,6 +162,7 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
     liters: normalizeDecimalText(source.liters),
     price_per_liter: normalizeDecimalText(source.price_per_liter),
     total_amount: normalizeDecimalText(source.total_amount),
+    discount_amount: normalizeDecimalText(source.discount_amount),
     odometer_km: integer(source.odometer_km),
     plate: normalizePlate(source.plate),
     driver_name: text(source.driver_name, 180),
@@ -157,14 +178,18 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
   const l = reading.liters ? Number(reading.liters) : null;
   const p = reading.price_per_liter ? Number(reading.price_per_liter) : null;
   const t = reading.total_amount ? Number(reading.total_amount) : null;
+  const d = reading.discount_amount ? Number(reading.discount_amount) : 0;
   if (l && p && t) {
-    const expected = l * p;
-    const tolerance = Math.max(0.05, expected * 0.0015);
-    if (Math.abs(expected - t) > tolerance) {
+    const gross = l * p;
+    const expectedNet = gross - d;
+    const tolerance = Math.max(0.05, gross * 0.0015);
+    if (Math.abs(expectedNet - t) > tolerance) {
       reading.consistency = "conflict";
       reading.alerts = unique([
         ...reading.alerts,
-        "Os valores visíveis não fecham: litros × preço/L difere do total. Confira a foto antes de gravar.",
+        d
+          ? "Os valores visíveis não fecham: litros × preço/L − desconto difere do valor final. Confira a foto antes de gravar."
+          : "Os valores visíveis não fecham: litros × preço/L difere do total. Confira a foto antes de gravar.",
       ]);
     } else if (reading.consistency !== "calculated") {
       reading.consistency = "confirmed";
@@ -183,10 +208,12 @@ export async function readFuelingPhoto(sql: any, input: {
   trailerPlate?: string | null;
 }) {
   await ensureFuelingPhotoTables(sql);
-  const memories = await sql.unsafe(
-    "select station_name,station_cnpj,fuel_type,pump_number,document_type,uses " +
-    "from fueling_photo_memory order by uses desc,last_seen_at desc limit 24",
-  ).catch(() => []);
+  const memories = await sql`
+    select station_name,station_cnpj,fuel_type,pump_number,document_type,uses
+    from fueling_photo_memory
+    order by uses desc,last_seen_at desc
+    limit 24
+  `.catch(() => []);
 
   const key = process.env.OPENAI_API_KEY?.trim() || "";
   if (!key) throw new FuelingPhotoError(503, "Leitor de abastecimento sem OPENAI_API_KEY configurada.");
@@ -213,6 +240,7 @@ export async function readFuelingPhoto(sql: any, input: {
       liters: nullableString,
       price_per_liter: nullableString,
       total_amount: nullableString,
+      discount_amount: nullableString,
       odometer_km: nullableInteger,
       plate: nullableString,
       driver_name: nullableString,
@@ -226,7 +254,7 @@ export async function readFuelingPhoto(sql: any, input: {
     },
     required: [
       "document_type","date","time","station_name","station_cnpj","station_address",
-      "pump_number","nozzle_number","fuel_type","liters","price_per_liter","total_amount",
+      "pump_number","nozzle_number","fuel_type","liters","price_per_liter","total_amount","discount_amount",
       "odometer_km","plate","driver_name","receipt_number","payment_method","consistency",
       "confidence","calculation_basis","alerts","visual_hints"
     ],
@@ -258,17 +286,18 @@ export async function readFuelingPhoto(sql: any, input: {
     "REGRAS CRÍTICAS:",
     "1. Diferencie visor da bomba (pump_display), cupom/ticket do posto (fuel_receipt), comprovante POS (pos_receipt) e nota fiscal (invoice).",
     "2. Preserve TODOS os algarismos e casas decimais visíveis. Não arredonde litros, preço por litro nem total.",
-    "3. liters é a QUANTIDADE abastecida. price_per_liter é o PREÇO UNITÁRIO por litro. total_amount é o VALOR TOTAL em reais.",
+    "3. liters é a QUANTIDADE abastecida. price_per_liter é o PREÇO UNITÁRIO por litro. total_amount é o VALOR FINAL efetivamente cobrado/pago em reais. discount_amount é o DESCONTO em reais quando estiver visível.",
     "4. Nunca confunda R$ total com litros. Em bombas, use rótulos como TOTAL/R$, LITROS/L e PREÇO/L ou a posição/layout somente quando estiver claro.",
-    "5. Quando litros, preço/L e total estiverem todos legíveis, confira matematicamente se litros × preço/L é compatível com o total. Se não fechar, consistency=conflict e explique em alerts.",
+    "5. Quando houver desconto, confira: litros × preço/L = valor bruto e valor bruto − desconto = total_amount. Exemplo: 469,325 L × 6,65 = 3.121,01; desconto 61,01; total final 3.060,00. Isso é consistency=confirmed, não conflict.",
     "6. Se exatamente um dos três valores estiver ausente e os outros dois estiverem claramente visíveis, você pode calcular o terceiro, marcar consistency=calculated e explicar calculation_basis. Nunca apresente cálculo como valor visual.",
     "7. Se só parte dos dados estiver legível, consistency=partial. É melhor null do que adivinhar.",
     "8. data em YYYY-MM-DD e hora em HH:MM ou HH:MM:SS somente quando visíveis no documento. Foto de bomba sem data impressa deve retornar date=null.",
     "9. odometer_km só pode ser odômetro real do veículo, não número da bomba, NSU, código, litros ou valor.",
-    "10. plate deve ser placa brasileira de 7 caracteres somente quando estiver visível no ticket/documento.",
+    "10. plate deve ser placa brasileira de 7 caracteres somente quando estiver visível no ticket/documento. Procure rótulos PLACA, VEÍCULO, CAVALO e similares.",
     "11. fuel_type deve distinguir quando legível: Diesel S10, Diesel S500, Diesel comum, Arla 32, gasolina etc. Não presuma S10 por padrão.",
     "12. station_name e station_cnpj pertencem ao posto emissor. Não confunda adquirente/cartão/maquininha com o posto.",
     "13. receipt_number é número do cupom/documento, não CNPJ, NSU, autorização do cartão ou número da bomba.",
+    "13A. Em DANFE/cupom de posto, DESTINATÁRIO, CLIENTE ou MOTORISTA pode indicar driver_name somente quando for claramente uma pessoa. Não use o nome do posto como motorista.",
     "14. visual_hints deve registrar rótulos/layout úteis para reconhecer novamente o mesmo padrão, sem copiar valores transacionais.",
     "15. confidence >= 0.90 somente quando litros e preço/L estiverem legíveis com segurança.",
     "16. O contexto selecionado serve somente para desambiguar placa/nome VISÍVEL. Nunca preencha dado ausente só porque o usuário selecionou um conjunto.",
