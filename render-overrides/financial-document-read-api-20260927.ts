@@ -28,7 +28,8 @@ export const Route = createFileRoute("/api/ler-comprovante-financeiro")({
             const drivers = await sql`select id,name from drivers where status='ativo' order by name`;
             const rows = Array.isArray(drivers) ? drivers : [];
             const match = reading.driver_name ? matchDriver(reading.driver_name, rows) : null;
-            const documentMatch = match ?? matchDriverFromDocument(reading.source_text || "", rows);
+            const recipientSection = extractRecipientSection(reading.source_text || "");
+            const documentMatch = match ?? matchDriverFromDocument(recipientSection, rows);
             suggestedDriverId = documentMatch?.id ?? null;
             suggestedDriverName = documentMatch?.name ?? null;
           }
@@ -60,6 +61,58 @@ function normalizeName(value: unknown) {
     .trim();
 }
 
+
+
+function extractRecipientSection(documentText: string) {
+  const compact = String(documentText || "").replace(/\s+/g, " ").trim();
+  const normalized = normalizeName(compact);
+  if (!normalized) return "";
+
+  const startLabels = [
+    "dados do recebedor",
+    "dados de quem recebeu",
+    "quem recebeu",
+    "recebedor",
+    "dados do favorecido",
+    "favorecido",
+    "destinatario",
+    "beneficiario",
+  ];
+
+  let start = -1;
+  let label = "";
+  for (const candidate of startLabels) {
+    const idx = normalized.indexOf(candidate);
+    if (idx >= 0 && (start < 0 || idx < start)) {
+      start = idx;
+      label = candidate;
+    }
+  }
+  if (start < 0) return "";
+
+  const stopLabels = [
+    "dados do pagador",
+    "quem pagou",
+    "pagador",
+    "remetente",
+    "dados da transacao",
+    "dados do pagamento",
+    "detalhes da transacao",
+    "autenticacao",
+    "telefones de contato",
+    "telefone de contato",
+    "sac",
+    "ouvidoria",
+  ];
+
+  let end = Math.min(normalized.length, start + 1000);
+  for (const candidate of stopLabels) {
+    const idx = normalized.indexOf(candidate, start + label.length);
+    if (idx >= 0 && idx < end) end = idx;
+  }
+
+  return normalized.slice(start, end);
+}
 
 function matchDriverFromDocument(documentText: string, drivers: any[]) {
   const normalizedDocument = normalizeName(documentText);
