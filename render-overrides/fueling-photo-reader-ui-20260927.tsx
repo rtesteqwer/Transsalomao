@@ -44,6 +44,33 @@ type ReadItem = {
   message?: string;
 };
 
+// Um único worker é compartilhado entre todas as fotos e entre novos lotes.
+// Isso evita reiniciar o Tesseract (e baixar/carregar o idioma novamente)
+// a cada foto quando a IA online estiver sem créditos.
+let sharedLocalOcrWorker: any = null;
+let sharedLocalOcrInit: Promise<any> | null = null;
+
+async function getSharedLocalOcrWorker() {
+  if (sharedLocalOcrWorker) return sharedLocalOcrWorker;
+  if (!sharedLocalOcrInit) {
+    sharedLocalOcrInit = (async () => {
+      const module = await import("tesseract.js");
+      const worker = await module.createWorker("por", 1, {
+        workerPath: "/ocr/worker.min.js",
+        corePath: "/ocr/core",
+        langPath: "/ocr/lang",
+        gzip: true,
+      });
+      sharedLocalOcrWorker = worker;
+      return worker;
+    })().catch((error) => {
+      sharedLocalOcrInit = null;
+      throw error;
+    });
+  }
+  return sharedLocalOcrInit;
+}
+
 export function FuelingPhotoReader() {
   const { data } = useFleet();
   const queryClient = useQueryClient();
@@ -72,7 +99,6 @@ export function FuelingPhotoReader() {
     setErrors([]);
     let activeDriverId = driverId;
     let activeFleetId = fleetId;
-    let localOcrWorker: any = null;
     try {
       const selected = Array.from(files).slice(0, 12);
       for (let index = 0; index < selected.length; index += 1) {
@@ -101,8 +127,7 @@ export function FuelingPhotoReader() {
             nextReading = payload.reading as FuelingReading;
           } else if (response.status === 429) {
             setProgress("IA online sem créditos. Fazendo leitura local rápida no aparelho: " + file.name);
-            const local = await readFuelingWithLocalOcr(image, localOcrWorker);
-            localOcrWorker = local.worker;
+            const local = await readFuelingWithLocalOcr(image);
             nextReading = local.reading;
 
             const localDriver = matchLocalDriver(nextReading.driver_name, data?.drivers ?? []);
@@ -158,9 +183,6 @@ export function FuelingPhotoReader() {
       }
       setProgress("Leitura concluída. Confira antes de gravar.");
     } finally {
-      if (localOcrWorker) {
-        try { await localOcrWorker.terminate(); } catch {}
-      }
       setReading(false);
       if (galleryRef.current) galleryRef.current.value = "";
       if (cameraRef.current) cameraRef.current.value = "";
@@ -508,27 +530,22 @@ function FuelingReadCard({
 
 
 // OCR assets are self-hosted on the same origin for reliable Android WebView fallback.
-async function readFuelingWithLocalOcr(image: string, existingWorker: any) {
-  let worker = existingWorker;
-  if (!worker) {
-    const module = await import("tesseract.js");
-    worker = await withOcrTimeout(
-      module.createWorker("por", 1, {
-        workerPath: "/ocr/worker.min.js",
-        corePath: "/ocr/core",
-        langPath: "/ocr/lang",
-        gzip: true,
-      }),
-      12_000,
-      "A leitura local demorou para iniciar. A foto foi liberada para conferência manual.",
-    );
-  }
+async function readFuelingWithLocalOcr(image: string) {
+  // A primeira inicialização pode levar alguns segundos no Android. O ponto
+  // importante é que ela acontece apenas uma vez; se o limite visual for
+  // atingido, a mesma inicialização continua em segundo plano e a próxima
+  // foto reutiliza o worker quando ele estiver pronto.
+  const worker = await withOcrTimeout(
+    getSharedLocalOcrWorker(),
+    32_000,
+    "O leitor local ainda está carregando.",
+  );
 
   const ocrImage = await prepareLocalOcrImage(image);
   const result = await withOcrTimeout(
     worker.recognize(ocrImage),
-    18_000,
-    "A leitura local passou de 18 segundos. A foto foi liberada para conferência manual.",
+    24_000,
+    "A leitura desta foto demorou além do esperado.",
   );
   const text = String(result?.data?.text || "").trim();
   if (!text) throw new Error("A leitura local não encontrou texto legível nesta foto.");
