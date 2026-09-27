@@ -1,1 +1,1 @@
-deploy 2026-09-27 20:02 UTC - recipient validation and select-all batch advances
+deploy 2026-09-27 20:10 UTC - exact PIX recipient parsing and compact driver match
