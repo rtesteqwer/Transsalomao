@@ -19,6 +19,7 @@ type FuelingReading = {
   liters: string | null;
   price_per_liter: string | null;
   total_amount: string | null;
+  discount_amount: string | null;
   odometer_km: number | null;
   plate: string | null;
   driver_name: string | null;
@@ -354,12 +355,21 @@ function FuelingReadCard({
             className={inputClass}
           />
         </MiniField>
-        <MiniField label="Total R$">
+        <MiniField label="Total final R$">
           <input
             inputMode="decimal"
             value={r.total_amount ?? ""}
             onChange={(event) => onChange({ total_amount: event.target.value || null, consistency: "partial" })}
-            placeholder="Valor visível"
+            placeholder="Valor efetivamente pago"
+            className={inputClass}
+          />
+        </MiniField>
+        <MiniField label="Desconto R$">
+          <input
+            inputMode="decimal"
+            value={r.discount_amount ?? ""}
+            onChange={(event) => onChange({ discount_amount: event.target.value || null, consistency: "partial" })}
+            placeholder="Se houver"
             className={inputClass}
           />
         </MiniField>
