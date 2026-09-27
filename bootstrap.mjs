@@ -266,7 +266,7 @@ if (!original.includes("apply-financial-document-reader-20260927.mjs")) {
 // Using JSON avoids the framed-response retry loop observed in Edge, and doing
 // this before the build guarantees new immutable JS filenames for clients.
 if (!original.includes("[serverfn-json-prebuild]")) {
-  const npmMarker = "execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });";;
+  const npmMarker = "execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });";
   if (!original.includes(npmMarker)) throw new Error('npm install marker not found for serverfn transport fix');
   const prebuildPatch = `
 console.log('[serverfn-json-prebuild] patching TanStack client transport before build');
@@ -313,7 +313,7 @@ console.log('[serverfn-json-prebuild] patching TanStack client transport before 
 if (!original.includes("[fueling-ocr-assets]")) {
   const installMarker = "execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });";
   if (!original.includes(installMarker)) throw new Error('npm install marker not found for fueling OCR assets');
-  const fuelingOcrAssets = String.raw\`
+  const fuelingOcrAssets = String.raw`
 console.log('[fueling-ocr-assets] preparing same-origin OCR assets');
 {
   const publicOcr = path.join(work, 'public', 'ocr');
@@ -357,7 +357,7 @@ console.log('[fueling-ocr-assets] preparing same-origin OCR assets');
 
   console.log('[fueling-ocr-assets] same-origin OCR assets ready');
 }
-\`;
+`;
   original = original.replace(installMarker, installMarker + "\\n" + fuelingOcrAssets);
 }
 console.log("[fueling-ocr-assets-injector] installed");
