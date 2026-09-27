@@ -8,6 +8,7 @@ type BatchItem = {
   date?: unknown;
   time?: unknown;
   driverId?: unknown;
+  sourceArchive?: unknown;
 };
 
 export const Route = createFileRoute("/api/lancar-adiantamentos-pdf-lote")({
@@ -37,14 +38,15 @@ export const Route = createFileRoute("/api/lancar-adiantamentos-pdf-lote")({
             const date = parseDate(item.date);
             const time = parseTime(item.time);
             const driverId = String(item.driverId || "").trim();
+            const sourceArchive = cleanFileName(item.sourceArchive || "");
 
-            if (!amount || !date || !driverId) {
+            if (!amount || !date || !time || !driverId) {
               failed.push({
                 index,
                 fileName,
                 message: !driverId
                   ? "Motorista não identificado. Confira o recebedor antes de lançar."
-                  : "Valor ou data não identificados neste comprovante.",
+                  : "Valor, data ou hora não identificados neste comprovante.",
               });
               continue;
             }
@@ -79,7 +81,9 @@ export const Route = createFileRoute("/api/lancar-adiantamentos-pdf-lote")({
 
             const id = crypto.randomUUID();
             const description = "Adiantamento via PIX";
-            const notes = fileName ? "Importado do PDF: " + fileName : "Importado de comprovante PDF";
+            const notes = sourceArchive
+              ? "Importado do PDF: " + fileName + " · ZIP: " + sourceArchive
+              : fileName ? "Importado do PDF: " + fileName : "Importado de comprovante PDF";
 
             await sql`
               insert into expenses (

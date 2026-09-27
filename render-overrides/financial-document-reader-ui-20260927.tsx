@@ -1,4 +1,4 @@
-import { Camera, FileText, LoaderCircle, Upload } from "lucide-react";
+import { Archive, Camera, FileText, LoaderCircle, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -27,6 +27,7 @@ export function FinancialDocumentReader({
   const fileInput = useRef<HTMLInputElement>(null);
   const pdfInput = useRef<HTMLInputElement>(null);
   const batchPdfInput = useRef<HTMLInputElement>(null);
+  const zipInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -70,6 +71,11 @@ export function FinancialDocumentReader({
   async function handleVisibleFiles(files?: FileList | null) {
     const selected = Array.from(files || []);
     if (!selected.length) return;
+    const isSingleZip = selected.length === 1 && (selected[0].type === "application/zip" || selected[0].type === "application/x-zip-compressed" || /\.zip$/i.test(selected[0].name));
+    if (isSingleZip) {
+      await handleZip(selected[0]);
+      return;
+    }
     const allPdf = selected.every((file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name));
     if (selected.length > 1) {
       if (!allPdf) {
@@ -102,6 +108,7 @@ export function FinancialDocumentReader({
       if (fileInput.current) fileInput.current.value = "";
       if (pdfInput.current) pdfInput.current.value = "";
       if (batchPdfInput.current) batchPdfInput.current.value = "";
+      if (zipInput.current) zipInput.current.value = "";
       if (cameraInput.current) cameraInput.current.value = "";
     }
   }
@@ -148,11 +155,138 @@ export function FinancialDocumentReader({
     }
   }
 
+
+  async function handleZip(file?: File | null) {
+    if (!file) return;
+    if (kind !== "advance") {
+      setError("ZIP de comprovantes é usado para lançar adiantamentos de motoristas.");
+      return;
+    }
+    if (!(file.type === "application/zip" || file.type === "application/x-zip-compressed" || /\.zip$/i.test(file.name))) {
+      setError("Selecione um arquivo ZIP.");
+      return;
+    }
+    if (file.size > 50_000_000) {
+      setError("O ZIP deve ter no máximo 50 MB.");
+      return;
+    }
+
+    setBusy(true);
+    setBatchSaving(false);
+    setError("");
+    setReading(null);
+    setBatchItems([]);
+    setSelectedBatch(new Set());
+    setBatchActionMessage("");
+    setFileName(file.name || "comprovantes.zip");
+    const rows: BatchPdfItem[] = [];
+
+    try {
+      setBatchProgress("Abrindo ZIP e procurando PDFs...");
+      const { unzipSync } = await import("fflate");
+      const archive = unzipSync(new Uint8Array(await file.arrayBuffer()));
+      const pdfEntries = Object.entries(archive)
+        .filter(([name, bytes]) => !name.startsWith("__MACOSX/") && /\.pdf$/i.test(name) && bytes.length > 0);
+
+      if (!pdfEntries.length) {
+        throw new Error("Não encontrei nenhum PDF dentro deste ZIP.");
+      }
+      if (pdfEntries.length > 100) {
+        throw new Error("O ZIP possui mais de 100 PDFs. Divida em dois arquivos ZIP para processar.");
+      }
+
+      for (let index = 0; index < pdfEntries.length; index += 1) {
+        const [entryName, bytes] = pdfEntries[index];
+        const displayName = entryName.replace(/^.*[\\/]/, "") || ("comprovante-" + (index + 1) + ".pdf");
+        setBatchProgress("Lendo PDF " + (index + 1) + " de " + pdfEntries.length + " do ZIP: " + displayName);
+
+        if (bytes.length > 2_650_000) {
+          rows.push({
+            fileName: entryName,
+            result: null,
+            error: "PDF maior que aproximadamente 2,5 MB.",
+          });
+          setBatchItems([...rows]);
+          continue;
+        }
+
+        try {
+          const copy = new Uint8Array(bytes.length);
+          copy.set(bytes);
+          const pdfFile = new File([copy.buffer], displayName, { type: "application/pdf" });
+          const result = await readOne(pdfFile, "pdf_text");
+          rows.push({ fileName: entryName, result, error: null });
+        } catch (err) {
+          rows.push({
+            fileName: entryName,
+            result: null,
+            error: err instanceof Error ? err.message : "Não foi possível ler este PDF do ZIP.",
+          });
+        }
+        setBatchItems([...rows]);
+      }
+
+      const readyIndexes = rows
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => isReadyForBatch(item))
+        .map(({ index }) => index);
+
+      setSelectedBatch(new Set(readyIndexes));
+
+      if (!readyIndexes.length) {
+        setBatchActionMessage("Os PDFs foram lidos, mas nenhum contém RECEBEDOR, VALOR, DATA e HORA suficientes para lançar automaticamente.");
+        return;
+      }
+
+      setBatchSaving(true);
+      setBatchProgress("Lançando " + readyIndexes.length + " adiantamento(s) identificados no ZIP...");
+      const items = readyIndexes.map((index) => ({
+        fileName: rows[index].fileName,
+        sourceArchive: file.name || "comprovantes.zip",
+        amount: rows[index].result!.amount,
+        date: rows[index].result!.date,
+        time: rows[index].result!.time,
+        driverId: rows[index].result!.suggestedDriverId,
+      }));
+
+      const response = await fetch("/api/lancar-adiantamentos-pdf-lote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const payload: any = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.message || "Não foi possível lançar os adiantamentos do ZIP.");
+      }
+
+      const unread = rows.length - readyIndexes.length;
+      setBatchActionMessage(
+        "ZIP processado: " + (payload.message || "adiantamentos lançados.") +
+        (unread > 0 ? " " + unread + " PDF(s) ficaram pendentes por falta de recebedor, valor, data ou hora." : "")
+      );
+
+      const createdCount = Array.isArray(payload.created) ? payload.created.length : 0;
+      const failedCount = Array.isArray(payload.failed) ? payload.failed.length : 0;
+      if (createdCount > 0 && failedCount === 0 && unread === 0) {
+        window.setTimeout(() => window.location.reload(), 1200);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível processar o ZIP.");
+    } finally {
+      setBusy(false);
+      setBatchSaving(false);
+      setBatchProgress("");
+      if (zipInput.current) zipInput.current.value = "";
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
   function isReadyForBatch(item: BatchPdfItem) {
     return !!(
       item.result &&
       item.result.amount &&
       item.result.date &&
+      item.result.time &&
       item.result.suggestedDriverId
     );
   }
@@ -228,7 +362,7 @@ export function FinancialDocumentReader({
           </div>
           <p className="mt-1 text-xs text-muted">
             {kind === "advance"
-              ? "Lê Valor, Data e o Nome do Recebedor. O recebedor é comparado com o cadastro e vinculado como motorista quando houver correspondência segura. Também permite selecionar vários PDFs de uma vez."
+              ? "Lê Valor, Data, Hora e o Nome do Recebedor. O recebedor é comparado com o cadastro e vinculado como motorista quando houver correspondência segura. Aceita vários PDFs e também ZIP com PDFs, lançando automaticamente os comprovantes completos."
               : "Foto ou PDF pela Salomão IA, ou PDF automático pelo próprio texto do arquivo. Preenche Valor, Data e Hora para conferência."}
           </p>
         </div>
@@ -245,6 +379,11 @@ export function FinancialDocumentReader({
           <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => batchPdfInput.current?.click()}>
             {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />} Selecionar vários PDFs
           </Button>
+          {kind === "advance" ? (
+            <Button type="button" size="sm" variant="secondary" disabled={busy || batchSaving} onClick={() => zipInput.current?.click()}>
+              {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Archive className="size-4" />} ZIP de PDFs
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -252,7 +391,7 @@ export function FinancialDocumentReader({
         ref={fileInput}
         type="file"
         className="hidden"
-        accept="application/pdf,image/jpeg,image/png,image/webp"
+        accept="application/pdf,image/jpeg,image/png,image/webp,application/zip,application/x-zip-compressed,.zip"
         multiple
         onChange={(event) => void handleVisibleFiles(event.target.files)}
       />
@@ -272,6 +411,13 @@ export function FinancialDocumentReader({
         onChange={(event) => void handlePdfBatch(event.target.files)}
       />
       <input
+        ref={zipInput}
+        type="file"
+        className="hidden"
+        accept="application/zip,application/x-zip-compressed,.zip"
+        onChange={(event) => void handleZip(event.target.files?.[0])}
+      />
+      <input
         ref={cameraInput}
         type="file"
         className="hidden"
@@ -280,7 +426,7 @@ export function FinancialDocumentReader({
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />
 
-      <p className="mt-2 text-[11px] text-muted">No Android, toque em “Foto ou PDF(s)” ou “Selecionar vários PDFs” e marque vários PDFs antes de confirmar. Cada comprovante usa a DATA e a HORA da própria transação que estiver escrita no PDF; o sistema não deve manter a data atual quando o PDF trouxer outra data/hora. O recebedor é comparado com os motoristas cadastrados para fazer o vínculo.</p>
+      <p className="mt-2 text-[11px] text-muted">No Android, você pode selecionar PDFs separados ou tocar em “ZIP de PDFs”. No ZIP, a Salomão IA abre os PDFs, identifica RECEBEDOR, VALOR, DATA e HORA de cada Pix, cruza o recebedor com os motoristas cadastrados e lança automaticamente os comprovantes completos. PDFs incompletos ficam pendentes e duplicados são ignorados.</p>
       {batchProgress ? <p className="mt-3 text-xs font-medium text-muted">{batchProgress}</p> : null}
       {fileName ? <p className="mt-3 truncate text-xs text-muted">{busy ? "Lendo: " : "Arquivo: "}{fileName}</p> : null}
       {error ? <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</p> : null}

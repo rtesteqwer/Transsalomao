@@ -29,7 +29,7 @@ copy("render-overrides/0021_financial_document_reader.sql", "migrations/0021_fin
 {
   const packagePath = dst("package.json");
   const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
-  pkg.dependencies = { ...(pkg.dependencies || {}), "pdfjs-dist": "4.10.38" };
+  pkg.dependencies = { ...(pkg.dependencies || {}), "pdfjs-dist": "4.10.38", "fflate": "0.8.2" };
   fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
 }
 
