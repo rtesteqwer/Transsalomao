@@ -1,0 +1,48 @@
+name: Sync Ticket Variable Memory
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/ticket-memory-sync.trigger"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Backfill learned ticket variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async()=>{
+            const base=process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+            const bearer=process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+            if(!base||!bearer)throw new Error("OIDC indisponível");
+            const u=new URL(base);
+            u.searchParams.set("audience","transsalomao-ticket-memory");
+            const tokenResp=await fetch(u,{headers:{Authorization:"Bearer "+bearer}});
+            const tokenData=await tokenResp.json();
+            if(!tokenResp.ok||!tokenData.value)throw new Error("Falha ao obter token OIDC");
+
+            const r=await fetch("https://transsalomao.vercel.app/api/assistant/programmer-proxy",{
+              method:"POST",
+              headers:{Authorization:"Bearer "+tokenData.value,"Content-Type":"application/json"},
+              body:JSON.stringify({action:"ticket_memory_backfill"})
+            });
+            const data=await r.json().catch(()=>({}));
+            console.log(JSON.stringify(data,null,2));
+            if(!r.ok||data.ok===false)process.exit(1);
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
