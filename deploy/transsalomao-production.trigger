@@ -1,1 +1,1 @@
-deploy 2026-09-27 19:33 UTC - multi PDF, exact receipt datetime, Android APK
+deploy 2026-09-27 19:40 UTC - fix multi PDF Neon driver lookup
