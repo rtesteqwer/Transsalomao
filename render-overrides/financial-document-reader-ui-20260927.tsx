@@ -58,8 +58,8 @@ export function FinancialDocumentReader({
       suggestedDriverId: typeof payload.suggestedDriverId === "string" ? payload.suggestedDriverId : null,
       suggestedDriverName: typeof payload.suggestedDriverName === "string" ? payload.suggestedDriverName : null,
     };
-    if (!next.amount && !next.date && !next.time && !next.driverName) {
-      throw new Error("Não encontrei uma única transação com valor, data, hora ou motorista claros neste arquivo.");
+    if (!next.amount && !next.date && !next.time && !next.driverName && !next.suggestedDriverName) {
+      throw new Error("Não consegui identificar valor, data, hora nem o recebedor deste comprovante. Confira se este é um comprovante de PIX com texto legível.");
     }
     return next;
   }
