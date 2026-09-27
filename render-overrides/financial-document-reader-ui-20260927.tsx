@@ -6,6 +6,9 @@ export type FinancialDocumentResult = {
   amount: string | null;
   date: string | null;
   time: string | null;
+  driverName: string | null;
+  suggestedDriverId: string | null;
+  suggestedDriverName: string | null;
 };
 
 export function FinancialDocumentReader({
@@ -46,9 +49,12 @@ export function FinancialDocumentReader({
         amount: typeof payload.amount === "string" ? payload.amount : null,
         date: typeof payload.date === "string" ? payload.date : null,
         time: typeof payload.time === "string" ? payload.time : null,
+        driverName: typeof payload.driverName === "string" ? payload.driverName : null,
+        suggestedDriverId: typeof payload.suggestedDriverId === "string" ? payload.suggestedDriverId : null,
+        suggestedDriverName: typeof payload.suggestedDriverName === "string" ? payload.suggestedDriverName : null,
       };
-      if (!next.amount && !next.date && !next.time) {
-        throw new Error("Não encontrei uma única transação com valor, data ou hora claros neste arquivo.");
+      if (!next.amount && !next.date && !next.time && !next.driverName) {
+        throw new Error("Não encontrei uma única transação com valor, data, hora ou motorista claros neste arquivo.");
       }
       setReading(next);
       onRead(next);
@@ -70,7 +76,9 @@ export function FinancialDocumentReader({
             <p className="text-sm font-semibold">Leitor de comprovante</p>
           </div>
           <p className="mt-1 text-xs text-muted">
-            Foto ou PDF. A Salomão IA preenche somente Valor, Data e Hora; você confere antes de salvar.
+            {kind === "advance"
+              ? "Foto ou PDF. A Salomão IA preenche Valor, Data e Hora e vincula o motorista cadastrado quando o nome do recebedor estiver claro."
+              : "Foto ou PDF. A Salomão IA preenche somente Valor, Data e Hora; você confere antes de salvar."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -102,10 +110,16 @@ export function FinancialDocumentReader({
       {fileName ? <p className="mt-3 truncate text-xs text-muted">{busy ? "Lendo: " : "Arquivo: "}{fileName}</p> : null}
       {error ? <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</p> : null}
       {reading ? (
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <div className={"mt-3 grid gap-2 " + (kind === "advance" ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
           <ReadValue label="Valor" value={reading.amount ? "R$ " + reading.amount.replace(".", ",") : "Não identificado"} />
           <ReadValue label="Data" value={reading.date || "Não identificada"} />
           <ReadValue label="Hora" value={reading.time || "Não identificada"} />
+          {kind === "advance" ? (
+            <ReadValue
+              label="Motorista"
+              value={reading.suggestedDriverName || (reading.driverName ? reading.driverName + " · conferir cadastro" : "Não identificado")}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>
