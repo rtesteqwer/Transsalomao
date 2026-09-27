@@ -419,4 +419,4 @@ copy("render-overrides/ticket-meta-smart-20260926.ts", "src/routes/api/ticket-me
   write(rel, s);
 }
 
-console.log("[smart-ops] ranked 3-letter search, compact cards and complete Caixa finances applied");
+console.log("[smart-ops] ranked 3-letter search, compact cards, complete Caixa finances and prominent trip deletion applied");
