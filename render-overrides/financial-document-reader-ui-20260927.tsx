@@ -19,13 +19,14 @@ export function FinancialDocumentReader({
   onRead: (reading: FinancialDocumentResult) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const pdfInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState("");
   const [reading, setReading] = useState<FinancialDocumentResult | null>(null);
   const [error, setError] = useState("");
 
-  async function handleFile(file?: File | null) {
+  async function handleFile(file?: File | null, reader: "ai" | "pdf_text" = "ai") {
     if (!file) return;
     setBusy(true);
     setError("");
@@ -41,6 +42,7 @@ export function FinancialDocumentReader({
           mime: prepared.mime,
           base64: prepared.base64,
           kind,
+          reader,
         }),
       });
       const payload: any = await response.json().catch(() => ({}));
@@ -63,6 +65,7 @@ export function FinancialDocumentReader({
     } finally {
       setBusy(false);
       if (fileInput.current) fileInput.current.value = "";
+      if (pdfInput.current) pdfInput.current.value = "";
       if (cameraInput.current) cameraInput.current.value = "";
     }
   }
@@ -77,8 +80,8 @@ export function FinancialDocumentReader({
           </div>
           <p className="mt-1 text-xs text-muted">
             {kind === "advance"
-              ? "Foto ou PDF. A Salomão IA preenche Valor, Data e Hora e vincula o motorista cadastrado quando o nome do recebedor estiver claro."
-              : "Foto ou PDF. A Salomão IA preenche somente Valor, Data e Hora; você confere antes de salvar."}
+              ? "Foto ou PDF pela Salomão IA, ou PDF automático pelo próprio texto do arquivo. Preenche Valor, Data e Hora e vincula o motorista cadastrado quando o recebedor for identificado."
+              : "Foto ou PDF pela Salomão IA, ou PDF automático pelo próprio texto do arquivo. Preenche Valor, Data e Hora para conferência."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -87,6 +90,9 @@ export function FinancialDocumentReader({
           </Button>
           <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => fileInput.current?.click()}>
             {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />} Foto ou PDF
+          </Button>
+          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => pdfInput.current?.click()}>
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <FileText className="size-4" />} PDF automático
           </Button>
         </div>
       </div>
@@ -99,6 +105,13 @@ export function FinancialDocumentReader({
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />
       <input
+        ref={pdfInput}
+        type="file"
+        className="hidden"
+        accept="application/pdf,.pdf"
+        onChange={(event) => void handleFile(event.target.files?.[0], "pdf_text")}
+      />
+      <input
         ref={cameraInput}
         type="file"
         className="hidden"
@@ -107,6 +120,7 @@ export function FinancialDocumentReader({
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />
 
+      <p className="mt-2 text-[11px] text-muted">PDF automático lê o texto do comprovante sem depender de créditos da OpenAI. PDFs escaneados continuam pela opção Foto ou PDF.</p>
       {fileName ? <p className="mt-3 truncate text-xs text-muted">{busy ? "Lendo: " : "Arquivo: "}{fileName}</p> : null}
       {error ? <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</p> : null}
       {reading ? (
