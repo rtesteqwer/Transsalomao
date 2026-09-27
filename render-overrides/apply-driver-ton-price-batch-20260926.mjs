@@ -28,6 +28,44 @@ edit('src/routes/motorista.tsx', [
   ['Escolha motorista, conjunto e o modo de frete. Em Cegonha e Caixinha você pode lançar várias viagens de uma vez.', 'Escolha motorista e conjunto. No leitor inteligente, o ChatGPT identifica automaticamente modalidade, preço, peso, data e hora de cada foto.'],
   ['? "Selecione uma ou várias fotos. O ChatGPT lê cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência."', '? (priceBatchMode ? "Leia as fotos, confira as viagens e aplique o preço do grupo antes de enviar ao Caixa." : "Selecione uma ou várias fotos. Cada ticket válido é enviado automaticamente ao Caixa para a gerência definir o preço.")'],
   ['              <TicketPhotoAccess onAccess={setTicketAccess} />\n              <div className="grid grid-cols-2 gap-3">', `              <TicketPhotoAccess onAccess={setTicketAccess} />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-14 whitespace-normal border border-border"
+                  disabled={priceBatchPending || ticketSending}
+                  onClick={() => {
+                    setPriceBatchMode(false);
+                    setFreightMode("cegonha");
+                    setTripCount("");
+                    setBatchPhotos([]);
+                    setTicketData(null);
+                    setTicketImage(null);
+                    setTicketFileName("");
+                    setTicketConfirmed(false);
+                  }}
+                >
+                  Cegonha · 1 foto → várias viagens
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-14 whitespace-normal border border-border"
+                  disabled={priceBatchPending || ticketSending}
+                  onClick={() => {
+                    setPriceBatchMode(false);
+                    setFreightMode("caixinha");
+                    setTripCount("");
+                    setBatchPhotos([]);
+                    setTicketData(null);
+                    setTicketImage(null);
+                    setTicketFileName("");
+                    setTicketConfirmed(false);
+                  }}
+                >
+                  Caixinha · 1 foto → várias viagens
+                </Button>
+              </div>
               <label className="flex min-h-12 items-center gap-3 rounded-lg border border-border p-3 text-sm font-semibold">
                 <input type="checkbox" className="size-5" checked={priceBatchMode} disabled={priceBatchPending || batchPhotos.length > 0} onChange={event => setPriceBatchMode(event.target.checked)} />
                 Identificar modalidade automaticamente pelas fotos
