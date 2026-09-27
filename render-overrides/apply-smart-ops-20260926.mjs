@@ -109,47 +109,45 @@ copy("render-overrides/ticket-meta-smart-20260926.ts", "src/routes/api/ticket-me
     "viagens empty km"
   );
 
-  s = replaceRequired(
-    s,
-    lines(
-      '          <Button variant="secondary" onClick={exportTripsExcel} disabled={compactRows.length === 0}>',
-      '            Excel colorido',
-      '          </Button>',
-      '          <Button',
-      '            onClick={() =>'
-    ),
-    lines(
-      '          <Button variant="secondary" onClick={exportTripsExcel} disabled={compactRows.length === 0}>',
-      '            Excel colorido',
-      '          </Button>',
-      '          <Button',
-      '            variant="ghost"',
-      '            className="text-danger"',
-      '            disabled={removeTrip.isPending}',
-      '            onClick={() => {',
-      '              if (selectedTrips.length === 0) {',
-      '                document.getElementById("bulk-trip-selection")?.scrollIntoView({ behavior: "smooth", block: "center" });',
-      '                toast.info("Selecione as viagens que deseja apagar.");',
-      '                return;',
-      '              }',
-      '              void handleBulkDelete();',
-      '            }}',
-      '          >',
-      '            <Trash2 className="size-4" />',
-      '            {selectedTrips.length > 0 ? `Apagar selecionadas (${selectedTrips.length})` : "Apagar viagens"}',
-      '          </Button>',
-      '          <Button',
-      '            onClick={() =>'
-    ),
-    "viagens top delete button"
+  const deleteButtonBefore = lines(
+    '          <Button variant="secondary" onClick={exportTripsExcel} disabled={compactRows.length === 0}>',
+    '            Excel colorido',
+    '          </Button>',
+    '          <Button',
+    '            onClick={() =>'
   );
-
-  s = replaceRequired(
-    s,
-    '      <section className="mt-6 rounded-xl border border-border bg-surface p-4">',
-    '      <section id="bulk-trip-selection" className="mt-6 rounded-xl border border-border bg-surface p-4">',
-    "viagens bulk delete anchor"
-  );
+  if (s.includes(deleteButtonBefore)) {
+    s = s.replace(
+      deleteButtonBefore,
+      lines(
+        '          <Button variant="secondary" onClick={exportTripsExcel} disabled={compactRows.length === 0}>',
+        '            Excel colorido',
+        '          </Button>',
+        '          <Button',
+        '            variant="ghost"',
+        '            className="text-danger"',
+        '            disabled={removeTrip.isPending}',
+        '            onClick={() => {',
+        '              if (selectedTrips.length === 0) {',
+        '                document.getElementById("bulk-trip-selection")?.scrollIntoView({ behavior: "smooth", block: "center" });',
+        '                toast.info("Selecione as viagens que deseja apagar.");',
+        '                return;',
+        '              }',
+        '              void handleBulkDelete();',
+        '            }}',
+        '          >',
+        '            <Trash2 className="size-4" />',
+        '            {selectedTrips.length > 0 ? `Apagar selecionadas (${selectedTrips.length})` : "Apagar viagens"}',
+        '          </Button>',
+        '          <Button',
+        '            onClick={() =>'
+      )
+    );
+    s = s.replace(
+      '      <section className="mt-6 rounded-xl border border-border bg-surface p-4">',
+      '      <section id="bulk-trip-selection" className="mt-6 rounded-xl border border-border bg-surface p-4">'
+    );
+  }
   write(rel, s);
 }
 
