@@ -33,6 +33,9 @@ export function FinancialDocumentReader({
   const [reading, setReading] = useState<FinancialDocumentResult | null>(null);
   const [batchItems, setBatchItems] = useState<BatchPdfItem[]>([]);
   const [batchProgress, setBatchProgress] = useState("");
+  const [selectedBatch, setSelectedBatch] = useState<Set<number>>(new Set());
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [batchActionMessage, setBatchActionMessage] = useState("");
   const [error, setError] = useState("");
 
   async function readOne(file: File, reader: "ai" | "pdf_text") {
@@ -110,6 +113,8 @@ export function FinancialDocumentReader({
     setError("");
     setReading(null);
     setBatchItems([]);
+    setSelectedBatch(new Set());
+    setBatchActionMessage("");
     setFileName("");
     const rows: BatchPdfItem[] = [];
     try {
@@ -140,6 +145,76 @@ export function FinancialDocumentReader({
       setBusy(false);
       setBatchProgress("");
       if (batchPdfInput.current) batchPdfInput.current.value = "";
+    }
+  }
+
+  function isReadyForBatch(item: BatchPdfItem) {
+    return !!(
+      item.result &&
+      item.result.amount &&
+      item.result.date &&
+      item.result.suggestedDriverId
+    );
+  }
+
+  function toggleBatch(index: number) {
+    setSelectedBatch((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  function selectAllBatch() {
+    const indexes = batchItems
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => isReadyForBatch(item))
+      .map(({ index }) => index);
+    setSelectedBatch(new Set(indexes));
+  }
+
+  async function saveSelectedBatch() {
+    if (kind !== "advance") return;
+    const indexes = [...selectedBatch].sort((a, b) => a - b);
+    if (!indexes.length) {
+      setBatchActionMessage("Selecione pelo menos um comprovante pronto.");
+      return;
+    }
+
+    const items = indexes
+      .map((index) => ({ index, item: batchItems[index] }))
+      .filter(({ item }) => isReadyForBatch(item))
+      .map(({ item }) => ({
+        fileName: item.fileName,
+        amount: item.result!.amount,
+        date: item.result!.date,
+        time: item.result!.time,
+        driverId: item.result!.suggestedDriverId,
+      }));
+
+    setBatchSaving(true);
+    setBatchActionMessage("");
+    try {
+      const response = await fetch("/api/lancar-adiantamentos-pdf-lote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const payload: any = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.message || "Não foi possível lançar os adiantamentos selecionados.");
+      }
+      setBatchActionMessage(payload.message || "Adiantamentos selecionados lançados.");
+      const failedCount = Array.isArray(payload.failed) ? payload.failed.length : 0;
+      const createdCount = Array.isArray(payload.created) ? payload.created.length : 0;
+      if (createdCount > 0 && failedCount === 0) {
+        window.setTimeout(() => window.location.reload(), 900);
+      }
+    } catch (err) {
+      setBatchActionMessage(err instanceof Error ? err.message : "Falha ao lançar os selecionados.");
+    } finally {
+      setBatchSaving(false);
     }
   }
 
@@ -211,14 +286,49 @@ export function FinancialDocumentReader({
       {error ? <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</p> : null}
       {batchItems.length ? (
         <div className="mt-3 space-y-2">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-semibold">PDFs processados</p>
             <p className="text-[11px] text-muted">{batchItems.filter((item) => item.result).length} de {batchItems.length} lidos</p>
           </div>
+          {kind === "advance" ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+              <Button type="button" size="sm" variant="secondary" disabled={busy || batchSaving} onClick={selectAllBatch}>
+                Selecionar todos
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy || batchSaving || selectedBatch.size === 0}
+                onClick={() => void saveSelectedBatch()}
+              >
+                {batchSaving ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                Lançar selecionados ({selectedBatch.size})
+              </Button>
+              {selectedBatch.size ? (
+                <button type="button" className="text-xs text-muted underline" onClick={() => setSelectedBatch(new Set())}>
+                  Desmarcar
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {batchActionMessage ? (
+            <p className="rounded-lg border border-border bg-surface px-3 py-2 text-xs">{batchActionMessage}</p>
+          ) : null}
           {batchItems.map((item, index) => (
             <div key={item.fileName + "-" + index} className="rounded-lg border border-border bg-surface px-3 py-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  {kind === "advance" && item.result ? (
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-4 shrink-0"
+                      checked={selectedBatch.has(index)}
+                      disabled={!isReadyForBatch(item) || batchSaving}
+                      onChange={() => toggleBatch(index)}
+                      aria-label={"Selecionar " + item.fileName}
+                    />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-semibold">{item.fileName}</p>
                   {item.result ? (
                     <div className="mt-2 grid gap-1 text-[11px] text-muted sm:grid-cols-3">
@@ -228,17 +338,17 @@ export function FinancialDocumentReader({
                       {kind === "advance" ? (
                         <span>
                           <strong className="text-foreground">Motorista:</strong>{" "}
-                          {item.result.suggestedDriverName
-                            ? item.result.suggestedDriverName
-                            : item.result.driverName
-                              ? item.result.driverName + " · conferir cadastro"
-                              : "Recebedor não identificado"}
+                          {driverDisplayName(item.result)}
                         </span>
                       ) : null}
                     </div>
                   ) : (
                     <p className="mt-1 text-[11px] text-danger">{item.error || "Falha na leitura."}</p>
                   )}
+                  {kind === "advance" && item.result && !item.result.suggestedDriverId ? (
+                    <p className="mt-2 text-[11px] text-danger">Recebedor ainda não corresponde a um motorista cadastrado.</p>
+                  ) : null}
+                  </div>
                 </div>
                 {item.result ? (
                   <Button
@@ -267,13 +377,26 @@ export function FinancialDocumentReader({
           {kind === "advance" ? (
             <ReadValue
               label="Recebedor / Motorista"
-              value={reading.suggestedDriverName || (reading.driverName ? reading.driverName + " · conferir cadastro" : "Não identificado")}
+              value={driverDisplayName(reading)}
             />
           ) : null}
         </div>
       ) : null}
     </div>
   );
+}
+
+function driverDisplayName(reading: FinancialDocumentResult) {
+  if (reading.suggestedDriverName) return reading.suggestedDriverName;
+  const raw = String(reading.driverName || "").trim();
+  if (!raw) return "Recebedor não identificado";
+  if (/[0-9@#$%*_=+{}\[\]<>\\|~^]/.test(raw)) return "Recebedor não identificado";
+  const cleaned = raw.replace(/[A-Za-zÀ-ÿ\s.'’-]/g, "");
+  const words = raw.match(/[A-Za-zÀ-ÿ]{2,}/g) || [];
+  if (cleaned.length > Math.max(1, Math.floor(raw.length * 0.05)) || words.length < 2 || words.length > 10) {
+    return "Recebedor não identificado";
+  }
+  return raw + " · conferir cadastro";
 }
 
 function ReadValue({ label, value }: { label: string; value: string }) {
