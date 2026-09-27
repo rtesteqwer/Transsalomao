@@ -448,16 +448,28 @@ function extractTimeFromText(text: string) {
 
 function extractRecipientFromText(text: string) {
   const lines = textLines(text);
-  const labels = /\b(?:recebedor|destinatario|destinatário|favorecido|beneficiario|beneficiário|nome do recebedor|para)\b/i;
-  const reject = /\b(?:banco|instituicao|instituição|cpf|cnpj|agencia|agência|conta|chave|pix|valor|data|hora)\b/i;
+  const strongLabels = /\b(?:recebedor|destinatario|destinatário|favorecido|beneficiario|beneficiário|nome do recebedor|nome do favorecido)\b/i;
+  const paraLabel = /^\s*para\s*[:\-–—]/i;
+  const reject = /\b(?:banco|instituicao|instituição|cpf|cnpj|agencia|agência|conta|chave|pix|valor|data|hora|pagador|remetente|origem)\b/i;
 
   for (let i = 0; i < lines.length; i += 1) {
-    if (!labels.test(lines[i])) continue;
-    const after = lines[i].split(/[:\-–—]/).slice(1).join(" ").trim();
+    const line = lines[i];
+    if (!strongLabels.test(line) && !paraLabel.test(line)) continue;
+
+    const after = line.split(/[:\-–—]/).slice(1).join(" ").trim();
     const candidates = [after, lines[i + 1] || ""];
     for (const raw of candidates) {
-      const value = raw.replace(/\s+/g, " ").trim();
-      if (value.length >= 5 && value.length <= 120 && /[A-Za-zÀ-ÿ]{2,}\s+[A-Za-zÀ-ÿ]{2,}/.test(value) && !reject.test(value)) {
+      const value = raw
+        .replace(/\b(?:cpf|cnpj)\b.*$/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (
+        value.length >= 5 &&
+        value.length <= 120 &&
+        /[A-Za-zÀ-ÿ]{2,}\s+[A-Za-zÀ-ÿ]{2,}/.test(value) &&
+        !reject.test(value)
+      ) {
         return value;
       }
     }
