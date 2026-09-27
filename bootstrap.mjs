@@ -198,6 +198,12 @@ if (!original.includes("apply-exact-fueling-liters-20260926.mjs")) {
 }
 
 
+// Leitor especializado de abastecimentos: tickets/cupons e visor da bomba.
+if (!original.includes("apply-fueling-photo-reader-20260927.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing fueling photo reader insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-fueling-photo-reader-20260927.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 // Corrige por último o custo diesel dos relatórios por motorista:
 // sempre a soma dos abastecimentos reais do motorista no período, em PDF e Excel.
 if (!original.includes("apply-driver-fueling-cost-sync-20260926.mjs")) {
