@@ -256,6 +256,12 @@ if (!original.includes("apply-service-worker-reset-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-service-worker-reset-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Leitor de comprovantes em Despesas e Adiantamentos: foto/PDF -> valor, data e hora.
+if (!original.includes("apply-financial-document-reader-20260927.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing financial document reader insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-financial-document-reader-20260927.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 // Fix the TanStack Start transport before Vite hashes the browser assets.
 // Using JSON avoids the framed-response retry loop observed in Edge, and doing
 // this before the build guarantees new immutable JS filenames for clients.
