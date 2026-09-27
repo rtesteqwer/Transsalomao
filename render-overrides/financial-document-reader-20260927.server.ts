@@ -207,7 +207,7 @@ function outputText(value: any) {
 }
 
 
-function analyzePdfTextLocally(input: {
+async function analyzePdfTextLocally(input: {
   fileName: string;
   mime: string;
   base64: string;
