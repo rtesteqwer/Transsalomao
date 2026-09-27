@@ -25,7 +25,7 @@ export const Route = createFileRoute("/api/ler-comprovante-financeiro")({
           let suggestedDriverName: string | null = null;
           if (kind === "advance" && (reading.driver_name || reading.source_text)) {
             const sql = await getSql();
-            const drivers = await sql.unsafe("select id,name from drivers where status='ativo' order by name");
+            const drivers = await sql`select id,name from drivers where status='ativo' order by name`;
             const rows = Array.isArray(drivers) ? drivers : [];
             const match = reading.driver_name ? matchDriver(reading.driver_name, rows) : null;
             const documentMatch = match ?? matchDriverFromDocument(reading.source_text || "", rows);
