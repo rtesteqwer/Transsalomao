@@ -20,8 +20,8 @@ export const Route = createFileRoute("/api/ler-abastecimento")({
           const body: any = await request.json();
           const image = validateFuelingImage(body?.imagem);
           const sql = await getSql();
-          const drivers = await sql.unsafe("select id,name,status from drivers where status='ativo' order by name");
-          const fleets = await sql.unsafe("select id,name,tractor_plate,trailer_plate,status from fleets where status='ativo' order by name");
+          const drivers = await sql`select id,name,status from drivers where status='ativo' order by name`;
+          const fleets = await sql`select id,name,tractor_plate,trailer_plate,status from fleets where status='ativo' order by name`;
 
           const selectedDriver = drivers.find((row: any) => String(row.id) === String(body?.driverId ?? "")) ?? null;
           const selectedFleet = fleets.find((row: any) => String(row.id) === String(body?.fleetId ?? "")) ?? null;
