@@ -358,7 +358,7 @@ console.log('[fueling-ocr-assets] preparing same-origin OCR assets');
   console.log('[fueling-ocr-assets] same-origin OCR assets ready');
 }
 `;
-  original = original.replace(installMarker, installMarker + "\\n" + fuelingOcrAssets);
+  original = original.replace(installMarker, installMarker + "\n" + fuelingOcrAssets);
 }
 console.log("[fueling-ocr-assets-injector] installed");
 
