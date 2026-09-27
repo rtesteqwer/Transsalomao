@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { authenticateAssistantRequest } from "@/lib/assistant-auth.server";
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
+import { SALOMAO_AI_IDENTITY } from "@/lib/salomao-identity.server";
 
 type DocResult = {
   category: "viagem" | "abastecimento" | "adiantamento" | "mecanica" | "despesa" | "desconhecido";
@@ -200,7 +201,7 @@ async function analyzeDocument(key: string, mime: string, base64: string, routeM
     ],
   };
 
-  const instructions = `Você é o classificador visual de documentos operacionais da transportadora Trans Salomão.
+  const instructions = `${SALOMAO_AI_IDENTITY.name} é a IA operacional dedicada da ${SALOMAO_AI_IDENTITY.organization}.\nVocê é o classificador visual de documentos operacionais da transportadora Trans Salomão.
 Analise somente o que está VISÍVEL na imagem. O nome do arquivo não é evidência e não deve influenciar a classificação.
 Nunca invente motorista, placa, valor, peso, data, litros, fornecedor, origem ou destino.
 
