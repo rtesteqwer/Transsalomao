@@ -46,16 +46,13 @@ must(
   "fixed single-photo instructions",
 );
 
-must(
-  'multiple={!option.camera}\\n                      disabled={ticketReading || ticketSending || !freightMode || !ticketAccess?.authenticated || !ticketAccess.available}',
-  'multiple={!option.camera && !(freightMode === "cegonha" || freightMode === "caixinha")}\\n                      disabled={ticketReading || ticketSending || !freightMode || !ticketAccess?.authenticated || !ticketAccess.available}',
-  "fixed single-photo gallery",
+s = s.replace(
+  /multiple=\{!option\.camera\}/g,
+  'multiple={!option.camera && !(freightMode === "cegonha" || freightMode === "caixinha")}',
 );
-
-must(
-  '{ticketReading ? "Lendo ticket…" : option.label}',
+s = s.replace(
+  /\{ticketReading \? "Lendo ticket…" : option\.label\}/g,
   '{ticketReading ? "Lendo ticket…" : ((freightMode === "cegonha" || freightMode === "caixinha") && !option.camera ? "Selecionar 1 foto" : option.label)}',
-  "fixed single-photo label",
 );
 
 // Replace the legacy "photos define the quantity" block with one mandatory field.
