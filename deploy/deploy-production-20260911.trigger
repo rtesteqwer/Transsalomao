@@ -35,3 +35,4 @@ service-worker-reset-2026-09-26
 fresh-json-client-hash-2026-09-26
 fueling-photo-reader-2026-09-27
 driver-diesel-report-fix-2026-09-27
+financial-document-reader-2026-09-27
