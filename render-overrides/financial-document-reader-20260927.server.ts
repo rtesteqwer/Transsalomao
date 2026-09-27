@@ -1,4 +1,5 @@
 import { inflateSync } from "node:zlib";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
 
 export type FinancialDocumentReading = {
@@ -211,9 +212,9 @@ function analyzePdfTextLocally(input: {
   mime: string;
   base64: string;
   kind: "advance" | "expense";
-}): FinancialDocumentReading {
+}): Promise<FinancialDocumentReading> {
   const bytes = Buffer.from(input.base64, "base64");
-  const sourceText = extractPdfText(bytes);
+  const sourceText = await extractPdfText(bytes);
   const compact = sourceText.replace(/\s+/g, " ").trim();
   if (compact.length < 20) {
     throw new FinancialDocumentError(
