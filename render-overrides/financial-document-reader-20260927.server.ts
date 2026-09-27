@@ -549,8 +549,13 @@ function extractPixRecipientFromText(text: string) {
 
 function isPersonName(value: string, reject: RegExp) {
   if (value.length < 5 || value.length > 120 || reject.test(value)) return false;
+  if (/[0-9@#$%*_=+{}\[\]<>\\|~^]/.test(value)) return false;
+  const cleaned = value.replace(/[A-Za-zÀ-ÿ\s.'’-]/g, "");
+  if (cleaned.length > Math.max(1, Math.floor(value.length * 0.05))) return false;
   const words = value.match(/[A-Za-zÀ-ÿ]{2,}/g) || [];
-  return words.length >= 2;
+  if (words.length < 2 || words.length > 10) return false;
+  const letterCount = (value.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+  return letterCount / Math.max(1, value.length) >= 0.6;
 }
 
 function extractAmountFromText(text: string) {
@@ -709,12 +714,7 @@ function extractRecipientFromText(text: string) {
         .replace(/\s+/g, " ")
         .trim();
 
-      if (
-        value.length >= 5 &&
-        value.length <= 120 &&
-        /[A-Za-zÀ-ÿ]{2,}\s+[A-Za-zÀ-ÿ]{2,}/.test(value) &&
-        !reject.test(value)
-      ) {
+      if (isPersonName(value, reject)) {
         return value;
       }
     }
