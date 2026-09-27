@@ -464,6 +464,7 @@ function FuelingReadCard({
 }
 
 
+// OCR assets are served from the same origin for Android WebView reliability.
 async function readFuelingWithLocalOcr(image: string, existingWorker: any) {
   let worker = existingWorker;
   if (!worker) {
