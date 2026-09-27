@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
 
 export type FuelingPhotoReading = {
   document_type: "pump_display" | "fuel_receipt" | "pos_receipt" | "invoice" | "unknown";
@@ -215,12 +216,12 @@ export async function readFuelingPhoto(sql: any, input: {
     limit 24
   `.catch(() => []);
 
-  const key = process.env.OPENAI_API_KEY?.trim() || "";
-  if (!key) throw new FuelingPhotoError(503, "Leitor de abastecimento sem OPENAI_API_KEY configurada.");
+  const keys = await getSalomaoOpenAIKeys();
+  if (!keys.length) throw new FuelingPhotoError(503, "Leitor de abastecimento sem credencial de IA configurada.");
   const model =
     process.env.OPENAI_FUELING_MODEL?.trim() ||
     process.env.OPENAI_TICKET_MODEL?.trim() ||
-    "gpt-5.6-sol";
+    salomaoModel();
 
   const nullableString = { type: ["string", "null"] };
   const nullableInteger = { type: ["integer", "null"] };
@@ -320,49 +321,70 @@ export async function readFuelingPhoto(sql: any, input: {
       "NUNCA copie litros, preço, total, data, hora, odômetro ou número de cupom de leitura antiga.",
   ].join("\n");
 
-  let response: Response;
-  try {
-    response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      signal: AbortSignal.timeout(45_000),
-      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        reasoning: { effort: "medium" },
-        instructions,
-        input: [{
-          role: "user",
-          content: [
-            { type: "input_text", text: "Leia esta foto de abastecimento com máxima precisão." },
-            { type: "input_image", image_url: input.imageDataUrl, detail: "high" },
-          ],
-        }],
-        text: { format: { type: "json_schema", name: "trans_salomao_fueling_photo", strict: true, schema } },
-        max_output_tokens: 2200,
-      }),
-    });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "TimeoutError") {
-      throw new FuelingPhotoError(504, "A leitura da foto demorou demais. Tente novamente.");
+  const requestBody = JSON.stringify({
+    model,
+    reasoning: { effort: "medium" },
+    instructions,
+    input: [{
+      role: "user",
+      content: [
+        { type: "input_text", text: "Leia esta foto de abastecimento com máxima precisão." },
+        { type: "input_image", image_url: input.imageDataUrl, detail: "high" },
+      ],
+    }],
+    text: { format: { type: "json_schema", name: "trans_salomao_fueling_photo", strict: true, schema } },
+    max_output_tokens: 2200,
+  });
+
+  let sawQuotaError = false;
+  let sawTimeout = false;
+  for (const key of keys.slice(0, 2)) {
+    let response: Response;
+    try {
+      response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        signal: AbortSignal.timeout(45_000),
+        headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+        body: requestBody,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "TimeoutError") {
+        sawTimeout = true;
+        continue;
+      }
+      throw error;
     }
-    throw error;
+
+    const payload: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error("[fueling-photo] OpenAI error", response.status, JSON.stringify(payload).slice(0, 700));
+      if (
+        response.status === 429 ||
+        payload?.error?.code === "credit_balance_exhausted" ||
+        payload?.error?.type === "insufficient_quota"
+      ) {
+        sawQuotaError = true;
+        continue;
+      }
+      continue;
+    }
+
+    const out = outputText(payload);
+    if (!out) continue;
+    try {
+      return normalizeFuelingReading(JSON.parse(out));
+    } catch {
+      continue;
+    }
   }
 
-  const payload: any = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error("[fueling-photo] OpenAI error", response.status, JSON.stringify(payload).slice(0, 700));
-    if (response.status === 429 || payload?.error?.code === "credit_balance_exhausted" || payload?.error?.type === "insufficient_quota") {
-      throw new FuelingPhotoError(429, "Créditos da IA indisponíveis. O aplicativo vai tentar a leitura local da foto.");
-    }
-    throw new FuelingPhotoError(502, "A IA não conseguiu ler a foto agora. Tente novamente.");
+  if (sawQuotaError) {
+    throw new FuelingPhotoError(429, "Créditos da IA online indisponíveis. O aplicativo vai tentar a leitura local da foto.");
   }
-  const out = outputText(payload);
-  if (!out) throw new FuelingPhotoError(502, "A leitura retornou vazia. Tente outra foto.");
-  try {
-    return normalizeFuelingReading(JSON.parse(out));
-  } catch {
-    throw new FuelingPhotoError(502, "A leitura veio incompleta. Tente outra foto.");
+  if (sawTimeout) {
+    throw new FuelingPhotoError(504, "A leitura online demorou demais. Tente novamente.");
   }
+  throw new FuelingPhotoError(502, "A IA não conseguiu ler a foto agora. Tente novamente.");
 }
 
 export function fuelingPhotoErrorResponse(error: unknown) {
