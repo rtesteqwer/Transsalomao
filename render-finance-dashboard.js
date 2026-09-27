@@ -124,7 +124,7 @@ function json(res,obj,status=200){
   res.end(body);
 }
 
-const html = String.raw\`<!doctype html>
+const html = String.raw`<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
@@ -234,7 +234,7 @@ async function load(){
 }));
 load().catch(e=>{document.body.insertAdjacentHTML("beforeend","<p style='padding:20px;color:#ff667a'>Falha ao carregar painel: "+esc(e.message)+"</p>")});
 </script>
-</body></html>\`;
+</body></html>`;
 
 const server=http.createServer((req,res)=>{
   const url=new URL(req.url,"http://localhost");
