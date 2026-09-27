@@ -7,3 +7,4 @@ validate-excel-date-mode-20260925
 validate-reports-excel-fix-20260925
 validate-fixed-photo-batch-20260925
 validate-excel-group-black-20260925
+inspect-driver-fueling-20260927
