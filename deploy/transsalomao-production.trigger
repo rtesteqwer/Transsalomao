@@ -1,1 +1,2 @@
-deploy 2026-09-27 21:23 UTC - validated recursive self-hosted OCR assets for fueling reader
+deploy fueling intelligence samples + duplicate linking
+commit=13f4d4fbbf5f9fcf12461dcccaec379acc427f60
