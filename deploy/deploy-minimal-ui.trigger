@@ -45,3 +45,5 @@ axor-37-caixinha-reconcile=1
 axor-37-caixinha-reconcile-fix=1
 
 axor-37-caixinha-reconcile-fix2=1
+
+ticket-variable-memory=1
