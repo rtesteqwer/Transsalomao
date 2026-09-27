@@ -51,3 +51,5 @@ ticket-variable-memory=1
 ticket-memory-safe-linking=1
 
 required-fixed-mode-quantity=1
+
+fixed-mode-one-photo-many-trips=1
