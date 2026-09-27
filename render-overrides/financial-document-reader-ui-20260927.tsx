@@ -137,7 +137,7 @@ export function FinancialDocumentReader({
           </div>
           <p className="mt-1 text-xs text-muted">
             {kind === "advance"
-              ? "Foto ou PDF pela Salomão IA, ou PDF automático pelo próprio texto do arquivo. Preenche Valor, Data e Hora e vincula o motorista cadastrado quando o recebedor for identificado."
+              ? "Lê Valor, Data e o Nome do Recebedor. O recebedor é comparado com o cadastro e vinculado como motorista quando houver correspondência segura. Também permite selecionar vários PDFs de uma vez."
               : "Foto ou PDF pela Salomão IA, ou PDF automático pelo próprio texto do arquivo. Preenche Valor, Data e Hora para conferência."}
           </p>
         </div>
@@ -152,7 +152,7 @@ export function FinancialDocumentReader({
             {busy ? <LoaderCircle className="size-4 animate-spin" /> : <FileText className="size-4" />} PDF automático
           </Button>
           <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => batchPdfInput.current?.click()}>
-            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />} Vários PDFs
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />} Selecionar vários PDFs
           </Button>
         </div>
       </div>
@@ -188,7 +188,7 @@ export function FinancialDocumentReader({
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />
 
-      <p className="mt-2 text-[11px] text-muted">PDF automático lê o texto do comprovante sem depender de créditos da OpenAI. Em “Vários PDFs”, você seleciona todos de uma vez, cada arquivo é lido separadamente e o motorista é vinculado quando identificado. PDFs escaneados continuam pela opção Foto ou PDF.</p>
+      <p className="mt-2 text-[11px] text-muted">Nos adiantamentos, cada PDF é lido separadamente para identificar Valor, Data e Recebedor. O nome do recebedor é usado para localizar e vincular o motorista cadastrado. Você pode selecionar vários PDFs no mesmo envio. PDFs escaneados continuam pela opção Foto ou PDF.</p>
       {batchProgress ? <p className="mt-3 text-xs font-medium text-muted">{batchProgress}</p> : null}
       {fileName ? <p className="mt-3 truncate text-xs text-muted">{busy ? "Lendo: " : "Arquivo: "}{fileName}</p> : null}
       {error ? <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</p> : null}
@@ -204,9 +204,22 @@ export function FinancialDocumentReader({
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold">{item.fileName}</p>
                   {item.result ? (
-                    <p className="mt-1 text-[11px] text-muted">
-                      {[item.result.amount ? "R$ " + item.result.amount.replace(".", ",") : null, item.result.date, item.result.time, kind === "advance" ? item.result.suggestedDriverName || item.result.driverName : null].filter(Boolean).join(" · ") || "Dados identificados"}
-                    </p>
+                    <div className="mt-2 grid gap-1 text-[11px] text-muted sm:grid-cols-3">
+                      <span><strong className="text-foreground">Valor:</strong> {item.result.amount ? "R$ " + item.result.amount.replace(".", ",") : "Não identificado"}</span>
+                      <span><strong className="text-foreground">Data:</strong> {item.result.date || "Não identificada"}</span>
+                      {kind === "advance" ? (
+                        <span>
+                          <strong className="text-foreground">Motorista:</strong>{" "}
+                          {item.result.suggestedDriverName
+                            ? item.result.suggestedDriverName
+                            : item.result.driverName
+                              ? item.result.driverName + " · conferir cadastro"
+                              : "Recebedor não identificado"}
+                        </span>
+                      ) : (
+                        <span><strong className="text-foreground">Hora:</strong> {item.result.time || "Não identificada"}</span>
+                      )}
+                    </div>
                   ) : (
                     <p className="mt-1 text-[11px] text-danger">{item.error || "Falha na leitura."}</p>
                   )}
@@ -237,7 +250,7 @@ export function FinancialDocumentReader({
           <ReadValue label="Hora" value={reading.time || "Não identificada"} />
           {kind === "advance" ? (
             <ReadValue
-              label="Motorista"
+              label="Recebedor / Motorista"
               value={reading.suggestedDriverName || (reading.driverName ? reading.driverName + " · conferir cadastro" : "Não identificado")}
             />
           ) : null}
