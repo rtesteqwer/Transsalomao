@@ -1,5 +1,11 @@
 import { inflateSync } from "node:zlib";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import * as pdfjsWorker from "pdfjs-dist/legacy/build/pdf.worker.mjs";
+
+// Vercel bundles server functions into /var/task. Pre-seeding the PDF.js worker
+// keeps text extraction inside the bundle instead of trying to import a missing
+// pdf.worker.mjs file at runtime.
+(globalThis as any).pdfjsWorker = pdfjsWorker;
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
 
 export type FinancialDocumentReading = {
@@ -267,7 +273,10 @@ async function extractPdfText(bytes: Buffer) {
 
     try { await pdf.destroy(); } catch {}
     const extracted = pages.join("\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-    if (extracted.length >= 20) return extracted;
+    if (extracted.length >= 20) {
+      console.info("[financial-pdf-text] PDF.js extração concluída", { chars: extracted.length, pages: pdf.numPages });
+      return extracted;
+    }
   } catch (error) {
     console.warn("[financial-pdf-text] PDF.js falhou; usando parser de compatibilidade", error);
   }
@@ -509,7 +518,7 @@ function extractPixDateTimeFromText(text: string) {
 
 function extractPixRecipientFromText(text: string) {
   const lines = textLines(text);
-  const section = /\b(?:dados do recebedor|dados do favorecido|recebedor|favorecido|destinatario|destinatário|beneficiario|beneficiário)\b/i;
+  const section = /\b(?:dados de quem recebeu|quem recebeu|dados do recebedor|dados do favorecido|recebedor|favorecido|destinatario|destinatário|beneficiario|beneficiário)\b/i;
   const reject = /\b(?:dados do|banco|instituicao|instituição|cpf|cnpj|agencia|agência|conta|chave|pix|valor|data|hora|pagador|remetente|origem|tipo de conta|ispb)\b/i;
 
   for (let i = 0; i < lines.length; i += 1) {
