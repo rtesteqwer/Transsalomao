@@ -301,6 +301,8 @@ export async function readFuelingPhoto(sql: any, input: {
     "14. visual_hints deve registrar rótulos/layout úteis para reconhecer novamente o mesmo padrão, sem copiar valores transacionais.",
     "15. confidence >= 0.90 somente quando litros e preço/L estiverem legíveis com segurança.",
     "16. O contexto selecionado serve somente para desambiguar placa/nome VISÍVEL. Nunca preencha dado ausente só porque o usuário selecionou um conjunto.",
+    "17. Em DANFE Simplificado de combustível, leia a linha do produto: QTD = litros, VL.UNIT = preço por litro e VL.TOTAL da linha = valor bruto. Depois leia Valor Descontos R$ como discount_amount e Valor Total R$ como total_amount final.",
+    "18. Em DANFE, procure PLACA para identificar o veículo. Se DESTINATÁRIO/CLIENTE mostrar uma pessoa que coincide com motorista cadastrado, use esse nome em driver_name; não use o emitente/posto.",
     "",
     "CONTEXTO SELECIONADO:",
     selectedContext,
