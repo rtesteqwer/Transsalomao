@@ -29,6 +29,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           const liters = normalizeDecimalText(reading.liters);
           const price = normalizeDecimalText(reading.price_per_liter);
           const total = normalizeDecimalText(reading.total_amount);
+          const discount = normalizeDecimalText(reading.discount_amount);
           if (!reading.date) throw new FuelingPhotoError(400, "Informe a data do abastecimento.");
           if (!liters) throw new FuelingPhotoError(400, "Informe a quantidade exata de litros.");
           if (!price) throw new FuelingPhotoError(400, "Informe o preço exato por litro.");
@@ -37,18 +38,24 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           }
 
           if (total) {
-            const expected = Number(liters) * Number(price);
+            const gross = Number(liters) * Number(price);
+            const expected = gross - Number(discount || 0);
             const diff = Math.abs(expected - Number(total));
-            const tolerance = Math.max(0.05, expected * 0.0015);
+            const tolerance = Math.max(0.05, gross * 0.0015);
             if (diff > tolerance) {
-              throw new FuelingPhotoError(409, "Litros × preço/L não confere com o total informado.");
+              throw new FuelingPhotoError(
+                409,
+                discount
+                  ? "Litros × preço/L menos o desconto não confere com o total final."
+                  : "Litros × preço/L não confere com o total informado.",
+              );
             }
           }
 
           const sql = await getSql();
           await ensureFuelingPhotoTables(sql);
-          const drivers = await sql.unsafe("select id,name,status from drivers where status='ativo' order by name");
-          const fleets = await sql.unsafe("select id,name,tractor_plate,trailer_plate,status from fleets where status='ativo' order by name");
+          const drivers = await sql`select id,name,status from drivers where status='ativo' order by name`;
+          const fleets = await sql`select id,name,tractor_plate,trailer_plate,status from fleets where status='ativo' order by name`;
 
           let fleet = fleets.find((row: any) => String(row.id) === String(body?.fleetId ?? "")) ?? null;
           if (!fleet && reading.plate) {
@@ -70,10 +77,13 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             if (matches.length === 1) driver = matches[0];
           }
 
-          const existingFile = await sql.unsafe(
-            "select f.id, r.fueling_id from fueling_photo_files f left join fueling_photo_reads r on r.file_id=f.id where f.source_hash=$1 limit 1",
-            [image.sourceHash],
-          );
+          const existingFile = await sql`
+            select f.id, r.fueling_id
+            from fueling_photo_files f
+            left join fueling_photo_reads r on r.file_id=f.id
+            where f.source_hash=${image.sourceHash}
+            limit 1
+          `;
           if (existingFile[0]?.fueling_id) {
             return Response.json({
               ok: true,
@@ -84,13 +94,16 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             }, { headers: { "Cache-Control": "no-store" } });
           }
 
-          const candidate = await sql.unsafe(
-            "select id from fuelings where fleet_id=$1 and date=$2 " +
-            "and abs((liters)::numeric - $3::numeric) <= 0.001 " +
-            "and abs((price_per_liter)::numeric - $4::numeric) <= 0.001 " +
-            "order by id desc limit 1",
-            [fleet.id, reading.date, liters, price],
-          );
+          const candidate = await sql`
+            select id
+            from fuelings
+            where fleet_id=${fleet.id}
+              and date=${reading.date}
+              and abs((liters)::numeric - ${liters}::numeric) <= 0.001
+              and abs((price_per_liter)::numeric - ${price}::numeric) <= 0.001
+            order by id desc
+            limit 1
+          `;
 
           let fuelingId = candidate[0]?.id ? String(candidate[0].id) : null;
           const linkedExisting = !!fuelingId;
@@ -102,57 +115,68 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               reading.receipt_number ? "documento " + reading.receipt_number : "",
               reading.fuel_type || "",
             ].filter(Boolean).join(" · ").slice(0, 600);
-            await sql.unsafe(
-              "insert into fuelings(id,date,driver_id,fleet_id,station,km,liters,price_per_liter,notes) " +
-              "values($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-              [
-                fuelingId,
-                reading.date,
-                driver?.id ?? null,
-                fleet.id,
-                reading.station_name || "",
-                reading.odometer_km ?? 0,
-                liters,
-                price,
-                notes,
-              ],
-            );
+            await sql`
+              insert into fuelings(id,date,driver_id,fleet_id,station,km,liters,price_per_liter,notes)
+              values(
+                ${fuelingId},
+                ${reading.date},
+                ${driver?.id ?? null},
+                ${fleet.id},
+                ${reading.station_name || ""},
+                ${reading.odometer_km ?? 0},
+                ${liters},
+                ${price},
+                ${notes}
+              )
+            `;
           }
 
           let fileId = existingFile[0]?.id ? String(existingFile[0].id) : null;
           if (!fileId) {
             fileId = id("fuelimg");
-            await sql.unsafe(
-              "insert into fueling_photo_files(id,source_hash,file_name,mime_type,image_base64,created_at) " +
-              "values($1,$2,$3,$4,$5,now()) on conflict(source_hash) do nothing",
-              [
-                fileId,
-                image.sourceHash,
-                String(body?.fileName ?? "abastecimento.jpg").slice(0,180),
-                image.mime,
-                image.base64,
-              ],
-            );
-            const actual = await sql.unsafe("select id from fueling_photo_files where source_hash=$1 limit 1", [image.sourceHash]);
+            await sql`
+              insert into fueling_photo_files(id,source_hash,file_name,mime_type,image_base64,created_at)
+              values(
+                ${fileId},
+                ${image.sourceHash},
+                ${String(body?.fileName ?? "abastecimento.jpg").slice(0,180)},
+                ${image.mime},
+                ${image.base64},
+                now()
+              )
+              on conflict(source_hash) do nothing
+            `;
+            const actual = await sql`select id from fueling_photo_files where source_hash=${image.sourceHash} limit 1`;
             fileId = String(actual[0]?.id ?? fileId);
           }
 
-          await sql.unsafe(
-            "insert into fueling_photo_reads(id,file_id,fueling_id,driver_id,fleet_id,document_type,confidence,status,read_json,created_at,confirmed_at) " +
-            "values($1,$2,$3,$4,$5,$6,$7,'confirmed',$8::jsonb,now(),now()) " +
-            "on conflict(file_id) do update set fueling_id=excluded.fueling_id,driver_id=excluded.driver_id,fleet_id=excluded.fleet_id," +
-            "document_type=excluded.document_type,confidence=excluded.confidence,status='confirmed',read_json=excluded.read_json,confirmed_at=now()",
-            [
-              id("fuelread"),
-              fileId,
-              fuelingId,
-              driver?.id ?? null,
-              fleet.id,
-              reading.document_type,
-              reading.confidence,
-              JSON.stringify(reading),
-            ],
-          );
+          await sql`
+            insert into fueling_photo_reads(
+              id,file_id,fueling_id,driver_id,fleet_id,document_type,confidence,status,read_json,created_at,confirmed_at
+            )
+            values(
+              ${id("fuelread")},
+              ${fileId},
+              ${fuelingId},
+              ${driver?.id ?? null},
+              ${fleet.id},
+              ${reading.document_type},
+              ${reading.confidence},
+              'confirmed',
+              ${JSON.stringify(reading)}::jsonb,
+              now(),
+              now()
+            )
+            on conflict(file_id) do update set
+              fueling_id=excluded.fueling_id,
+              driver_id=excluded.driver_id,
+              fleet_id=excluded.fleet_id,
+              document_type=excluded.document_type,
+              confidence=excluded.confidence,
+              status='confirmed',
+              read_json=excluded.read_json,
+              confirmed_at=now()
+          `;
 
           const stationKeySource = [
             normalizeName(reading.station_name),
@@ -163,21 +187,29 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           ].join("|");
           if (stationKeySource.replace(/\|/g, "")) {
             const memoryKey = hashText(stationKeySource);
-            await sql.unsafe(
-              "insert into fueling_photo_memory(memory_key,station_name,station_cnpj,fuel_type,pump_number,document_type,uses,last_seen_at) " +
-              "values($1,$2,$3,$4,$5,$6,1,now()) " +
-              "on conflict(memory_key) do update set station_name=excluded.station_name,station_cnpj=excluded.station_cnpj," +
-              "fuel_type=excluded.fuel_type,pump_number=excluded.pump_number,document_type=excluded.document_type," +
-              "uses=fueling_photo_memory.uses+1,last_seen_at=now()",
-              [
-                memoryKey,
-                reading.station_name,
-                reading.station_cnpj,
-                reading.fuel_type,
-                reading.pump_number,
-                reading.document_type,
-              ],
-            );
+            await sql`
+              insert into fueling_photo_memory(
+                memory_key,station_name,station_cnpj,fuel_type,pump_number,document_type,uses,last_seen_at
+              )
+              values(
+                ${memoryKey},
+                ${reading.station_name},
+                ${reading.station_cnpj},
+                ${reading.fuel_type},
+                ${reading.pump_number},
+                ${reading.document_type},
+                1,
+                now()
+              )
+              on conflict(memory_key) do update set
+                station_name=excluded.station_name,
+                station_cnpj=excluded.station_cnpj,
+                fuel_type=excluded.fuel_type,
+                pump_number=excluded.pump_number,
+                document_type=excluded.document_type,
+                uses=fueling_photo_memory.uses+1,
+                last_seen_at=now()
+            `;
           }
 
           return Response.json({
