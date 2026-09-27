@@ -24,6 +24,14 @@ copy("render-overrides/financial-document-read-api-20260927.ts", "src/routes/api
 copy("render-overrides/financial-document-reader-ui-20260927.tsx", "src/components/financial-document-reader.tsx");
 copy("render-overrides/0021_financial_document_reader.sql", "migrations/0021_financial_document_reader.sql");
 
+// Use PDF.js for reliable text extraction from digital bank receipts.
+{
+  const packagePath = dst("package.json");
+  const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+  pkg.dependencies = { ...(pkg.dependencies || {}), "pdfjs-dist": "4.10.38" };
+  fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
+}
+
 // Expense type: preserve transaction time as a first-class field.
 {
   const rel = "src/lib/types.ts";
