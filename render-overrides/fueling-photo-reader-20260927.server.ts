@@ -345,6 +345,9 @@ export async function readFuelingPhoto(sql: any, input: {
   const payload: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     console.error("[fueling-photo] OpenAI error", response.status, JSON.stringify(payload).slice(0, 700));
+    if (response.status === 429 || payload?.error?.code === "credit_balance_exhausted" || payload?.error?.type === "insufficient_quota") {
+      throw new FuelingPhotoError(429, "Créditos da IA indisponíveis. O aplicativo vai tentar a leitura local da foto.");
+    }
     throw new FuelingPhotoError(502, "A IA não conseguiu ler a foto agora. Tente novamente.");
   }
   const out = outputText(payload);
