@@ -22,7 +22,11 @@ copy("render-overrides/0018_fueling_photo_reader.sql", "migrations/0018_fueling_
 {
   const packagePath = dst("package.json");
   const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
-  pkg.dependencies = { ...(pkg.dependencies || {}), "tesseract.js": "^6.0.1" };
+  pkg.dependencies = {
+    ...(pkg.dependencies || {}),
+    "tesseract.js": "^6.0.1",
+    "@tesseract.js-data/por": "^1.0.0",
+  };
   fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
 }
 
