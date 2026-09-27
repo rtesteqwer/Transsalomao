@@ -2,6 +2,7 @@ import { createHash, createVerify, createPublicKey } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
+import { syncTicketVariableMemory } from "@/lib/ticket-variable-memory.server";
 
 export const Route = createFileRoute("/api/assistant/programmer-proxy")({
   server: {
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/api/assistant/programmer-proxy")({
         if(action==="update") return updateChange(body);
         if(action==="openai") return relayOpenAI(body);
         if(action==="axor_sample_import") return importAxorSamples(body);
+        if(action==="ticket_memory_backfill") return backfillTicketVariableMemory();
 
         return Response.json({ ok:false, code:"UNKNOWN_ACTION" }, { status:400 });
       }
@@ -27,10 +29,10 @@ export const Route = createFileRoute("/api/assistant/programmer-proxy")({
   }
 });
 
-const EXPECTED_AUDS=["transsalomao-salomao-programmer","transsalomao-axor-sample-import"];
+const EXPECTED_AUDS=["transsalomao-salomao-programmer","transsalomao-axor-sample-import","transsalomao-ticket-memory"];
 const EXPECTED_REPO="rtesteqwer/Transsalomao";
 const EXPECTED_REF="refs/heads/main";
-const EXPECTED_WORKFLOWS=["Salomao IA - Programador Autonomo","Import AXOR samples"];
+const EXPECTED_WORKFLOWS=["Salomao IA - Programador Autonomo","Import AXOR samples","Sync Ticket Variable Memory"];
 let jwksCache:{expires:number;keys:any[]}={expires:0,keys:[]};
 
 async function verifyGitHubOidc(request:Request){
@@ -317,6 +319,32 @@ async function saveAxorSource(sql:any,fileName:string,mime:string,text:string){
 function axorHash(value:string){return createHash("sha256").update(value).digest("hex");}
 function normImport(value:unknown){return String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").replace(/[^a-z0-9]+/g," ").trim();}
 function isLuisImport(value:unknown){const n=normImport(value);return (n.includes("luis")||n.includes("luiz"))&&(n.includes("antonio")||n==="luis"||n==="luiz");}
+
+async function backfillTicketVariableMemory(){
+  const sql=await getSql();
+  await syncTicketVariableMemory(sql);
+  const totals=await sql<any>`
+    select
+      count(*)::int as total,
+      count(*) filter(where freight_mode='ton')::int as ton,
+      count(*) filter(where freight_mode='caixinha')::int as caixinha,
+      count(*) filter(where freight_mode='cegonha')::int as cegonha,
+      count(*) filter(where freight_mode='trip')::int as trip,
+      count(*) filter(where model_type is not null)::int as modeled,
+      count(*) filter(where company is not null)::int as with_company,
+      count(*) filter(where route_group is not null or origin is not null or destination is not null)::int as with_route,
+      count(*) filter(where price_per_ton is not null or price_per_trip is not null)::int as with_price
+    from ticket_variable_memory
+  `;
+  const examples=await sql<any>`
+    select model_type,company,transportadora,product,route_group,origin,destination,freight_mode,price_per_ton,price_per_trip,count(*)::int as support
+    from ticket_variable_memory
+    group by model_type,company,transportadora,product,route_group,origin,destination,freight_mode,price_per_ton,price_per_trip
+    order by support desc
+    limit 20
+  `;
+  return Response.json({ok:true,totals:totals[0]??{},examples},{headers:{"Cache-Control":"no-store"}});
+}
 
 async function relayOpenAI(body:any){
   const payload=body?.payload;
