@@ -332,19 +332,32 @@ console.log('[fueling-ocr-assets] preparing same-origin OCR assets');
     return out;
   };
 
-  const tessJsRoot = path.join(work, 'node_modules', 'tesseract.js');
-  const tessCoreRoot = path.join(work, 'node_modules', 'tesseract.js-core');
-  const porRoot = path.join(work, 'node_modules', '@tesseract.js-data', 'por');
+  const nodeModulesRoot = path.join(work, 'node_modules');
+  const allNodeFiles = walkOcr(nodeModulesRoot);
 
-  const workerSource = walkOcr(tessJsRoot).find((file) => path.basename(file) === 'worker.min.js');
+  const workerSource = allNodeFiles.find((file) =>
+    file.includes(path.sep + 'tesseract.js' + path.sep) &&
+    path.basename(file) === 'worker.min.js'
+  );
   if (!workerSource) throw new Error('OCR worker.min.js not found after npm install');
   fs.copyFileSync(workerSource, path.join(publicOcr, 'worker.min.js'));
 
-  const coreFiles = walkOcr(tessCoreRoot).filter((file) => /^tesseract-core.*\\.wasm(?:\\.js)?$/.test(path.basename(file)));
-  if (!coreFiles.length) throw new Error('OCR core assets not found after npm install');
+  const coreFiles = allNodeFiles.filter((file) =>
+    file.includes('tesseract.js-core') &&
+    /^tesseract-core.*\.(?:wasm|wasm\.js|js)$/.test(path.basename(file))
+  );
+  if (!coreFiles.length) {
+    const nearby = allNodeFiles
+      .filter((file) => file.toLowerCase().includes('tesseract'))
+      .map((file) => path.relative(nodeModulesRoot, file))
+      .slice(0, 80);
+    throw new Error('OCR core assets not found after npm install. Found: ' + nearby.join(', '));
+  }
   for (const source of coreFiles) fs.copyFileSync(source, path.join(coreDir, path.basename(source)));
 
-  const porFiles = walkOcr(porRoot);
+  const porFiles = allNodeFiles.filter((file) =>
+    file.includes('@tesseract.js-data' + path.sep + 'por' + path.sep)
+  );
   const gzLanguage = porFiles.find((file) => path.basename(file) === 'por.traineddata.gz');
   const plainLanguage = porFiles.find((file) => path.basename(file) === 'por.traineddata');
   if (gzLanguage) {
