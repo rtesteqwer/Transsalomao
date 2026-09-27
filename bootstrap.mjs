@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { gzipSync } from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 
 const repo = process.cwd();
@@ -267,55 +266,7 @@ if (!original.includes("apply-financial-document-reader-20260927.mjs")) {
 // Using JSON avoids the framed-response retry loop observed in Edge, and doing
 // this before the build guarantees new immutable JS filenames for clients.
 if (!original.includes("[serverfn-json-prebuild]")) {
-  const npmMarker = "execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });
-
-// Self-host the OCR worker/core/language files so Android WebView never depends
-// on jsDelivr/CDN access while reading fueling tickets.
-{
-  const publicOcr = path.join(work, 'public', 'ocr');
-  const workerDir = path.join(publicOcr, 'core');
-  const langDir = path.join(publicOcr, 'lang');
-  fs.mkdirSync(workerDir, { recursive: true });
-  fs.mkdirSync(langDir, { recursive: true });
-
-  const walk = (dir, out = []) => {
-    if (!fs.existsSync(dir)) return out;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full, out);
-      else out.push(full);
-    }
-    return out;
-  };
-
-  const tessJsRoot = path.join(work, 'node_modules', 'tesseract.js');
-  const tessCoreRoot = path.join(work, 'node_modules', 'tesseract.js-core');
-  const porRoot = path.join(work, 'node_modules', '@tesseract.js-data', 'por');
-
-  const workerSource = walk(tessJsRoot).find((file) => path.basename(file) === 'worker.min.js');
-  if (!workerSource) throw new Error('OCR worker.min.js not found after npm install');
-  fs.copyFileSync(workerSource, path.join(publicOcr, 'worker.min.js'));
-
-  const coreFiles = walk(tessCoreRoot).filter((file) => /^tesseract-core.*\.wasm(?:\.js)?$/.test(path.basename(file)));
-  if (!coreFiles.length) throw new Error('OCR core assets not found after npm install');
-  for (const source of coreFiles) {
-    fs.copyFileSync(source, path.join(workerDir, path.basename(source)));
-  }
-
-  const porFiles = walk(porRoot);
-  const gzLanguage = porFiles.find((file) => path.basename(file) === 'por.traineddata.gz');
-  const plainLanguage = porFiles.find((file) => path.basename(file) === 'por.traineddata');
-  if (gzLanguage) {
-    fs.copyFileSync(gzLanguage, path.join(langDir, 'por.traineddata.gz'));
-  } else if (plainLanguage) {
-    fs.writeFileSync(path.join(langDir, 'por.traineddata.gz'), gzipSync(fs.readFileSync(plainLanguage)));
-  } else {
-    throw new Error('Portuguese OCR traineddata not found after npm install');
-  }
-
-  console.log('[fueling-ocr-assets] self-hosted worker/core/por language data');
-}
-";
+  const npmMarker = "execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });";;
   if (!original.includes(npmMarker)) throw new Error('npm install marker not found for serverfn transport fix');
   const prebuildPatch = `
 console.log('[serverfn-json-prebuild] patching TanStack client transport before build');
@@ -355,6 +306,61 @@ console.log('[serverfn-json-prebuild] patching TanStack client transport before 
 `;
   original = original.replace(npmMarker, npmMarker + "\n" + prebuildPatch);
 }
+
+
+// Self-host OCR runtime assets after npm install so Android WebView never
+// needs CDN access for worker/core/language files.
+if (!original.includes("[fueling-ocr-assets]")) {
+  const installMarker = "execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });";
+  if (!original.includes(installMarker)) throw new Error('npm install marker not found for fueling OCR assets');
+  const fuelingOcrAssets = String.raw\`
+console.log('[fueling-ocr-assets] preparing same-origin OCR assets');
+{
+  const publicOcr = path.join(work, 'public', 'ocr');
+  const coreDir = path.join(publicOcr, 'core');
+  const langDir = path.join(publicOcr, 'lang');
+  fs.mkdirSync(coreDir, { recursive: true });
+  fs.mkdirSync(langDir, { recursive: true });
+
+  const walkOcr = (dir, out = []) => {
+    if (!fs.existsSync(dir)) return out;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walkOcr(full, out);
+      else out.push(full);
+    }
+    return out;
+  };
+
+  const tessJsRoot = path.join(work, 'node_modules', 'tesseract.js');
+  const tessCoreRoot = path.join(work, 'node_modules', 'tesseract.js-core');
+  const porRoot = path.join(work, 'node_modules', '@tesseract.js-data', 'por');
+
+  const workerSource = walkOcr(tessJsRoot).find((file) => path.basename(file) === 'worker.min.js');
+  if (!workerSource) throw new Error('OCR worker.min.js not found after npm install');
+  fs.copyFileSync(workerSource, path.join(publicOcr, 'worker.min.js'));
+
+  const coreFiles = walkOcr(tessCoreRoot).filter((file) => /^tesseract-core.*\\.wasm(?:\\.js)?$/.test(path.basename(file)));
+  if (!coreFiles.length) throw new Error('OCR core assets not found after npm install');
+  for (const source of coreFiles) fs.copyFileSync(source, path.join(coreDir, path.basename(source)));
+
+  const porFiles = walkOcr(porRoot);
+  const gzLanguage = porFiles.find((file) => path.basename(file) === 'por.traineddata.gz');
+  const plainLanguage = porFiles.find((file) => path.basename(file) === 'por.traineddata');
+  if (gzLanguage) {
+    fs.copyFileSync(gzLanguage, path.join(langDir, 'por.traineddata.gz'));
+  } else if (plainLanguage) {
+    fs.writeFileSync(path.join(langDir, 'por.traineddata.gz'), execFileSync('gzip', ['-c', plainLanguage]));
+  } else {
+    throw new Error('Portuguese OCR traineddata not found after npm install');
+  }
+
+  console.log('[fueling-ocr-assets] same-origin OCR assets ready');
+}
+\`;
+  original = original.replace(installMarker, installMarker + "\\n" + fuelingOcrAssets);
+}
+console.log("[fueling-ocr-assets-injector] installed");
 
 fs.writeFileSync(originalPath, original);
 
