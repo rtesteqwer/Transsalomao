@@ -235,7 +235,7 @@ async function analyzePdfTextLocally(input: {
     amount: extractPixAmountFromText(sourceText) ?? extractAmountFromText(sourceText),
     date: pixDateTime.date ?? transactionDateTime.date ?? extractDateFromText(sourceText),
     time: pixDateTime.time ?? transactionDateTime.time ?? extractTimeFromText(sourceText),
-    driver_name: input.kind === "advance" ? (extractPixRecipientFromText(sourceText) ?? extractRecipientFromText(sourceText)) : null,
+    driver_name: input.kind === "advance" ? extractPixRecipientFromText(sourceText) : null,
     source_text: sourceText.slice(0, 50000),
   };
 }
@@ -518,48 +518,102 @@ function extractPixDateTimeFromText(text: string) {
 
 function extractPixRecipientFromText(text: string) {
   const compact = text.replace(/\s+/g, " ").trim();
-  const reject = /\b(?:dados do|dados de|banco|instituicao|instituição|cpf|cnpj|agencia|agência|conta|chave|pix|valor|data|hora|pagador|remetente|origem|tipo de conta|ispb|telefones?|contato|sac|ouvidoria|autenticacao|autenticação|transacao|transação|pagamento)\b/i;
+  const normalized = normalizeSearchText(compact);
 
-  // Bradesco and similar bank PDFs often flatten the whole page into one line.
-  // In that case, read only the "Dados de quem recebeu" block and capture
-  // Nome before CPF/CNPJ/Instituição/Chave Pix.
-  const sectionMatch = compact.match(/(?:dados de quem recebeu|dados do recebedor|dados do favorecido|quem recebeu)\b([\s\S]{0,700}?)(?=\bdados (?:do pagamento|da transa[cç][aã]o|de quem pagou|de quem fez)|\bautentica[cç][aã]o\b|\btelefones? de contato\b|$)/i);
-  if (sectionMatch?.[1]) {
-    const block = sectionMatch[1];
-    const labeledName = block.match(/\bnome(?: completo)?\s*[:\-–—]?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .''’\-]{3,120}?)(?=\s+(?:cpf(?:\/cnpj)?|cnpj|institui[cç][aã]o|banco|chave pix|ag[eê]ncia|conta)\b)/i);
-    if (labeledName?.[1]) {
-      const value = labeledName[1].replace(/\s+/g, " ").trim();
+  // The only valid person for an advance is the explicit RECEBEDOR/FAVORECIDO.
+  // Never infer the driver from arbitrary text elsewhere in the receipt.
+  const startLabels = [
+    "dados do recebedor",
+    "dados de quem recebeu",
+    "quem recebeu",
+    "recebedor",
+    "dados do favorecido",
+    "favorecido",
+    "destinatario",
+    "beneficiario",
+  ];
+
+  let sectionStart = -1;
+  let matchedLabel = "";
+  for (const label of startLabels) {
+    const idx = normalized.indexOf(label);
+    if (idx >= 0 && (sectionStart < 0 || idx < sectionStart)) {
+      sectionStart = idx;
+      matchedLabel = label;
+    }
+  }
+  if (sectionStart < 0) return null;
+
+  const stopLabels = [
+    "dados do pagador",
+    "quem pagou",
+    "pagador",
+    "remetente",
+    "dados da transacao",
+    "dados da transação",
+    "dados do pagamento",
+    "detalhes da transacao",
+    "detalhes da transação",
+    "autenticacao",
+    "autenticação",
+    "telefones de contato",
+    "telefone de contato",
+    "sac",
+    "ouvidoria",
+  ];
+
+  let sectionEnd = Math.min(compact.length, sectionStart + 1000);
+  for (const label of stopLabels) {
+    const idx = normalized.indexOf(label, sectionStart + matchedLabel.length);
+    if (idx >= 0 && idx < sectionEnd) sectionEnd = idx;
+  }
+
+  const block = compact.slice(sectionStart, sectionEnd);
+  const blockNormalized = normalizeSearchText(block);
+  const reject = /\b(?:dados|banco|instituicao|instituição|cpf|cnpj|agencia|agência|conta|chave|pix|valor|data|hora|pagador|remetente|origem|tipo de conta|ispb|telefones?|contato|sac|ouvidoria|autenticacao|autenticação|transacao|transação|pagamento)\b/i;
+
+  // Most bank receipts expose the recipient as "Nome: FULANO ..." inside
+  // RECEBEDOR. Capture only up to the next banking field.
+  const namePatterns = [
+    /\bnome do recebedor\s*[:\-–—]?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .''’\-]{3,140}?)(?=\s+(?:cpf|cnpj|cpf\/cnpj|institui[cç][aã]o|banco|chave pix|ag[eê]ncia|conta|ispb)\b|$)/i,
+    /\bnome(?: completo)?\s*[:\-–—]?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .''’\-]{3,140}?)(?=\s+(?:cpf|cnpj|cpf\/cnpj|institui[cç][aã]o|banco|chave pix|ag[eê]ncia|conta|ispb)\b|$)/i,
+    /\b(?:recebedor|favorecido|destinatario|destinatário|beneficiario|beneficiário)\s*[:\-–—]\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .''’\-]{3,140}?)(?=\s+(?:cpf|cnpj|cpf\/cnpj|institui[cç][aã]o|banco|chave pix|ag[eê]ncia|conta|ispb)\b|$)/i,
+  ];
+
+  for (const pattern of namePatterns) {
+    const found = block.match(pattern);
+    if (found?.[1]) {
+      const value = found[1].replace(/\s+/g, " ").trim();
       if (isPersonName(value, reject)) return value;
     }
   }
 
-  const lines = textLines(text);
-  const section = /\b(?:dados de quem recebeu|quem recebeu|dados do recebedor|dados do favorecido|recebedor|favorecido|destinatario|destinatário|beneficiario|beneficiário)\b/i;
+  // Line-based fallback, but still strictly limited to the RECEBEDOR section.
+  const blockLines = textLines(block);
+  for (let i = 0; i < blockLines.length; i += 1) {
+    const line = blockLines[i];
+    const normalizedLine = normalizeSearchText(line);
 
-  for (let i = 0; i < lines.length; i += 1) {
-    if (!section.test(lines[i])) continue;
-
-    const sameLine = lines[i].match(/(?:recebedor|favorecido|destinatario|destinatário|beneficiario|beneficiário)\s*[:\-–—]\s*(.+)$/i);
-    if (sameLine?.[1]) {
-      const value = sameLine[1].replace(/\b(?:cpf|cnpj)\b.*$/i, "").trim();
-      if (isPersonName(value, reject)) return value;
-    }
-
-    for (let j = i + 1; j <= Math.min(lines.length - 1, i + 14); j += 1) {
-      const current = lines[j].trim();
-      const normalized = normalizeSearchText(current);
-      if (/^(?:nome|nome completo)\s*[:\-–—]?\s*$/.test(normalized)) continue;
-      if (/^(?:cpf|cnpj|cpf\/cnpj|instituicao|instituição|chave pix|agencia|agência|conta|dados do pagamento|dados da transacao|dados da transação|autenticacao|autenticação|telefones? de contato)\b/i.test(current)) continue;
-
-      const named = current.match(/^(?:nome|nome completo)\s*[:\-–—]\s*(.+)$/i);
-      const value = (named?.[1] || current)
-        .replace(/\b(?:cpf|cnpj)\b.*$/i, "")
+    const inline = line.match(/^(?:nome do recebedor|nome|nome completo|recebedor|favorecido)\s*[:\-–—]\s*(.+)$/i);
+    if (inline?.[1]) {
+      const value = inline[1]
+        .replace(/\b(?:cpf|cnpj|cpf\/cnpj|institui[cç][aã]o|banco|chave pix|ag[eê]ncia|conta|ispb)\b.*$/i, "")
         .replace(/\s+/g, " ")
         .trim();
-
       if (isPersonName(value, reject)) return value;
     }
+
+    if (/^(?:nome do recebedor|nome|nome completo)\s*[:\-–—]?\s*$/.test(normalizedLine)) {
+      for (let j = i + 1; j <= Math.min(blockLines.length - 1, i + 3); j += 1) {
+        const value = blockLines[j]
+          .replace(/\b(?:cpf|cnpj|cpf\/cnpj|institui[cç][aã]o|banco|chave pix|ag[eê]ncia|conta|ispb)\b.*$/i, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (isPersonName(value, reject)) return value;
+      }
+    }
   }
+
   return null;
 }
 
