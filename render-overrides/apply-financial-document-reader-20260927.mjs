@@ -21,6 +21,7 @@ const replaceRequired = (value, search, replacement, label) => {
 
 copy("render-overrides/financial-document-reader-20260927.server.ts", "src/lib/financial-document-reader.server.ts");
 copy("render-overrides/financial-document-read-api-20260927.ts", "src/routes/api/ler-comprovante-financeiro.ts");
+copy("render-overrides/financial-document-batch-save-api-20260927.ts", "src/routes/api/lancar-adiantamentos-pdf-lote.ts");
 copy("render-overrides/financial-document-reader-ui-20260927.tsx", "src/components/financial-document-reader.tsx");
 copy("render-overrides/0021_financial_document_reader.sql", "migrations/0021_financial_document_reader.sql");
 
