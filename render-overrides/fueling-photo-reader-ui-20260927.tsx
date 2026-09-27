@@ -99,7 +99,7 @@ export function FuelingPhotoReader() {
           if (response.ok && payload?.reading) {
             nextReading = payload.reading as FuelingReading;
           } else if (response.status === 429) {
-            setProgress("IA online sem créditos. Fazendo leitura local no aparelho: " + file.name);
+            setProgress("IA online sem créditos. Tentando leitura local no aparelho por até 45 segundos: " + file.name);
             const local = await readFuelingWithLocalOcr(image, localOcrWorker);
             localOcrWorker = local.worker;
             nextReading = local.reading;
@@ -469,15 +469,24 @@ async function readFuelingWithLocalOcr(image: string, existingWorker: any) {
   let worker = existingWorker;
   if (!worker) {
     const module = await import("tesseract.js");
-    worker = await module.createWorker("por", 1, {
-      workerPath: "/ocr/worker.min.js",
-      corePath: "/ocr/core",
-      langPath: "/ocr/lang",
-      gzip: true,
-    });
+    worker = await withOcrTimeout(
+      module.createWorker("por", 1, {
+        workerPath: "/ocr/worker.min.js",
+        corePath: "/ocr/core",
+        langPath: "/ocr/lang",
+        gzip: true,
+      }),
+      30_000,
+      "A leitura local demorou para iniciar. Tente novamente ou informe os dados manualmente.",
+    );
   }
 
-  const result = await worker.recognize(image);
+  const ocrImage = await prepareLocalOcrImage(image);
+  const result = await withOcrTimeout(
+    worker.recognize(ocrImage),
+    45_000,
+    "A leitura local passou de 45 segundos. A tela foi liberada; tente novamente ou informe os dados manualmente.",
+  );
   const text = String(result?.data?.text || "").trim();
   if (!text) throw new Error("A leitura local não encontrou texto legível nesta foto.");
 
@@ -485,6 +494,43 @@ async function readFuelingWithLocalOcr(image: string, existingWorker: any) {
     worker,
     reading: parseLocalFuelingText(text),
   };
+}
+
+function withOcrTimeout<T>(promise: Promise<T>, ms: number, message: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function prepareLocalOcrImage(dataUrl: string) {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => resolve(element);
+    element.onerror = () => reject(new Error("Não foi possível preparar a foto para leitura local."));
+    element.src = dataUrl;
+  });
+
+  const maxSide = 1400;
+  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+  if (scale >= 0.999) return dataUrl;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return dataUrl;
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.88);
 }
 
 function parseLocalFuelingText(text: string): FuelingReading {
