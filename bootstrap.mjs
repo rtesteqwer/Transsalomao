@@ -211,6 +211,12 @@ if (!original.includes("apply-driver-ton-price-batch-20260926.mjs")) {
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-driver-ton-price-batch-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Cegonha/Caixinha: quantidade explícita e obrigatória em qualquer lançamento em lote.
+if (!original.includes("apply-fixed-mode-required-count-20260926.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing fixed mode required count insertion point');
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-fixed-mode-required-count-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+}
+
 // Memória persistente de rotas: aplica por último para usar os metadados já lidos
 // e preencher origem, destino e preço/t no fechamento do Caixa.
 if (!original.includes("apply-route-memory-caixa-20260926.mjs")) {
