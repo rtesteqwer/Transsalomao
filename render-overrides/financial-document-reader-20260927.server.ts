@@ -1,3 +1,4 @@
+import { inflateSync } from "node:zlib";
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
 
 export type FinancialDocumentReading = {
@@ -5,6 +6,7 @@ export type FinancialDocumentReading = {
   date: string | null;
   time: string | null;
   driver_name: string | null;
+  source_text: string | null;
 };
 
 export class FinancialDocumentError extends Error {
@@ -18,8 +20,13 @@ export async function readFinancialDocument(input: {
   mime: string;
   base64: string;
   kind: "advance" | "expense";
+  reader?: "ai" | "pdf_text";
 }): Promise<FinancialDocumentReading> {
   const file = validateFinancialFile(input);
+  if (input.reader === "pdf_text") {
+    if (file.mime !== "application/pdf") throw new FinancialDocumentError(415, "O leitor automático sem IA aceita somente PDF.");
+    return analyzePdfTextLocally({ ...input, mime: file.mime, base64: file.base64 });
+  }
   const keys = await getSalomaoOpenAIKeys();
   if (!keys.length) throw new FinancialDocumentError(503, "A Salomão IA precisa da API OpenAI ativa para ler o comprovante.");
 
@@ -150,6 +157,7 @@ function normalizeReading(value: any): FinancialDocumentReading {
     date: normalizeDate(value?.date),
     time: normalizeTime(value?.time),
     driver_name: normalizeDriverName(value?.driver_name),
+    source_text: null,
   };
 }
 
@@ -194,6 +202,267 @@ function outputText(value: any) {
     }
   }
   return parts.join("").trim();
+}
+
+
+function analyzePdfTextLocally(input: {
+  fileName: string;
+  mime: string;
+  base64: string;
+  kind: "advance" | "expense";
+}): FinancialDocumentReading {
+  const bytes = Buffer.from(input.base64, "base64");
+  const sourceText = extractPdfText(bytes);
+  const compact = sourceText.replace(/\s+/g, " ").trim();
+  if (compact.length < 20) {
+    throw new FinancialDocumentError(
+      422,
+      "Este PDF não possui texto digital legível. Use Foto/IA para comprovante escaneado ou fotografado.",
+    );
+  }
+
+  return {
+    amount: extractAmountFromText(sourceText),
+    date: extractDateFromText(sourceText),
+    time: extractTimeFromText(sourceText),
+    driver_name: input.kind === "advance" ? extractRecipientFromText(sourceText) : null,
+    source_text: sourceText.slice(0, 50000),
+  };
+}
+
+function extractPdfText(bytes: Buffer) {
+  const latin = bytes.toString("latin1");
+  const chunks: string[] = [latin];
+  const streamPattern = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = streamPattern.exec(latin))) {
+    const dictionary = latin.slice(Math.max(0, match.index - 1000), match.index);
+    const raw = Buffer.from(match[1], "latin1");
+    if (/\/FlateDecode\b/.test(dictionary)) {
+      try {
+        chunks.push(inflateSync(raw).toString("latin1"));
+      } catch {
+        chunks.push(match[1]);
+      }
+    } else {
+      chunks.push(match[1]);
+    }
+  }
+
+  const fragments: string[] = [];
+  for (const chunk of chunks) collectPdfTextOperators(chunk, fragments);
+
+  return fragments
+    .map((part) => cleanPdfText(part))
+    .filter((part) => part.length >= 2)
+    .join("\n")
+    .replace(/\u0000/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function collectPdfTextOperators(chunk: string, out: string[]) {
+  const literalTj = /\(((?:\\.|[^\\()])*)\)\s*(?:Tj|'|")/g;
+  let match: RegExpExecArray | null;
+  while ((match = literalTj.exec(chunk))) out.push(decodePdfLiteral(match[1]));
+
+  const hexTj = /<([0-9A-Fa-f\s]{4,})>\s*Tj/g;
+  while ((match = hexTj.exec(chunk))) out.push(decodePdfHex(match[1]));
+
+  const arrays = /\[([\s\S]*?)\]\s*TJ/g;
+  while ((match = arrays.exec(chunk))) {
+    const body = match[1];
+    const pieces: string[] = [];
+    const token = /\(((?:\\.|[^\\()])*)\)|<([0-9A-Fa-f\s]{4,})>/g;
+    let item: RegExpExecArray | null;
+    while ((item = token.exec(body))) {
+      pieces.push(item[1] != null ? decodePdfLiteral(item[1]) : decodePdfHex(item[2] || ""));
+    }
+    if (pieces.length) out.push(pieces.join(""));
+  }
+
+  const generic = /\(((?:\\.|[^\\()]){3,180})\)/g;
+  let count = 0;
+  while ((match = generic.exec(chunk)) && count < 1200) {
+    const value = decodePdfLiteral(match[1]);
+    const printable = value.replace(/[^\x20-\x7EÀ-ÿ]/g, "").length;
+    if (value.length && printable / value.length >= 0.72) out.push(value);
+    count += 1;
+  }
+}
+
+function decodePdfLiteral(value: string) {
+  return value.replace(/\\([0-7]{1,3}|n|r|t|b|f|\(|\)|\\|\r?\n)/g, (_all, code: string) => {
+    if (/^[0-7]{1,3}$/.test(code)) return String.fromCharCode(parseInt(code, 8));
+    if (code === "n") return "\n";
+    if (code === "r") return "\r";
+    if (code === "t") return "\t";
+    if (code === "b") return "\b";
+    if (code === "f") return "\f";
+    if (code === "\n" || code === "\r\n") return "";
+    return code;
+  });
+}
+
+function decodePdfHex(value: string) {
+  const clean = value.replace(/\s+/g, "");
+  if (!clean || clean.length % 2) return "";
+  try {
+    const bytes = Buffer.from(clean, "hex");
+    if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+      let text = "";
+      for (let i = 2; i + 1 < bytes.length; i += 2) text += String.fromCharCode(bytes.readUInt16BE(i));
+      return text;
+    }
+    const latin = bytes.toString("latin1");
+    if (latin.includes("\u0000")) {
+      let text = "";
+      for (let i = 0; i + 1 < bytes.length; i += 2) {
+        const code = bytes.readUInt16BE(i);
+        if (code) text += String.fromCharCode(code);
+      }
+      return text;
+    }
+    return latin;
+  } catch {
+    return "";
+  }
+}
+
+function cleanPdfText(value: string) {
+  return value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+    .replace(/\\r|\\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function textLines(text: string) {
+  return text
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+}
+
+function extractAmountFromText(text: string) {
+  const lines = textLines(text);
+  const candidates: Array<{ value: string; score: number }> = [];
+  const pattern = /(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:,\d{3})*\.\d{2}|\d+,\d{2}|\d+\.\d{2})/gi;
+
+  for (const line of lines) {
+    const normalized = normalizeSearchText(line);
+    let found: RegExpExecArray | null;
+    while ((found = pattern.exec(line))) {
+      const raw = found[1];
+      let score = 0;
+      if (line.slice(Math.max(0, found.index - 5), found.index + found[0].length + 5).toUpperCase().includes("R$")) score += 3;
+      if (/\bvalor\b/.test(normalized)) score += 8;
+      if (/valor (?:pago|transferido|da transacao|da transferencia|do pix)/.test(normalized)) score += 5;
+      if (/\b(?:pix|transferencia|pagamento|pago|enviado)\b/.test(normalized)) score += 3;
+      if (/\b(?:saldo|limite|tarifa|juros|taxa|disponivel)\b/.test(normalized)) score -= 10;
+      const value = normalizeAmount(raw);
+      if (value) candidates.push({ value, score });
+    }
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  if (candidates[0].score <= 0) {
+    const unique = [...new Set(candidates.map((item) => item.value))];
+    return unique.length === 1 ? unique[0] : null;
+  }
+  return candidates[0].value;
+}
+
+function extractDateFromText(text: string) {
+  const lines = textLines(text);
+  const candidates: Array<{ value: string; score: number }> = [];
+  const numeric = /\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2}|\d{2})\b/g;
+  const monthNames: Record<string, string> = {
+    jan: "01", janeiro: "01", fev: "02", fevereiro: "02", mar: "03", marco: "03", março: "03",
+    abr: "04", abril: "04", mai: "05", maio: "05", jun: "06", junho: "06", jul: "07", julho: "07",
+    ago: "08", agosto: "08", set: "09", setembro: "09", out: "10", outubro: "10", nov: "11", novembro: "11",
+    dez: "12", dezembro: "12",
+  };
+
+  for (const line of lines) {
+    const normalized = normalizeSearchText(line);
+    let score = 0;
+    if (/\bdata\b/.test(normalized)) score += 5;
+    if (/\b(?:transacao|transferencia|pix|pagamento|realizado|efetuado)\b/.test(normalized)) score += 4;
+    if (/\b(?:emissao|gerado|geracao)\b/.test(normalized)) score -= 4;
+
+    let found: RegExpExecArray | null;
+    while ((found = numeric.exec(line))) {
+      const year = found[3].length === 2 ? "20" + found[3] : found[3];
+      const value = normalizeDate(year + "-" + String(Number(found[2])).padStart(2, "0") + "-" + String(Number(found[1])).padStart(2, "0"));
+      if (value) candidates.push({ value, score });
+    }
+
+    const words = normalizeSearchText(line).match(/\b([0-3]?\d)\s+(?:de\s+)?([a-zç]+)\s+(?:de\s+)?(20\d{2})\b/);
+    if (words) {
+      const month = monthNames[words[2]];
+      if (month) {
+        const value = normalizeDate(words[3] + "-" + month + "-" + String(Number(words[1])).padStart(2, "0"));
+        if (value) candidates.push({ value, score: score + 2 });
+      }
+    }
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0].value;
+}
+
+function extractTimeFromText(text: string) {
+  const lines = textLines(text);
+  const candidates: Array<{ value: string; score: number }> = [];
+  const pattern = /\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b/g;
+
+  for (const line of lines) {
+    const normalized = normalizeSearchText(line);
+    let score = 0;
+    if (/\b(?:hora|horario)\b/.test(normalized)) score += 5;
+    if (/\b(?:transacao|transferencia|pix|pagamento|realizado|efetuado)\b/.test(normalized)) score += 4;
+    if (/\b(?:emissao|gerado|geracao)\b/.test(normalized)) score -= 4;
+    let found: RegExpExecArray | null;
+    while ((found = pattern.exec(line))) {
+      const value = normalizeTime(String(Number(found[1])).padStart(2, "0") + ":" + found[2]);
+      if (value) candidates.push({ value, score });
+    }
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0].value;
+}
+
+function extractRecipientFromText(text: string) {
+  const lines = textLines(text);
+  const labels = /\b(?:recebedor|destinatario|destinatário|favorecido|beneficiario|beneficiário|nome do recebedor|para)\b/i;
+  const reject = /\b(?:banco|instituicao|instituição|cpf|cnpj|agencia|agência|conta|chave|pix|valor|data|hora)\b/i;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!labels.test(lines[i])) continue;
+    const after = lines[i].split(/[:\-–—]/).slice(1).join(" ").trim();
+    const candidates = [after, lines[i + 1] || ""];
+    for (const raw of candidates) {
+      const value = raw.replace(/\s+/g, " ").trim();
+      if (value.length >= 5 && value.length <= 120 && /[A-Za-zÀ-ÿ]{2,}\s+[A-Za-zÀ-ÿ]{2,}/.test(value) && !reject.test(value)) {
+        return value;
+      }
+    }
+  }
+  return null;
 }
 
 export function financialDocumentErrorResponse(error: unknown) {
