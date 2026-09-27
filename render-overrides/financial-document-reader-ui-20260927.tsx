@@ -11,6 +11,12 @@ export type FinancialDocumentResult = {
   suggestedDriverName: string | null;
 };
 
+type BatchPdfItem = {
+  fileName: string;
+  result: FinancialDocumentResult | null;
+  error: string | null;
+};
+
 export function FinancialDocumentReader({
   kind,
   onRead,
@@ -20,44 +26,54 @@ export function FinancialDocumentReader({
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const pdfInput = useRef<HTMLInputElement>(null);
+  const batchPdfInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState("");
   const [reading, setReading] = useState<FinancialDocumentResult | null>(null);
+  const [batchItems, setBatchItems] = useState<BatchPdfItem[]>([]);
+  const [batchProgress, setBatchProgress] = useState("");
   const [error, setError] = useState("");
+
+  async function readOne(file: File, reader: "ai" | "pdf_text") {
+    const prepared = await prepareFile(file);
+    const response = await fetch("/api/ler-comprovante-financeiro", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: prepared.fileName,
+        mime: prepared.mime,
+        base64: prepared.base64,
+        kind,
+        reader,
+      }),
+    });
+    const payload: any = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) throw new Error(payload?.message || "Não foi possível ler o comprovante.");
+    const next: FinancialDocumentResult = {
+      amount: typeof payload.amount === "string" ? payload.amount : null,
+      date: typeof payload.date === "string" ? payload.date : null,
+      time: typeof payload.time === "string" ? payload.time : null,
+      driverName: typeof payload.driverName === "string" ? payload.driverName : null,
+      suggestedDriverId: typeof payload.suggestedDriverId === "string" ? payload.suggestedDriverId : null,
+      suggestedDriverName: typeof payload.suggestedDriverName === "string" ? payload.suggestedDriverName : null,
+    };
+    if (!next.amount && !next.date && !next.time && !next.driverName) {
+      throw new Error("Não encontrei uma única transação com valor, data, hora ou motorista claros neste arquivo.");
+    }
+    return next;
+  }
 
   async function handleFile(file?: File | null, reader: "ai" | "pdf_text" = "ai") {
     if (!file) return;
     setBusy(true);
     setError("");
     setReading(null);
+    setBatchItems([]);
+    setBatchProgress("");
     setFileName(file.name || "comprovante");
     try {
-      const prepared = await prepareFile(file);
-      const response = await fetch("/api/ler-comprovante-financeiro", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: prepared.fileName,
-          mime: prepared.mime,
-          base64: prepared.base64,
-          kind,
-          reader,
-        }),
-      });
-      const payload: any = await response.json().catch(() => ({}));
-      if (!response.ok || !payload?.ok) throw new Error(payload?.message || "Não foi possível ler o comprovante.");
-      const next: FinancialDocumentResult = {
-        amount: typeof payload.amount === "string" ? payload.amount : null,
-        date: typeof payload.date === "string" ? payload.date : null,
-        time: typeof payload.time === "string" ? payload.time : null,
-        driverName: typeof payload.driverName === "string" ? payload.driverName : null,
-        suggestedDriverId: typeof payload.suggestedDriverId === "string" ? payload.suggestedDriverId : null,
-        suggestedDriverName: typeof payload.suggestedDriverName === "string" ? payload.suggestedDriverName : null,
-      };
-      if (!next.amount && !next.date && !next.time && !next.driverName) {
-        throw new Error("Não encontrei uma única transação com valor, data, hora ou motorista claros neste arquivo.");
-      }
+      const next = await readOne(file, reader);
       setReading(next);
       onRead(next);
     } catch (err) {
@@ -66,7 +82,48 @@ export function FinancialDocumentReader({
       setBusy(false);
       if (fileInput.current) fileInput.current.value = "";
       if (pdfInput.current) pdfInput.current.value = "";
+      if (batchPdfInput.current) batchPdfInput.current.value = "";
       if (cameraInput.current) cameraInput.current.value = "";
+    }
+  }
+
+  async function handlePdfBatch(files?: FileList | null) {
+    const selected = Array.from(files || []);
+    if (!selected.length) return;
+    setBusy(true);
+    setError("");
+    setReading(null);
+    setBatchItems([]);
+    setFileName("");
+    const rows: BatchPdfItem[] = [];
+    try {
+      for (let index = 0; index < selected.length; index += 1) {
+        const file = selected[index];
+        setBatchProgress("Lendo PDF " + (index + 1) + " de " + selected.length + ": " + (file.name || "comprovante.pdf"));
+        try {
+          const result = await readOne(file, "pdf_text");
+          rows.push({ fileName: file.name || "comprovante.pdf", result, error: null });
+        } catch (err) {
+          rows.push({
+            fileName: file.name || "comprovante.pdf",
+            result: null,
+            error: err instanceof Error ? err.message : "Não foi possível ler este PDF.",
+          });
+        }
+        setBatchItems([...rows]);
+      }
+      const successful = rows.filter((row) => row.result);
+      if (selected.length === 1 && successful[0]?.result) {
+        setReading(successful[0].result);
+        onRead(successful[0].result);
+      }
+      if (!successful.length) {
+        setError("Nenhum dos PDFs selecionados pôde ser lido automaticamente.");
+      }
+    } finally {
+      setBusy(false);
+      setBatchProgress("");
+      if (batchPdfInput.current) batchPdfInput.current.value = "";
     }
   }
 
@@ -94,6 +151,9 @@ export function FinancialDocumentReader({
           <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => pdfInput.current?.click()}>
             {busy ? <LoaderCircle className="size-4 animate-spin" /> : <FileText className="size-4" />} PDF automático
           </Button>
+          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => batchPdfInput.current?.click()}>
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />} Vários PDFs
+          </Button>
         </div>
       </div>
 
@@ -112,6 +172,14 @@ export function FinancialDocumentReader({
         onChange={(event) => void handleFile(event.target.files?.[0], "pdf_text")}
       />
       <input
+        ref={batchPdfInput}
+        type="file"
+        className="hidden"
+        accept="application/pdf,.pdf"
+        multiple
+        onChange={(event) => void handlePdfBatch(event.target.files)}
+      />
+      <input
         ref={cameraInput}
         type="file"
         className="hidden"
@@ -120,9 +188,48 @@ export function FinancialDocumentReader({
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />
 
-      <p className="mt-2 text-[11px] text-muted">PDF automático lê o texto do comprovante sem depender de créditos da OpenAI. PDFs escaneados continuam pela opção Foto ou PDF.</p>
+      <p className="mt-2 text-[11px] text-muted">PDF automático lê o texto do comprovante sem depender de créditos da OpenAI. Em “Vários PDFs”, você seleciona todos de uma vez, cada arquivo é lido separadamente e o motorista é vinculado quando identificado. PDFs escaneados continuam pela opção Foto ou PDF.</p>
+      {batchProgress ? <p className="mt-3 text-xs font-medium text-muted">{batchProgress}</p> : null}
       {fileName ? <p className="mt-3 truncate text-xs text-muted">{busy ? "Lendo: " : "Arquivo: "}{fileName}</p> : null}
       {error ? <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</p> : null}
+      {batchItems.length ? (
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold">PDFs processados</p>
+            <p className="text-[11px] text-muted">{batchItems.filter((item) => item.result).length} de {batchItems.length} lidos</p>
+          </div>
+          {batchItems.map((item, index) => (
+            <div key={item.fileName + "-" + index} className="rounded-lg border border-border bg-surface px-3 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold">{item.fileName}</p>
+                  {item.result ? (
+                    <p className="mt-1 text-[11px] text-muted">
+                      {[item.result.amount ? "R$ " + item.result.amount.replace(".", ",") : null, item.result.date, item.result.time, kind === "advance" ? item.result.suggestedDriverName || item.result.driverName : null].filter(Boolean).join(" · ") || "Dados identificados"}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-danger">{item.error || "Falha na leitura."}</p>
+                  )}
+                </div>
+                {item.result ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setReading(item.result);
+                      onRead(item.result);
+                    }}
+                  >
+                    Preencher
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {reading ? (
         <div className={"mt-3 grid gap-2 " + (kind === "advance" ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
           <ReadValue label="Valor" value={reading.amount ? "R$ " + reading.amount.replace(".", ",") : "Não identificado"} />
