@@ -72,6 +72,7 @@ export function FuelingPhotoReader() {
     setErrors([]);
     let activeDriverId = driverId;
     let activeFleetId = fleetId;
+    let localOcrWorker: any = null;
     try {
       const selected = Array.from(files).slice(0, 12);
       for (let index = 0; index < selected.length; index += 1) {
@@ -90,24 +91,43 @@ export function FuelingPhotoReader() {
             }),
           });
           const payload = await response.json().catch(() => ({}));
-          if (!response.ok || !payload?.reading) {
+
+          let nextReading: FuelingReading;
+          let suggestedDriverId = payload?.suggestedDriverId ? String(payload.suggestedDriverId) : null;
+          let suggestedFleetId = payload?.suggestedFleetId ? String(payload.suggestedFleetId) : null;
+
+          if (response.ok && payload?.reading) {
+            nextReading = payload.reading as FuelingReading;
+          } else if (response.status === 429) {
+            setProgress("IA online sem créditos. Fazendo leitura local no aparelho: " + file.name);
+            const local = await readFuelingWithLocalOcr(image, localOcrWorker);
+            localOcrWorker = local.worker;
+            nextReading = local.reading;
+
+            const localDriver = matchLocalDriver(nextReading.driver_name, data?.drivers ?? []);
+            const localFleet = matchLocalFleet(nextReading.plate, data?.fleets ?? []);
+            suggestedDriverId = localDriver?.id ? String(localDriver.id) : null;
+            suggestedFleetId = localFleet?.id ? String(localFleet.id) : null;
+          } else {
             throw new Error(payload?.message || "Não foi possível ler a foto.");
           }
-          if (!activeDriverId && payload.suggestedDriverId) {
-            activeDriverId = String(payload.suggestedDriverId);
+
+          if (!activeDriverId && suggestedDriverId) {
+            activeDriverId = suggestedDriverId;
             setDriverId(activeDriverId);
           }
-          if (!activeFleetId && payload.suggestedFleetId) {
-            activeFleetId = String(payload.suggestedFleetId);
+          if (!activeFleetId && suggestedFleetId) {
+            activeFleetId = suggestedFleetId;
             setFleetId(activeFleetId);
           }
+
           const item: ReadItem = {
             id: crypto.randomUUID(),
             fileName: file.name,
             image,
-            reading: payload.reading,
-            suggestedDriverId: payload.suggestedDriverId ? String(payload.suggestedDriverId) : null,
-            suggestedFleetId: payload.suggestedFleetId ? String(payload.suggestedFleetId) : null,
+            reading: nextReading,
+            suggestedDriverId,
+            suggestedFleetId,
           };
           setItems((current) => [...current, item]);
         } catch (error) {
@@ -119,6 +139,9 @@ export function FuelingPhotoReader() {
       }
       setProgress("Leitura concluída. Confira antes de gravar.");
     } finally {
+      if (localOcrWorker) {
+        try { await localOcrWorker.terminate(); } catch {}
+      }
       setReading(false);
       if (galleryRef.current) galleryRef.current.value = "";
       if (cameraRef.current) cameraRef.current.value = "";
@@ -431,6 +454,301 @@ function FuelingReadCard({
       </div>
     </article>
   );
+}
+
+
+async function readFuelingWithLocalOcr(image: string, existingWorker: any) {
+  let worker = existingWorker;
+  if (!worker) {
+    const module = await import("tesseract.js");
+    worker = await module.createWorker("por");
+  }
+
+  const result = await worker.recognize(image);
+  const text = String(result?.data?.text || "").trim();
+  if (!text) throw new Error("A leitura local não encontrou texto legível nesta foto.");
+
+  return {
+    worker,
+    reading: parseLocalFuelingText(text),
+  };
+}
+
+function parseLocalFuelingText(text: string): FuelingReading {
+  const raw = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n").trim();
+  const normalized = normalizeLocal(raw);
+  const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+
+  const date = findDate(lines);
+  const time = findTime(lines);
+  const plate = findPlate(raw);
+  const driverName = findDriverName(lines);
+  const fuelType =
+    /diesel\s*s[\s-]*500/i.test(raw) ? "Diesel S500" :
+    /diesel\s*s[\s-]*10/i.test(raw) ? "Diesel S10" :
+    /\bdiesel\b/i.test(raw) ? "Diesel" :
+    /arla\s*32/i.test(raw) ? "Arla 32" :
+    null;
+
+  const stationName = findStationName(lines);
+  const receiptNumber = findReceiptNumber(raw);
+  const discount = findLabeledMoney(lines, ["valor descontos", "valor desconto", "descontos r$", "desconto r$"]);
+  const total = findFinalTotal(lines);
+  const productNumbers = findFuelProductNumbers(raw);
+
+  const liters = productNumbers.liters;
+  const price = productNumbers.price;
+  const gross = productNumbers.gross;
+
+  let consistency: FuelingReading["consistency"] = "partial";
+  let confidence = 0.72;
+  const alerts: string[] = ["Leitura local usada porque a leitura online estava indisponível. Confira os campos antes de gravar."];
+  let calculationBasis: string | null = null;
+
+  if (liters && price && total) {
+    const l = Number(liters);
+    const p = Number(price);
+    const t = Number(total);
+    const d = Number(discount || 0);
+    const expected = l * p - d;
+    const tolerance = Math.max(0.15, l * p * 0.0035);
+
+    if (Math.abs(expected - t) <= tolerance) {
+      consistency = "confirmed";
+      confidence = driverName || plate ? 0.93 : 0.9;
+      calculationBasis = discount
+        ? "OCR local: litros × preço/L − desconto confere com o total final."
+        : "OCR local: litros × preço/L confere com o total final.";
+    } else if (gross && Math.abs(Number(gross) - l * p) <= tolerance) {
+      consistency = "partial";
+      confidence = 0.86;
+      alerts.push("Quantidade e preço foram identificados, mas o total final precisa ser conferido.");
+    } else {
+      consistency = "conflict";
+      confidence = 0.78;
+      alerts.push("Os valores reconhecidos não fecharam matematicamente. Confira litros, preço, desconto e total.");
+    }
+  } else if (liters && price) {
+    consistency = "partial";
+    confidence = 0.84;
+  }
+
+  return {
+    document_type: /\bdanfe\b|nota fiscal|nf-?e/i.test(raw) ? "invoice" : "fuel_receipt",
+    date,
+    time,
+    station_name: stationName,
+    station_cnpj: findCnpj(raw),
+    station_address: null,
+    pump_number: null,
+    nozzle_number: null,
+    fuel_type: fuelType,
+    liters,
+    price_per_liter: price,
+    total_amount: total,
+    discount_amount: discount,
+    odometer_km: findOdometer(raw),
+    plate,
+    driver_name: driverName,
+    receipt_number: receiptNumber,
+    payment_method: null,
+    consistency,
+    confidence,
+    calculation_basis: calculationBasis,
+    alerts,
+    visual_hints: [
+      normalized.includes("danfe") ? "DANFE simplificado" : "",
+      normalized.includes("valor total") ? "Valor Total" : "",
+      normalized.includes("placa") ? "Placa" : "",
+    ].filter(Boolean),
+  };
+}
+
+function normalizeLocal(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function decimalToken(value: string | undefined | null) {
+  if (!value) return null;
+  let raw = value.replace(/[^\d.,]/g, "");
+  if (!raw) return null;
+  if (/^\d{1,3}(?:\.\d{3})+,\d+$/.test(raw)) raw = raw.replace(/\./g, "").replace(",", ".");
+  else if (/^\d+,\d+$/.test(raw)) raw = raw.replace(",", ".");
+  else if (/^\d{1,3}(?:,\d{3})+\.\d+$/.test(raw)) raw = raw.replace(/,/g, "");
+  if (!/^\d+(?:\.\d+)?$/.test(raw)) return null;
+  const number = Number(raw);
+  return Number.isFinite(number) && number > 0 ? String(number) : null;
+}
+
+function findDate(lines: string[]) {
+  const preferred = lines.filter((line) => /emiss[aã]o|autoriza[cç][aã]o|abastecimento|data/i.test(line));
+  for (const line of [...preferred, ...lines]) {
+    const match = line.match(/\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2}|\d{2})\b/);
+    if (!match) continue;
+    const year = match[3].length === 2 ? "20" + match[3] : match[3];
+    return year + "-" + String(Number(match[2])).padStart(2, "0") + "-" + String(Number(match[1])).padStart(2, "0");
+  }
+  return null;
+}
+
+function findTime(lines: string[]) {
+  const preferred = lines.filter((line) => /autoriza[cç][aã]o|abastecimento|hora/i.test(line));
+  for (const line of [...preferred, ...lines]) {
+    const match = line.match(/\b([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?\b/);
+    if (match) return String(Number(match[1])).padStart(2, "0") + ":" + match[2] + (match[3] ? ":" + match[3] : "");
+  }
+  return null;
+}
+
+function findPlate(text: string) {
+  const match = text.toUpperCase().match(/\bPLACA\s*[:\-]?\s*([A-Z]{3})[\s.-]*([0-9][A-Z0-9][0-9]{2})\b/);
+  if (!match) return null;
+  return match[1] + match[2];
+}
+
+function looksLikePersonName(value: string) {
+  const cleaned = value
+    .replace(/\b(?:CPF|CNPJ|IE|RG|ENDERE[CÇ]O|AVENIDA|RUA|RODOVIA|CLIENTE|DESTINAT[ÁA]RIO)\b.*$/i, "")
+    .replace(/[^A-Za-zÀ-ÿ .'’-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = cleaned.match(/[A-Za-zÀ-ÿ]{2,}/g) || [];
+  return words.length >= 2 && words.length <= 8 ? cleaned : null;
+}
+
+function findDriverName(lines: string[]) {
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/^\s*destinat[áa]rio\s*$/i.test(lines[i])) {
+      for (let j = i + 1; j <= Math.min(lines.length - 1, i + 4); j += 1) {
+        const candidate = looksLikePersonName(lines[j]);
+        if (candidate && !/rua|avenida|vila|cnpj|cpf/i.test(candidate)) return candidate;
+      }
+    }
+  }
+
+  for (const line of lines) {
+    const client = line.match(/\bCLIENTE\s*[:\-]\s*(.+?)(?=\s+(?:CNPJ|CPF)\b|$)/i);
+    if (client?.[1]) {
+      const candidate = looksLikePersonName(client[1]);
+      if (candidate) return candidate;
+    }
+  }
+  return null;
+}
+
+function findStationName(lines: string[]) {
+  const cnpjIndex = lines.findIndex((line) => /\bCNPJ\b/i.test(line));
+  if (cnpjIndex > 0) {
+    for (let i = cnpjIndex - 1; i >= Math.max(0, cnpjIndex - 4); i -= 1) {
+      const line = lines[i];
+      if (/rua|avenida|rodovia|cep|vila|bairro/i.test(line)) continue;
+      const candidate = looksLikePersonName(line);
+      if (candidate) return candidate;
+    }
+  }
+  return null;
+}
+
+function findCnpj(text: string) {
+  const match = text.match(/\bCNPJ\s*[:\-]?\s*(\d{2}\D?\d{3}\D?\d{3}\D?\d{4}\D?\d{2})/i);
+  return match?.[1]?.replace(/\D/g, "") || null;
+}
+
+function findReceiptNumber(text: string) {
+  const match = text.match(/\bN[uú]mero\s*[:\-]?\s*([0-9][0-9.\-]{2,})/i);
+  return match?.[1]?.trim() || null;
+}
+
+function findOdometer(text: string) {
+  const match = text.match(/\bOD[ÔO]METRO\s*[:\-]?\s*([0-9.]{2,})/i);
+  if (!match) return null;
+  const number = Number(match[1].replace(/\./g, ""));
+  return Number.isFinite(number) ? number : null;
+}
+
+function findLabeledMoney(lines: string[], labels: string[]) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const normalized = normalizeLocal(lines[i]);
+    if (!labels.some((label) => normalized.includes(normalizeLocal(label)))) continue;
+    const joined = [lines[i], lines[i + 1] || ""].join(" ");
+    const matches = [...joined.matchAll(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2})/g)];
+    for (let m = matches.length - 1; m >= 0; m -= 1) {
+      const value = decimalToken(matches[m][1]);
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+function findFinalTotal(lines: string[]) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const normalized = normalizeLocal(lines[i]);
+    if (!normalized.includes("valor total")) continue;
+    if (normalized.includes("produtos") || normalized.includes("itens") || normalized.includes("desconto")) continue;
+    const joined = [lines[i], lines[i + 1] || ""].join(" ");
+    const matches = [...joined.matchAll(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2})/g)];
+    for (let m = matches.length - 1; m >= 0; m -= 1) {
+      const value = decimalToken(matches[m][1]);
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+function findFuelProductNumbers(text: string) {
+  const normalized = normalizeLocal(text);
+  const dieselIndex = normalized.search(/oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/);
+  const source = dieselIndex >= 0
+    ? text.slice(Math.max(0, dieselIndex - 180), Math.min(text.length, dieselIndex + 380))
+    : text;
+
+  const tokens = [...source.matchAll(/\b(\d{1,4}[.,]\d{2,3})\b/g)]
+    .map((match) => ({ raw: match[1], value: decimalToken(match[1]) }))
+    .filter((item): item is { raw: string; value: string } => !!item.value)
+    .map((item) => ({ ...item, number: Number(item.value) }));
+
+  const litersCandidate = tokens.find((item) => {
+    const decimals = (item.raw.split(/[.,]/)[1] || "").length;
+    return item.number >= 50 && item.number <= 3000 && decimals >= 2;
+  });
+  const priceCandidate = tokens.find((item) => item.number >= 2 && item.number <= 20);
+  const grossCandidate = tokens.find((item) => item.number >= 100 && item !== litersCandidate);
+
+  return {
+    liters: litersCandidate?.value ?? null,
+    price: priceCandidate?.value ?? null,
+    gross: grossCandidate?.value ?? null,
+  };
+}
+
+function matchLocalDriver(name: string | null, drivers: any[]) {
+  if (!name) return null;
+  const wanted = normalizeLocal(name);
+  const compactWanted = wanted.replace(/[^a-z0-9]/g, "");
+  const matches = drivers.filter((driver) => {
+    const current = normalizeLocal(String(driver?.name || ""));
+    const compact = current.replace(/[^a-z0-9]/g, "");
+    return current === wanted ||
+      (wanted.length >= 5 && (current.includes(wanted) || wanted.includes(current))) ||
+      (compactWanted.length >= 8 && compact === compactWanted);
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function matchLocalFleet(plate: string | null, fleets: any[]) {
+  const wanted = String(plate || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!wanted) return null;
+  const matches = fleets.filter((fleet) => {
+    const tractor = String(fleet?.tractorPlate || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const trailer = String(fleet?.trailerPlate || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return tractor === wanted || trailer === wanted;
+  });
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function MiniField({ label, children }: { label: string; children: React.ReactNode }) {
