@@ -19,6 +19,14 @@ copy("render-overrides/fueling-photo-save-api-20260927.ts", "src/routes/api/salv
 copy("render-overrides/fueling-photo-reader-ui-20260927.tsx", "src/components/fueling-photo-reader.tsx");
 copy("render-overrides/0018_fueling_photo_reader.sql", "migrations/0018_fueling_photo_reader.sql");
 
+{
+  const packagePath = dst("package.json");
+  const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+  pkg.dependencies = { ...(pkg.dependencies || {}), "tesseract.js": "6.0.1" };
+  fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
+}
+
+
 const rel = "src/routes/dono/abastecimentos.tsx";
 const file = dst(rel);
 if (!fs.existsSync(file)) throw new Error("fueling-photo-reader: missing " + rel);
