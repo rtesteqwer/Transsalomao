@@ -10,6 +10,7 @@ import {
   validateImage,
 } from "@/lib/ticket-core";
 import { finishTicketReading, parseTicketOcr } from "@/lib/ticket-parser";
+import { applyTicketVariableMemory, loadTicketVariableMemories, matchTicketVariableMemory, syncTicketVariableMemory, ticketVariableMemoryInstructions, type TicketVariableMemory } from "@/lib/ticket-variable-memory.server";
 
 export const Route = createFileRoute("/api/ler-ticket")({
   server: { handlers: {
@@ -50,6 +51,8 @@ export const Route = createFileRoute("/api/ler-ticket")({
         await allowTicketRead(sql, `${access.role}:${access.username}`);
 
         const routeMemories = await loadTicketRouteMemories(sql);
+        await syncTicketVariableMemory(sql);
+        const variableMemories = await loadTicketVariableMemories(sql);
 
         // Segunda leitura automática: o aparelho executa Tesseract e envia só o
         // texto quando ChatGPT Vision está sem crédito, em timeout ou indisponível.
@@ -71,6 +74,7 @@ export const Route = createFileRoute("/api/ler-ticket")({
             }
             ticket.inference_confidence = Math.max(ticket.inference_confidence ?? 0, routeMatch.confidence);
           }
+          applyTicketVariableMemory(ticket as Record<string, any>, matchTicketVariableMemory(ticket as Record<string, unknown>, variableMemories, ocrText));
           ticket.alertas = [
             "Contingência automática: a API de visão não respondeu; os dados foram extraídos pelo OCR local.",
             ...ticket.alertas.filter((alerta) => !/^Contingência automática:/.test(alerta)),
@@ -80,7 +84,7 @@ export const Route = createFileRoute("/api/ler-ticket")({
 
         const image = validateImage(body);
         const dataUrl = `data:${image.mime};base64,${image.base64}`;
-        const result = await readTicketWithChatGPT(dataUrl, freightMode, fleet, routeMemories, autoDetectMode);
+        const result = await readTicketWithChatGPT(dataUrl, freightMode, fleet, routeMemories, variableMemories, autoDetectMode);
         const detectedMode = result?.model_type === "sertrading_cegonha"
           ? "cegonha"
           : (autoDetectMode && ["ton","trip","cegonha","caixinha"].includes(String(result?.inferred_freight_mode))
@@ -99,6 +103,7 @@ export const Route = createFileRoute("/api/ler-ticket")({
           if (!ticket.inferred_price_basis) ticket.inferred_price_basis = "preço aprendido da rota identificada";
           ticket.inference_confidence = Math.max(ticket.inference_confidence ?? 0, routeConfidence);
         }
+        applyTicketVariableMemory(ticket as Record<string, any>, matchTicketVariableMemory(result as Record<string, unknown>, variableMemories));
         return json(ticket);
       } catch (error) { return ticketErrorResponse(error); }
     },
@@ -222,6 +227,7 @@ async function readTicketWithChatGPT(
   freightMode: "ton" | "trip" | "cegonha" | "caixinha",
   fleet: { tractorPlate?: string; trailerPlate?: string },
   routeMemories: RouteMemory[],
+  variableMemories: TicketVariableMemory[],
   autoDetectMode = false,
 ) {
   const key = process.env.OPENAI_API_KEY?.trim() || "";
@@ -294,6 +300,7 @@ async function readTicketWithChatGPT(
     fleet.trailerPlate ? `carreta selecionada=${fleet.trailerPlate}` : "",
   ].filter(Boolean).join("; ");
   const knownRoutesText = routeMemoryInstructions(routeMemories);
+  const learnedTicketVariablesText = ticketVariableMemoryInstructions(variableMemories);
 
   const instructions = `Você é o leitor de tickets de pesagem da Trans Salomão.
 Analise SOMENTE o que está visível na foto e devolva os campos pelo schema. Não invente dados.
@@ -333,6 +340,13 @@ REGRAS CRÍTICAS:
 
 ROTAS CONHECIDAS NO BANCO:
 ${knownRoutesText}
+
+MEMÓRIA DE VARIÁVEIS APRENDIDAS DOS TICKETS JÁ LANÇADOS:
+${learnedTicketVariablesText}
+
+25. A memória acima é evidência histórica auxiliar. Use-a para reconhecer padrões de layout, empresa, CNPJ, produto, rota, modalidade e preço SOMENTE quando a foto atual tiver sinais compatíveis. Nunca copie número de ticket, peso ou placa de um ticket antigo para um ticket novo.
+26. Quando vários tickets anteriores convergirem no mesmo padrão, isso aumenta a confiança. Se houver conflito entre memória histórica e dado explícito legível na foto atual, o dado explícito da foto tem prioridade.
+27. Motorista e conjunto históricos ajudam a vincular o registro depois da leitura, mas NÃO podem ser usados sozinhos para decidir rota ou preço.
 
 Modo atual da viagem: ${freightMode}.`;
 
