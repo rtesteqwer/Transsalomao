@@ -1,2 +1,1 @@
-publish requested 2026-09-27 fueling batch
-source=main
+publish fueling local OCR fix 2026-09-27
