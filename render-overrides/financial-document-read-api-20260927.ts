@@ -38,7 +38,7 @@ export const Route = createFileRoute("/api/ler-comprovante-financeiro")({
             amount: reading.amount,
             date: reading.date,
             time: reading.time,
-            driverName: reading.driver_name,
+            driverName: reading.driver_name ?? suggestedDriverName,
             suggestedDriverId,
             suggestedDriverName,
           }, { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
