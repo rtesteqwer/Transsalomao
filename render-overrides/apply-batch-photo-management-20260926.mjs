@@ -26,6 +26,9 @@ must(
     '  destinatario?: string | null;\n' +
     '  produto?: string | null;\n' +
     '  alertas?: string[];\n' +
+    '  memory_driver_id?: string | null;\n' +
+    '  memory_fleet_id?: string | null;\n' +
+    '  memory_match_confidence?: number | null;\n' +
     '};\n\n' +
     'type BatchPhotoResult = {\n' +
     '  id: string;\n' +
@@ -147,6 +150,11 @@ const replacement = [
 '      const ids = [...new Set(sources.filter((source) => source.fleetId === fleet!.id).map((source) => source.driverId).filter(Boolean))];',
 '      const candidates = drivers.filter((item) => ids.includes(item.id));',
 '      if (candidates.length === 1) driver = candidates[0];',
+'    }',
+'    const memoryConfidence = Number(ticket.memory_match_confidence || 0);',
+'    if (memoryConfidence >= 0.86) {',
+'      if (!driver && ticket.memory_driver_id) driver = drivers.find((item) => item.id === ticket.memory_driver_id) ?? null;',
+'      if (!fleet && ticket.memory_fleet_id) fleet = fleets.find((item) => item.id === ticket.memory_fleet_id) ?? null;',
 '    }',
 '    return driver && fleet ? { driver, fleet } : null;',
 '  }',
