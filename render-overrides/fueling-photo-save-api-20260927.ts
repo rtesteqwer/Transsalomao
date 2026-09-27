@@ -30,7 +30,6 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           const price = normalizeDecimalText(reading.price_per_liter);
           const total = normalizeDecimalText(reading.total_amount);
           const discount = normalizeDecimalText(reading.discount_amount);
-          if (!reading.date) throw new FuelingPhotoError(400, "Informe a data do abastecimento.");
           if (!liters) throw new FuelingPhotoError(400, "Informe a quantidade exata de litros.");
           if (!price) throw new FuelingPhotoError(400, "Informe o preço exato por litro.");
           if (reading.consistency === "conflict") {
@@ -94,20 +93,77 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             }, { headers: { "Cache-Control": "no-store" } });
           }
 
-          const candidate = await sql`
-            select id
-            from fuelings
-            where fleet_id=${fleet.id}
-              and date=${reading.date}
-              and abs((liters)::numeric - ${liters}::numeric) <= 0.001
-              and abs((price_per_liter)::numeric - ${price}::numeric) <= 0.001
-            order by id desc
-            limit 1
-          `;
+          let fuelingId: string | null = null;
+          let resolvedDate = reading.date;
 
-          let fuelingId = candidate[0]?.id ? String(candidate[0].id) : null;
+          // 1) Número do documento é um identificador forte para fotos diferentes
+          // do mesmo DANFE/cupom. Isso permite guardar mais de uma imagem sem
+          // criar um segundo abastecimento.
+          if (reading.receipt_number) {
+            const receiptMatches = await sql`
+              select distinct fueling_id
+              from fueling_photo_reads
+              where fueling_id is not null
+                and nullif(trim(read_json->>'receipt_number'),'') = ${reading.receipt_number}
+              order by fueling_id
+              limit 2
+            `;
+            if (receiptMatches.length === 1 && receiptMatches[0]?.fueling_id) {
+              fuelingId = String(receiptMatches[0].fueling_id);
+            }
+          }
+
+          // 2) Com data visível, litros + preço/L + conjunto identificam a compra.
+          if (!fuelingId && reading.date) {
+            const candidate = await sql`
+              select id,date
+              from fuelings
+              where fleet_id=${fleet.id}
+                and date=${reading.date}
+                and abs((liters)::numeric - ${liters}::numeric) <= 0.001
+                and abs((price_per_liter)::numeric - ${price}::numeric) <= 0.001
+              order by id desc
+              limit 2
+            `;
+            if (candidate.length === 1 && candidate[0]?.id) {
+              fuelingId = String(candidate[0].id);
+              resolvedDate = String(candidate[0].date ?? reading.date);
+            }
+          }
+
+          // 3) Foto somente do visor normalmente não tem data impressa. Se existir
+          // exatamente um abastecimento do mesmo conjunto com os MESMOS litros e
+          // preço/L, vincula a foto automaticamente. Se houver ambiguidade, exige
+          // a data em vez de arriscar uma associação errada.
+          if (!fuelingId && !reading.date) {
+            const candidates = await sql`
+              select id,date
+              from fuelings
+              where fleet_id=${fleet.id}
+                and abs((liters)::numeric - ${liters}::numeric) <= 0.001
+                and abs((price_per_liter)::numeric - ${price}::numeric) <= 0.001
+              order by date desc,id desc
+              limit 3
+            `;
+            if (candidates.length === 1 && candidates[0]?.id) {
+              fuelingId = String(candidates[0].id);
+              resolvedDate = String(candidates[0].date);
+            } else if (candidates.length > 1) {
+              throw new FuelingPhotoError(
+                409,
+                "Encontrei mais de um abastecimento com os mesmos litros e preço/L. Informe a data para vincular sem duplicar.",
+              );
+            }
+          }
+
           const linkedExisting = !!fuelingId;
           if (!fuelingId) {
+            if (!resolvedDate) {
+              throw new FuelingPhotoError(
+                400,
+                "A foto da bomba não mostra a data e ainda não existe abastecimento compatível. Informe a data ou envie também o ticket/comprovante.",
+              );
+            }
             fuelingId = id("fuel");
             const notes = [
               "Leitor de abastecimento",
@@ -119,7 +175,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               insert into fuelings(id,date,driver_id,fleet_id,station,km,liters,price_per_liter,notes)
               values(
                 ${fuelingId},
-                ${reading.date},
+                ${resolvedDate},
                 ${driver?.id ?? null},
                 ${fleet.id},
                 ${reading.station_name || ""},
