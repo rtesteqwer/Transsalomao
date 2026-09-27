@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { managementSession } from "@/lib/management-auth.server";
@@ -162,7 +162,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             reading.document_type,
           ].join("|");
           if (stationKeySource.replace(/\|/g, "")) {
-            const memoryKey = await hashText(stationKeySource);
+            const memoryKey = hashText(stationKeySource);
             await sql.unsafe(
               "insert into fueling_photo_memory(memory_key,station_name,station_cnpj,fuel_type,pump_number,document_type,uses,last_seen_at) " +
               "values($1,$2,$3,$4,$5,$6,1,now()) " +
@@ -202,8 +202,6 @@ function id(prefix: string) {
   return prefix + "_" + randomUUID().replace(/-/g, "");
 }
 
-async function hashText(value: string) {
-  const bytes = new TextEncoder().encode(value);
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+function hashText(value: string) {
+  return createHash("sha256").update(value).digest("hex");
 }
