@@ -100,7 +100,7 @@ export function FuelingPhotoReader() {
           if (response.ok && payload?.reading) {
             nextReading = payload.reading as FuelingReading;
           } else if (response.status === 429) {
-            setProgress("IA online sem créditos. Tentando leitura local no aparelho por até 45 segundos: " + file.name);
+            setProgress("IA online sem créditos. Fazendo leitura local rápida no aparelho: " + file.name);
             const local = await readFuelingWithLocalOcr(image, localOcrWorker);
             localOcrWorker = local.worker;
             nextReading = local.reading;
@@ -519,16 +519,16 @@ async function readFuelingWithLocalOcr(image: string, existingWorker: any) {
         langPath: "/ocr/lang",
         gzip: true,
       }),
-      30_000,
-      "A leitura local demorou para iniciar. Tente novamente ou informe os dados manualmente.",
+      12_000,
+      "A leitura local demorou para iniciar. A foto foi liberada para conferência manual.",
     );
   }
 
   const ocrImage = await prepareLocalOcrImage(image);
   const result = await withOcrTimeout(
     worker.recognize(ocrImage),
-    45_000,
-    "A leitura local passou de 45 segundos. A tela foi liberada; tente novamente ou informe os dados manualmente.",
+    18_000,
+    "A leitura local passou de 18 segundos. A foto foi liberada para conferência manual.",
   );
   const text = String(result?.data?.text || "").trim();
   if (!text) throw new Error("A leitura local não encontrou texto legível nesta foto.");
@@ -563,17 +563,34 @@ async function prepareLocalOcrImage(dataUrl: string) {
     element.src = dataUrl;
   });
 
-  const maxSide = 1400;
+  // Android/WebView: reduzir a imagem antes do Tesseract diminui bastante
+  // memória, download para o worker e tempo de reconhecimento.
+  const maxSide = 1100;
   const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-  if (scale >= 0.999) return dataUrl;
 
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
   canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) return dataUrl;
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.88);
+
+  // Pré-processamento leve: tons de cinza + contraste. Ajuda números de visor,
+  // tickets impressos e reduz ruído sem destruir casas decimais.
+  try {
+    const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+    const pixels = frame.data;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const gray = Math.round(pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114);
+      const boosted = Math.max(0, Math.min(255, Math.round((gray - 128) * 1.28 + 128)));
+      pixels[i] = boosted;
+      pixels[i + 1] = boosted;
+      pixels[i + 2] = boosted;
+    }
+    context.putImageData(frame, 0, 0);
+  } catch {}
+
+  return canvas.toDataURL("image/jpeg", 0.86);
 }
 
 function parseLocalFuelingText(text: string): FuelingReading {
