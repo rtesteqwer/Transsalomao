@@ -20,6 +20,8 @@ type Photo = {
   data: TicketData | null;
   mode: TicketFreightMode;
   price: string;
+  quantity: string;
+  createdCount: number;
   selected: boolean;
   status: "queued" | "uploading" | "reading" | "ready" | "sending" | "sent" | "linked" | "error";
   error: string;
@@ -166,6 +168,8 @@ export function DriverTonPriceBatch({ available, upload, read, save, link, onBus
       data: null,
       mode: "ton",
       price: "",
+      quantity: "",
+      createdCount: 0,
       selected: true,
       status: "queued",
       error: "",
@@ -196,6 +200,12 @@ export function DriverTonPriceBatch({ available, upload, read, save, link, onBus
       if (photo.mode === "ton" && (!Number.isSafeInteger(photo.data.peso_liquido_kg) || !(photo.data.peso_liquido_kg! > 0))) {
         return toast.error("Por tonelada exige somente o peso líquido. Confira " + photo.file.name + ".");
       }
+      if (photo.mode === "cegonha" || photo.mode === "caixinha") {
+        const quantity = Number.parseInt(photo.quantity, 10);
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+          return toast.error("Informe obrigatoriamente quantas viagens de " + modeLabel[photo.mode] + " deseja adicionar (1 a 100).");
+        }
+      }
     }
 
     setWorking(true);
@@ -206,13 +216,29 @@ export function DriverTonPriceBatch({ available, upload, read, save, link, onBus
       for (const photo of selected) {
         if (!mounted.current) break;
         let saved = photo.saved;
+        let createdCount = photo.createdCount || 0;
         try {
           update(photo.id, { status: "sending", error: "" });
-          saved ??= await save(photo.data!, photo.mode, validPrice(photo.price) ?? undefined);
-          update(photo.id, { saved });
+          const requestedCount = photo.mode === "cegonha" || photo.mode === "caixinha"
+            ? Number.parseInt(photo.quantity, 10)
+            : 1;
+
+          if (!saved) {
+            saved = await save(photo.data!, photo.mode, validPrice(photo.price) ?? undefined);
+            createdCount = Math.max(createdCount, 1);
+            update(photo.id, { saved, createdCount });
+          }
+
+          for (let copyIndex = createdCount; copyIndex < requestedCount; copyIndex += 1) {
+            await save({ ...photo.data!, numero_ticket: null }, photo.mode, validPrice(photo.price) ?? undefined);
+            createdCount = copyIndex + 1;
+            update(photo.id, { createdCount });
+          }
+
           await link(photo.photoId, photo.file.name, saved, photo.data!);
-          update(photo.id, { saved, selected: false, status: saved.linkedExisting ? "linked" : "sent", error: "" });
-          if (saved.linkedExisting) linked += 1; else sent += 1;
+          update(photo.id, { saved, createdCount, selected: false, status: saved.linkedExisting ? "linked" : "sent", error: "" });
+          if (saved.linkedExisting) linked += 1;
+          sent += requestedCount;
         } catch (error) {
           failed += 1;
           update(photo.id, {
@@ -224,7 +250,7 @@ export function DriverTonPriceBatch({ available, upload, read, save, link, onBus
         }
       }
       if (sent || linked) {
-        toast.success(sent + " viagem(ns) aceita(s) e enviada(s) ao Caixa" + (linked ? " · " + linked + " foto(s) vinculada(s)." : "."));
+        toast.success(sent + " viagem(ns) adicionada(s) ao Caixa" + (linked ? " · " + linked + " foto(s) vinculada(s)." : "."));
         try { await onSaved(); } catch { toast.warning("As viagens foram salvas. Atualize a página para recarregar o histórico."); }
       }
       if (failed) toast.warning(failed + " foto(s) precisam de atenção. As demais foram concluídas.");
@@ -347,7 +373,18 @@ export function DriverTonPriceBatch({ available, upload, read, save, link, onBus
             ) : null}
 
             {(photo.mode === "cegonha" || photo.mode === "caixinha") ? (
-              <p className="text-xs text-muted">{modeLabel[photo.mode]} usa a mesma variável operacional: <b>preço por viagem</b>.</p>
+              <div className="grid gap-2">
+                <Field label="Quantidade de viagens *" hint="Obrigatório para Cegonha e Caixinha">
+                  <Input
+                    inputMode="numeric"
+                    placeholder="Ex.: 16"
+                    value={photo.quantity}
+                    disabled={busy || !!photo.saved}
+                    onChange={event => update(photo.id, { quantity: event.target.value.replace(/\D/g, "").slice(0, 3) })}
+                  />
+                </Field>
+                <p className="text-xs text-muted">{modeLabel[photo.mode]} usa <b>preço por viagem</b>. Uma única foto pode servir como evidência para várias viagens; o sistema criará exatamente a quantidade informada.</p>
+              </div>
             ) : null}
 
             {photo.data.route_group ? <div className="rounded-lg border border-accent/30 bg-accent/5 p-2 text-xs">
