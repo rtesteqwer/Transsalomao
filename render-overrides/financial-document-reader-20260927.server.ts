@@ -101,7 +101,8 @@ async function analyzeWithKey(key: string, input: {
     "3. date deve ser a data efetiva da transação/pagamento em YYYY-MM-DD.",
     "4. time deve ser a hora efetiva da transação/pagamento em HH:MM, formato 24 horas.",
     "5. Se houver data de emissão e data da transação, prefira a data da transação.",
-    "6. Se houver hora de geração do PDF e hora da transação, prefira a hora da transação.",
+    "6. Se houver hora de geração do PDF e hora da transação, use SOMENTE a hora da transação.",
+    "6A. Nunca use a data atual do sistema, data de download, data de geração/emissão do PDF ou horário do arquivo como data/hora da transação. Se a data/hora da transação não estiver explícita, retorne null.",
     "7. Se o arquivo mostrar várias transações sem uma única operação principal claramente identificável, não escolha uma: retorne amount=null, date=null e time=null.",
     "8. Se qualquer um dos três dados não estiver legível, retorne null somente para aquele campo. Nunca invente.",
     "9. Em adiantamento, driver_name deve ser o favorecido/destinatário/recebedor do PIX ou transferência. Nunca use o nome do pagador/remetente.",
@@ -221,10 +222,11 @@ function analyzePdfTextLocally(input: {
     );
   }
 
+  const transactionDateTime = extractTransactionDateTimeFromText(sourceText);
   return {
     amount: extractAmountFromText(sourceText),
-    date: extractDateFromText(sourceText),
-    time: extractTimeFromText(sourceText),
+    date: transactionDateTime.date ?? extractDateFromText(sourceText),
+    time: transactionDateTime.time ?? extractTimeFromText(sourceText),
     driver_name: input.kind === "advance" ? extractRecipientFromText(sourceText) : null,
     source_text: sourceText.slice(0, 50000),
   };
@@ -383,6 +385,47 @@ function extractAmountFromText(text: string) {
   return candidates[0].value;
 }
 
+
+function extractTransactionDateTimeFromText(text: string) {
+  const lines = textLines(text);
+  const candidates: Array<{ date: string; time: string; score: number }> = [];
+  const datePattern = /\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2}|\d{2})\b/;
+  const timePattern = /\b([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?\b/;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const window = [lines[i], lines[i + 1] || "", lines[i + 2] || ""].join(" ");
+    const normalized = normalizeSearchText(window);
+    const dateMatch = window.match(datePattern);
+    const timeMatch = window.match(timePattern);
+    if (!dateMatch || !timeMatch) continue;
+
+    let score = 0;
+    if (/\bdata e hora (?:da|de) (?:transacao|transferencia|pagamento|pix)\b/.test(normalized)) score += 20;
+    if (/\b(?:data|hora) (?:da|de) (?:transacao|transferencia|pagamento|pix)\b/.test(normalized)) score += 14;
+    if (/\b(?:transacao|transferencia|pagamento|pix|realizado|efetuado|enviado|pago)\b/.test(normalized)) score += 9;
+    if (/\b(?:data|hora|horario)\b/.test(normalized)) score += 4;
+    if (/\b(?:emissao|emitido|gerado|geracao|download|arquivo|criado|agendado|agendamento|comprovante gerado)\b/.test(normalized)) score -= 20;
+
+    const year = dateMatch[3].length === 2 ? "20" + dateMatch[3] : dateMatch[3];
+    const date = normalizeDate(
+      year + "-" + String(Number(dateMatch[2])).padStart(2, "0") + "-" + String(Number(dateMatch[1])).padStart(2, "0"),
+    );
+    const time = normalizeTime(String(Number(timeMatch[1])).padStart(2, "0") + ":" + timeMatch[2]);
+    if (date && time) candidates.push({ date, time, score });
+  }
+
+  if (!candidates.length) return { date: null, time: null };
+  candidates.sort((a, b) => b.score - a.score);
+
+  if (candidates[0].score > 0) return { date: candidates[0].date, time: candidates[0].time };
+
+  const unique = new Map<string, { date: string; time: string }>();
+  for (const candidate of candidates) unique.set(candidate.date + " " + candidate.time, { date: candidate.date, time: candidate.time });
+  if (unique.size === 1) return [...unique.values()][0];
+
+  return { date: null, time: null };
+}
+
 function extractDateFromText(text: string) {
   const lines = textLines(text);
   const candidates: Array<{ value: string; score: number }> = [];
@@ -399,7 +442,7 @@ function extractDateFromText(text: string) {
     let score = 0;
     if (/\bdata\b/.test(normalized)) score += 5;
     if (/\b(?:transacao|transferencia|pix|pagamento|realizado|efetuado)\b/.test(normalized)) score += 4;
-    if (/\b(?:emissao|gerado|geracao)\b/.test(normalized)) score -= 4;
+    if (/\b(?:emissao|emitido|gerado|geracao|download|arquivo|criado|agendado|agendamento)\b/.test(normalized)) score -= 20;
 
     let found: RegExpExecArray | null;
     while ((found = numeric.exec(line))) {
@@ -420,7 +463,9 @@ function extractDateFromText(text: string) {
 
   if (!candidates.length) return null;
   candidates.sort((a, b) => b.score - a.score);
-  return candidates[0].value;
+  if (candidates[0].score > 0) return candidates[0].value;
+  const unique = [...new Set(candidates.map((item) => item.value))];
+  return unique.length === 1 ? unique[0] : null;
 }
 
 function extractTimeFromText(text: string) {
@@ -433,7 +478,7 @@ function extractTimeFromText(text: string) {
     let score = 0;
     if (/\b(?:hora|horario)\b/.test(normalized)) score += 5;
     if (/\b(?:transacao|transferencia|pix|pagamento|realizado|efetuado)\b/.test(normalized)) score += 4;
-    if (/\b(?:emissao|gerado|geracao)\b/.test(normalized)) score -= 4;
+    if (/\b(?:emissao|emitido|gerado|geracao|download|arquivo|criado|agendado|agendamento)\b/.test(normalized)) score -= 20;
     let found: RegExpExecArray | null;
     while ((found = pattern.exec(line))) {
       const value = normalizeTime(String(Number(found[1])).padStart(2, "0") + ":" + found[2]);
@@ -443,7 +488,9 @@ function extractTimeFromText(text: string) {
 
   if (!candidates.length) return null;
   candidates.sort((a, b) => b.score - a.score);
-  return candidates[0].value;
+  if (candidates[0].score > 0) return candidates[0].value;
+  const unique = [...new Set(candidates.map((item) => item.value))];
+  return unique.length === 1 ? unique[0] : null;
 }
 
 function extractRecipientFromText(text: string) {
