@@ -64,6 +64,22 @@ export function FinancialDocumentReader({
     return next;
   }
 
+  async function handleVisibleFiles(files?: FileList | null) {
+    const selected = Array.from(files || []);
+    if (!selected.length) return;
+    const allPdf = selected.every((file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name));
+    if (selected.length > 1) {
+      if (!allPdf) {
+        setError("Para selecionar vários arquivos de uma vez, escolha somente PDFs.");
+        if (fileInput.current) fileInput.current.value = "";
+        return;
+      }
+      await handlePdfBatch(selected);
+      return;
+    }
+    await handleFile(selected[0], allPdf ? "pdf_text" : "ai");
+  }
+
   async function handleFile(file?: File | null, reader: "ai" | "pdf_text" = "ai") {
     if (!file) return;
     setBusy(true);
@@ -87,7 +103,7 @@ export function FinancialDocumentReader({
     }
   }
 
-  async function handlePdfBatch(files?: FileList | null) {
+  async function handlePdfBatch(files?: FileList | File[] | null) {
     const selected = Array.from(files || []);
     if (!selected.length) return;
     setBusy(true);
@@ -146,7 +162,7 @@ export function FinancialDocumentReader({
             {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Camera className="size-4" />} Foto
           </Button>
           <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => fileInput.current?.click()}>
-            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />} Foto ou PDF
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />} Foto ou PDF(s)
           </Button>
           <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => pdfInput.current?.click()}>
             {busy ? <LoaderCircle className="size-4 animate-spin" /> : <FileText className="size-4" />} PDF automático
@@ -162,7 +178,8 @@ export function FinancialDocumentReader({
         type="file"
         className="hidden"
         accept="application/pdf,image/jpeg,image/png,image/webp"
-        onChange={(event) => void handleFile(event.target.files?.[0])}
+        multiple
+        onChange={(event) => void handleVisibleFiles(event.target.files)}
       />
       <input
         ref={pdfInput}
@@ -188,7 +205,7 @@ export function FinancialDocumentReader({
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />
 
-      <p className="mt-2 text-[11px] text-muted">Nos adiantamentos, cada PDF é lido separadamente para identificar Valor, Data e Recebedor. O nome do recebedor é usado para localizar e vincular o motorista cadastrado. Você pode selecionar vários PDFs no mesmo envio. PDFs escaneados continuam pela opção Foto ou PDF.</p>
+      <p className="mt-2 text-[11px] text-muted">No Android, toque em “Foto ou PDF(s)” ou “Selecionar vários PDFs” e marque vários PDFs antes de confirmar. Cada comprovante usa a DATA e a HORA da própria transação que estiver escrita no PDF; o sistema não deve manter a data atual quando o PDF trouxer outra data/hora. O recebedor é comparado com os motoristas cadastrados para fazer o vínculo.</p>
       {batchProgress ? <p className="mt-3 text-xs font-medium text-muted">{batchProgress}</p> : null}
       {fileName ? <p className="mt-3 truncate text-xs text-muted">{busy ? "Lendo: " : "Arquivo: "}{fileName}</p> : null}
       {error ? <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</p> : null}
@@ -207,6 +224,7 @@ export function FinancialDocumentReader({
                     <div className="mt-2 grid gap-1 text-[11px] text-muted sm:grid-cols-3">
                       <span><strong className="text-foreground">Valor:</strong> {item.result.amount ? "R$ " + item.result.amount.replace(".", ",") : "Não identificado"}</span>
                       <span><strong className="text-foreground">Data:</strong> {item.result.date || "Não identificada"}</span>
+                      <span><strong className="text-foreground">Hora:</strong> {item.result.time || "Não identificada"}</span>
                       {kind === "advance" ? (
                         <span>
                           <strong className="text-foreground">Motorista:</strong>{" "}
@@ -216,9 +234,7 @@ export function FinancialDocumentReader({
                               ? item.result.driverName + " · conferir cadastro"
                               : "Recebedor não identificado"}
                         </span>
-                      ) : (
-                        <span><strong className="text-foreground">Hora:</strong> {item.result.time || "Não identificada"}</span>
-                      )}
+                      ) : null}
                     </div>
                   ) : (
                     <p className="mt-1 text-[11px] text-danger">{item.error || "Falha na leitura."}</p>
