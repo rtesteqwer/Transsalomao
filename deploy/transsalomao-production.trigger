@@ -1,1 +1,1 @@
-deploy faster fueling OCR android fix 2026-09-27
+deploy shared fueling OCR worker fix 2026-09-27
