@@ -1,4 +1,5 @@
 import type { Sql } from "@/lib/db";
+import { syncTicketVariableMemory } from "@/lib/ticket-variable-memory.server";
 
 export class TicketError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -292,6 +293,7 @@ export async function saveTicket(
       `;
     }
 
+    await syncTicketVariableMemory(sql, existing.report_id);
     return {
       ok: true,
       id: existing.id,
@@ -350,6 +352,7 @@ export async function saveTicket(
     throw new TicketError(409, `Ticket ${d.numero_ticket} já foi lançado.`);
   }
 
+  await syncTicketVariableMemory(sql, rows[0].report_id);
   return {
     ok: true,
     id: rows[0].id,
