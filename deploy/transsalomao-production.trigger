@@ -1,1 +1,1 @@
-deploy 2026-09-27 19:57 UTC - bundle PDF.js worker and Bradesco PIX parser
+deploy 2026-09-27 20:02 UTC - recipient validation and select-all batch advances
