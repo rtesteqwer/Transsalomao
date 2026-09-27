@@ -223,12 +223,13 @@ async function analyzePdfTextLocally(input: {
     );
   }
 
+  const pixDateTime = extractPixDateTimeFromText(sourceText);
   const transactionDateTime = extractTransactionDateTimeFromText(sourceText);
   return {
-    amount: extractAmountFromText(sourceText),
-    date: transactionDateTime.date ?? extractDateFromText(sourceText),
-    time: transactionDateTime.time ?? extractTimeFromText(sourceText),
-    driver_name: input.kind === "advance" ? extractRecipientFromText(sourceText) : null,
+    amount: extractPixAmountFromText(sourceText) ?? extractAmountFromText(sourceText),
+    date: pixDateTime.date ?? transactionDateTime.date ?? extractDateFromText(sourceText),
+    time: pixDateTime.time ?? transactionDateTime.time ?? extractTimeFromText(sourceText),
+    driver_name: input.kind === "advance" ? (extractPixRecipientFromText(sourceText) ?? extractRecipientFromText(sourceText)) : null,
     source_text: sourceText.slice(0, 50000),
   };
 }
@@ -395,6 +396,152 @@ function normalizeSearchText(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("pt-BR");
+}
+
+
+function extractPixAmountFromText(text: string) {
+  const compact = text.replace(/\s+/g, " ").trim();
+  const normalized = normalizeSearchText(compact);
+
+  const labelMatches = [
+    "valor do pix",
+    "valor da transacao",
+    "valor da transferencia",
+    "valor transferido",
+    "valor pago",
+    "valor enviado",
+  ];
+
+  for (const label of labelMatches) {
+    const index = normalized.indexOf(label);
+    if (index < 0) continue;
+    const snippet = compact.slice(Math.max(0, index - 20), Math.min(compact.length, index + 220));
+    const currency = snippet.match(/R\$\s*([0-9][0-9.,]*)/i);
+    if (currency) {
+      const value = normalizeAmount(currency[1]);
+      if (value) return value;
+    }
+    const decimal = snippet.match(/\b(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})\b/);
+    if (decimal) {
+      const value = normalizeAmount(decimal[1]);
+      if (value) return value;
+    }
+  }
+
+  if (/\bpix\b/.test(normalized)) {
+    const all = [...compact.matchAll(/R\$\s*([0-9][0-9.,]*)/gi)]
+      .map((match) => normalizeAmount(match[1]))
+      .filter((value): value is string => !!value);
+    const unique = [...new Set(all)];
+    if (unique.length === 1) return unique[0];
+  }
+
+  return null;
+}
+
+function parseDateFromNormalizedSnippet(snippet: string) {
+  const numeric = snippet.match(/\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2}|\d{2})\b/);
+  if (numeric) {
+    const year = numeric[3].length === 2 ? "20" + numeric[3] : numeric[3];
+    return normalizeDate(
+      year + "-" + String(Number(numeric[2])).padStart(2, "0") + "-" + String(Number(numeric[1])).padStart(2, "0"),
+    );
+  }
+
+  const iso = snippet.match(/\b(20\d{2})[\/.-]([01]?\d)[\/.-]([0-3]?\d)\b/);
+  if (iso) {
+    return normalizeDate(
+      iso[1] + "-" + String(Number(iso[2])).padStart(2, "0") + "-" + String(Number(iso[3])).padStart(2, "0"),
+    );
+  }
+
+  const monthNames: Record<string, string> = {
+    jan: "01", janeiro: "01", fev: "02", fevereiro: "02", mar: "03", marco: "03",
+    abr: "04", abril: "04", mai: "05", maio: "05", jun: "06", junho: "06",
+    jul: "07", julho: "07", ago: "08", agosto: "08", set: "09", setembro: "09",
+    out: "10", outubro: "10", nov: "11", novembro: "11", dez: "12", dezembro: "12",
+  };
+  const words = snippet.match(/\b([0-3]?\d)\s+(?:de\s+)?([a-z]+)\s+(?:de\s+)?(20\d{2})\b/);
+  if (words) {
+    const month = monthNames[words[2]];
+    if (month) {
+      return normalizeDate(words[3] + "-" + month + "-" + String(Number(words[1])).padStart(2, "0"));
+    }
+  }
+  return null;
+}
+
+function parseTimeFromNormalizedSnippet(snippet: string) {
+  const found = snippet.match(/\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b/);
+  return found ? normalizeTime(String(Number(found[1])).padStart(2, "0") + ":" + found[2]) : null;
+}
+
+function extractPixDateTimeFromText(text: string) {
+  const normalized = normalizeSearchText(text.replace(/\s+/g, " "));
+  const labels = [
+    "data e hora da transacao",
+    "data e hora do pix",
+    "data da transacao",
+    "data do pix",
+    "realizado em",
+    "efetuado em",
+    "pix realizado em",
+    "pix efetuado em",
+  ];
+
+  for (const label of labels) {
+    const index = normalized.indexOf(label);
+    if (index < 0) continue;
+    const snippet = normalized.slice(index, index + 300);
+    const date = parseDateFromNormalizedSnippet(snippet);
+    const time = parseTimeFromNormalizedSnippet(snippet);
+    if (date || time) return { date, time };
+  }
+
+  if (/\bpix\b/.test(normalized)) {
+    const date = parseDateFromNormalizedSnippet(normalized);
+    const time = parseTimeFromNormalizedSnippet(normalized);
+    if (date || time) return { date, time };
+  }
+
+  return { date: null, time: null };
+}
+
+function extractPixRecipientFromText(text: string) {
+  const lines = textLines(text);
+  const section = /\b(?:dados do recebedor|dados do favorecido|recebedor|favorecido|destinatario|destinatário|beneficiario|beneficiário)\b/i;
+  const reject = /\b(?:dados do|banco|instituicao|instituição|cpf|cnpj|agencia|agência|conta|chave|pix|valor|data|hora|pagador|remetente|origem|tipo de conta|ispb)\b/i;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!section.test(lines[i])) continue;
+
+    const sameLine = lines[i].match(/(?:recebedor|favorecido|destinatario|destinatário|beneficiario|beneficiário)\s*[:\-–—]\s*(.+)$/i);
+    if (sameLine?.[1]) {
+      const value = sameLine[1].replace(/\b(?:cpf|cnpj)\b.*$/i, "").trim();
+      if (isPersonName(value, reject)) return value;
+    }
+
+    for (let j = i + 1; j <= Math.min(lines.length - 1, i + 7); j += 1) {
+      const current = lines[j].trim();
+      const normalized = normalizeSearchText(current);
+      if (/^(?:nome|nome completo)\s*[:\-–—]?\s*$/.test(normalized)) continue;
+
+      const named = current.match(/^(?:nome|nome completo)\s*[:\-–—]\s*(.+)$/i);
+      const value = (named?.[1] || current)
+        .replace(/\b(?:cpf|cnpj)\b.*$/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (isPersonName(value, reject)) return value;
+    }
+  }
+  return null;
+}
+
+function isPersonName(value: string, reject: RegExp) {
+  if (value.length < 5 || value.length > 120 || reject.test(value)) return false;
+  const words = value.match(/[A-Za-zÀ-ÿ]{2,}/g) || [];
+  return words.length >= 2;
 }
 
 function extractAmountFromText(text: string) {
