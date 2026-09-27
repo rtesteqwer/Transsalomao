@@ -87,7 +87,7 @@ copy("render-overrides/0021_financial_document_reader.sql", "migrations/0021_fin
   write(rel, s);
 }
 
-// Expense/advance dialog: photo/PDF reader fills only amount, date and time.
+// Expense/advance dialog: photo/PDF reader fills amount/date/time and, for advances, links a unique registered driver match.
 {
   const rel = "src/routes/dono/despesas.tsx";
   let s = read(rel);
@@ -141,7 +141,8 @@ copy("render-overrides/0021_financial_document_reader.sql", "migrations/0021_fin
       '                if (result.amount) setAmount(result.amount.replace(".", ","));',
       '                if (result.date) setDate(result.date);',
       '                if (result.time) setTransactionTime(result.time);',
-      '                toast.success("Valor, data e hora preenchidos para conferência.");',
+      '                if (isAdvance && result.suggestedDriverId) setDriverId(result.suggestedDriverId);',
+      '                toast.success(isAdvance && result.suggestedDriverName ? "Valor, data, hora e motorista vinculados para conferência." : "Valor, data e hora preenchidos para conferência.");',
       '              }}',
       '            />',
       '',
@@ -162,4 +163,4 @@ copy("render-overrides/0021_financial_document_reader.sql", "migrations/0021_fin
   write(rel, s);
 }
 
-console.log("[financial-document-reader] photo/PDF reader installed for expenses and advances");
+console.log("[financial-document-reader] photo/PDF reader installed; advances auto-link a uniquely matched registered driver");
