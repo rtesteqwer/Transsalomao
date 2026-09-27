@@ -131,9 +131,16 @@ export function FuelingPhotoReader() {
           };
           setItems((current) => [...current, item]);
         } catch (error) {
+          const detail = error instanceof Error
+            ? error.message
+            : typeof error === "string"
+              ? error
+              : (() => {
+                  try { return JSON.stringify(error); } catch { return "Falha na leitura."; }
+                })();
           setErrors((current) => [
             ...current,
-            file.name + ": " + (error instanceof Error ? error.message : "Falha na leitura."),
+            file.name + ": " + (detail || "Falha na leitura."),
           ]);
         }
       }
@@ -461,7 +468,12 @@ async function readFuelingWithLocalOcr(image: string, existingWorker: any) {
   let worker = existingWorker;
   if (!worker) {
     const module = await import("tesseract.js");
-    worker = await module.createWorker("por");
+    worker = await module.createWorker("por", 1, {
+      workerPath: "/ocr/worker.min.js",
+      corePath: "/ocr/core",
+      langPath: "/ocr/lang",
+      gzip: true,
+    });
   }
 
   const result = await worker.recognize(image);
