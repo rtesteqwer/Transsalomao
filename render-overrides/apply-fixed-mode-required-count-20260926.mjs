@@ -39,6 +39,25 @@ must(
   "complete requested fixed quantity",
 );
 
+// In fixed modes, make the one-photo/many-trips workflow explicit.
+must(
+  'Selecione uma ou várias fotos. Cada foto é processada em fila e enviada automaticamente como um lançamento novo no Caixa.',
+  'Selecione 1 foto e digite quantas viagens ela representa. A mesma foto será a evidência do grupo de Cegonha/Caixinha.',
+  "fixed single-photo instructions",
+);
+
+must(
+  'multiple={!option.camera}\\n                      disabled={ticketReading || ticketSending || !freightMode || !ticketAccess?.authenticated || !ticketAccess.available}',
+  'multiple={!option.camera && !(freightMode === "cegonha" || freightMode === "caixinha")}\\n                      disabled={ticketReading || ticketSending || !freightMode || !ticketAccess?.authenticated || !ticketAccess.available}',
+  "fixed single-photo gallery",
+);
+
+must(
+  '{ticketReading ? "Lendo ticket…" : option.label}',
+  '{ticketReading ? "Lendo ticket…" : ((freightMode === "cegonha" || freightMode === "caixinha") && !option.camera ? "Selecionar 1 foto" : option.label)}',
+  "fixed single-photo label",
+);
+
 // Replace the legacy "photos define the quantity" block with one mandatory field.
 const quantityNeedle = '<Field label="Quantidade de viagens"';
 const q = s.indexOf(quantityNeedle);
