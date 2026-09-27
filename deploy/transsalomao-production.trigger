@@ -1,1 +1,1 @@
-deploy fueling manual fallback fix 2026-09-27
+deploy faster fueling OCR android fix 2026-09-27
