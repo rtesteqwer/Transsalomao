@@ -310,3 +310,5 @@ console.log('[serverfn-json-prebuild] patching TanStack client transport before 
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
+
+// Deploy automatic PDF reader 2026-09-27
