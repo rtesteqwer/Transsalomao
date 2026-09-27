@@ -77,9 +77,10 @@ export function FuelingPhotoReader() {
       const selected = Array.from(files).slice(0, 12);
       for (let index = 0; index < selected.length; index += 1) {
         const file = selected[index];
+        let image = "";
         setProgress("Lendo " + (index + 1) + " de " + selected.length + ": " + file.name);
         try {
-          const image = await compressPhoto(file);
+          image = await compressPhoto(file);
           const response = await fetch("/api/ler-abastecimento", {
             method: "POST",
             credentials: "same-origin",
@@ -138,9 +139,20 @@ export function FuelingPhotoReader() {
               : (() => {
                   try { return JSON.stringify(error); } catch { return "Falha na leitura."; }
                 })();
+          if (image) {
+            const manualItem: ReadItem = {
+              id: crypto.randomUUID(),
+              fileName: file.name,
+              image,
+              reading: manualFallbackReading(detail || "Falha na leitura automática."),
+              suggestedDriverId: null,
+              suggestedFleetId: null,
+            };
+            setItems((current) => [...current, manualItem]);
+          }
           setErrors((current) => [
             ...current,
-            file.name + ": " + (detail || "Falha na leitura."),
+            file.name + ": " + (detail || "Falha na leitura.") + (image ? " A foto foi mantida para conferência manual." : ""),
           ]);
         }
       }
@@ -308,6 +320,37 @@ export function FuelingPhotoReader() {
       ) : null}
     </section>
   );
+}
+
+function manualFallbackReading(reason: string): FuelingReading {
+  return {
+    document_type: "unknown",
+    date: null,
+    time: null,
+    station_name: null,
+    station_cnpj: null,
+    station_address: null,
+    pump_number: null,
+    nozzle_number: null,
+    fuel_type: null,
+    liters: null,
+    price_per_liter: null,
+    total_amount: null,
+    discount_amount: null,
+    odometer_km: null,
+    plate: null,
+    driver_name: null,
+    receipt_number: null,
+    payment_method: null,
+    consistency: "partial",
+    confidence: 0,
+    calculation_basis: null,
+    alerts: [
+      "A leitura automática não concluiu. A foto foi mantida na tela para você conferir e preencher os campos manualmente.",
+      reason,
+    ].filter(Boolean),
+    visual_hints: [],
+  };
 }
 
 function FuelingReadCard({
