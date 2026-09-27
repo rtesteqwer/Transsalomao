@@ -32,6 +32,7 @@ copy("render-overrides/ticket-auth-20260924.server.ts", "src/lib/ticket-auth.ser
 copy("render-overrides/ticket-photo-access-20260924.tsx", "src/components/ticket-photo-access.tsx");
 copy("render-overrides/ticket-meta-api-20260924.ts", "src/routes/api/ticket-meta.ts");
 copy("render-overrides/ticket-parser-20260925.ts", "src/lib/ticket-parser.ts");
+copy("render-overrides/ticket-variable-memory-20260926.server.ts", "src/lib/ticket-variable-memory.server.ts");
 
 for (const rel of ["src/lib/ticket-provider.server.ts", "src/lib/salomao-ticket-reader.server.ts"]) {
   const file = dst(rel);
