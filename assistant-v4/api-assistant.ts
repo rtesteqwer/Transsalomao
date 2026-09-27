@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { authenticateAssistantRequest } from "@/lib/assistant-auth.server";
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
+import { salomaoCoreIdentityPrompt } from "@/lib/salomao-identity.server";
 
 export const Route = createFileRoute("/api/assistant")({
   server: {
