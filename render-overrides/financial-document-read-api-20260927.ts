@@ -62,7 +62,8 @@ function normalizeName(value: unknown) {
 
 
 function matchDriverFromDocument(documentText: string, drivers: any[]) {
-  const haystack = " " + normalizeName(documentText) + " ";
+  const normalizedDocument = normalizeName(documentText);
+  const haystack = " " + normalizedDocument + " ";
   if (!haystack.trim()) return null;
 
   const exact = drivers.filter((row) => {
@@ -70,6 +71,16 @@ function matchDriverFromDocument(documentText: string, drivers: any[]) {
     return name.length >= 5 && haystack.includes(" " + name + " ");
   });
   if (exact.length === 1) return exact[0];
+
+  // Some bank PDFs split the recipient name into separate text fragments.
+  // Compare again with spaces/punctuation removed so
+  // "M I C H A R L E  JOSE DOS SANTOS" still matches the registered driver.
+  const compactDocument = normalizedDocument.replace(/[^a-z0-9]+/g, "");
+  const compactMatches = drivers.filter((row) => {
+    const compactName = normalizeName(row?.name).replace(/[^a-z0-9]+/g, "");
+    return compactName.length >= 8 && compactDocument.includes(compactName);
+  });
+  if (compactMatches.length === 1) return compactMatches[0];
 
   const scored = drivers
     .map((row) => {
