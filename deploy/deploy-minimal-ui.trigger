@@ -49,3 +49,5 @@ axor-37-caixinha-reconcile-fix2=1
 ticket-variable-memory=1
 
 ticket-memory-safe-linking=1
+
+required-fixed-mode-quantity=1
