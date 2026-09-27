@@ -517,9 +517,24 @@ function extractPixDateTimeFromText(text: string) {
 }
 
 function extractPixRecipientFromText(text: string) {
+  const compact = text.replace(/\s+/g, " ").trim();
+  const reject = /\b(?:dados do|dados de|banco|instituicao|instituição|cpf|cnpj|agencia|agência|conta|chave|pix|valor|data|hora|pagador|remetente|origem|tipo de conta|ispb|telefones?|contato|sac|ouvidoria|autenticacao|autenticação|transacao|transação|pagamento)\b/i;
+
+  // Bradesco and similar bank PDFs often flatten the whole page into one line.
+  // In that case, read only the "Dados de quem recebeu" block and capture
+  // Nome before CPF/CNPJ/Instituição/Chave Pix.
+  const sectionMatch = compact.match(/(?:dados de quem recebeu|dados do recebedor|dados do favorecido|quem recebeu)\b([\s\S]{0,700}?)(?=\bdados (?:do pagamento|da transa[cç][aã]o|de quem pagou|de quem fez)|\bautentica[cç][aã]o\b|\btelefones? de contato\b|$)/i);
+  if (sectionMatch?.[1]) {
+    const block = sectionMatch[1];
+    const labeledName = block.match(/\bnome(?: completo)?\s*[:\-–—]?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .''’\-]{3,120}?)(?=\s+(?:cpf(?:\/cnpj)?|cnpj|institui[cç][aã]o|banco|chave pix|ag[eê]ncia|conta)\b)/i);
+    if (labeledName?.[1]) {
+      const value = labeledName[1].replace(/\s+/g, " ").trim();
+      if (isPersonName(value, reject)) return value;
+    }
+  }
+
   const lines = textLines(text);
   const section = /\b(?:dados de quem recebeu|quem recebeu|dados do recebedor|dados do favorecido|recebedor|favorecido|destinatario|destinatário|beneficiario|beneficiário)\b/i;
-  const reject = /\b(?:dados do|banco|instituicao|instituição|cpf|cnpj|agencia|agência|conta|chave|pix|valor|data|hora|pagador|remetente|origem|tipo de conta|ispb)\b/i;
 
   for (let i = 0; i < lines.length; i += 1) {
     if (!section.test(lines[i])) continue;
@@ -530,10 +545,11 @@ function extractPixRecipientFromText(text: string) {
       if (isPersonName(value, reject)) return value;
     }
 
-    for (let j = i + 1; j <= Math.min(lines.length - 1, i + 7); j += 1) {
+    for (let j = i + 1; j <= Math.min(lines.length - 1, i + 14); j += 1) {
       const current = lines[j].trim();
       const normalized = normalizeSearchText(current);
       if (/^(?:nome|nome completo)\s*[:\-–—]?\s*$/.test(normalized)) continue;
+      if (/^(?:cpf|cnpj|cpf\/cnpj|instituicao|instituição|chave pix|agencia|agência|conta|dados do pagamento|dados da transacao|dados da transação|autenticacao|autenticação|telefones? de contato)\b/i.test(current)) continue;
 
       const named = current.match(/^(?:nome|nome completo)\s*[:\-–—]\s*(.+)$/i);
       const value = (named?.[1] || current)
