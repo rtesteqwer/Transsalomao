@@ -555,19 +555,21 @@ function parseLocalFuelingText(text: string): FuelingReading {
   const total = findFinalTotal(lines);
   const productNumbers = findFuelProductNumbers(raw);
 
-  const liters = productNumbers.liters;
-  const price = productNumbers.price;
-  const gross = productNumbers.gross;
+  const pumpNumbers = findPumpDisplayNumbers(lines);
+  const liters = productNumbers.liters ?? pumpNumbers.liters;
+  const price = productNumbers.price ?? pumpNumbers.price;
+  const gross = productNumbers.gross ?? pumpNumbers.total;
+  const resolvedTotal = total ?? pumpNumbers.total;
 
   let consistency: FuelingReading["consistency"] = "partial";
   let confidence = 0.72;
-  const alerts: string[] = ["Leitura local usada porque a leitura online estava indisponível. Confira os campos antes de gravar."];
+  const alerts: string[] = ["Leitura local usada. Confira os campos antes de gravar."];
   let calculationBasis: string | null = null;
 
-  if (liters && price && total) {
+  if (liters && price && resolvedTotal) {
     const l = Number(liters);
     const p = Number(price);
-    const t = Number(total);
+    const t = Number(resolvedTotal);
     const d = Number(discount || 0);
     const expected = l * p - d;
     const tolerance = Math.max(0.15, l * p * 0.0035);
@@ -593,7 +595,7 @@ function parseLocalFuelingText(text: string): FuelingReading {
   }
 
   return {
-    document_type: /\bdanfe\b|nota fiscal|nf-?e/i.test(raw) ? "invoice" : "fuel_receipt",
+    document_type: pumpNumbers.detected ? "pump_display" : /\bdanfe\b|nota fiscal|nf-?e/i.test(raw) ? "invoice" : "fuel_receipt",
     date,
     time,
     station_name: stationName,
@@ -604,7 +606,7 @@ function parseLocalFuelingText(text: string): FuelingReading {
     fuel_type: fuelType,
     liters,
     price_per_liter: price,
-    total_amount: total,
+    total_amount: resolvedTotal,
     discount_amount: discount,
     odometer_km: findOdometer(raw),
     plate,
@@ -742,6 +744,57 @@ function findLabeledMoney(lines: string[], labels: string[]) {
     }
   }
   return null;
+}
+
+function findPumpDisplayNumbers(lines: string[]) {
+  const joined = lines.join("\n");
+  const normalized = normalizeLocal(joined);
+  const detected = /total a pagar|preco por litro|litros/.test(normalized);
+  if (!detected) return { detected: false, total: null, liters: null, price: null };
+
+  const afterLabel = (label: RegExp) => {
+    for (let i = 0; i < lines.length; i += 1) {
+      if (!label.test(normalizeLocal(lines[i]))) continue;
+      const neighborhood = [lines[i - 1] || "", lines[i], lines[i + 1] || ""].join(" ");
+      const values = [...neighborhood.matchAll(/\b(\d{1,5}[.,]\d{2,3})\b/g)]
+        .map((m) => decimalToken(m[1]))
+        .filter((v): v is string => !!v);
+      if (values.length) return values[0];
+    }
+    return null;
+  };
+
+  const all = [...joined.matchAll(/\b(\d{1,5}[.,]\d{2,3})\b/g)]
+    .map((m) => decimalToken(m[1]))
+    .filter((v): v is string => !!v)
+    .map((v) => Number(v));
+
+  let total = afterLabel(/total a pagar/);
+  let liters = afterLabel(/^litros$|\blitros\b/);
+  let price = afterLabel(/preco por litro/);
+
+  if (!price) {
+    const candidate = all.find((n) => n >= 2 && n <= 20);
+    price = candidate ? String(candidate) : null;
+  }
+  if (!liters) {
+    const candidate = all.find((n) => n >= 20 && n <= 3000);
+    liters = candidate ? String(candidate) : null;
+  }
+  if (!total) {
+    const candidate = all.find((n) => n >= 100 && String(n) !== liters);
+    total = candidate ? String(candidate) : null;
+  }
+
+  if (liters && price && total) {
+    const expected = Number(liters) * Number(price);
+    if (Math.abs(expected - Number(total)) > Math.max(0.2, expected * 0.004)) {
+      const candidate = all.find((n) => n >= 100 && Math.abs(expected - n) <= Math.max(0.2, expected * 0.004));
+      if (candidate) total = String(candidate);
+    }
+  }
+
+  return { detected: true, total, liters, price };
 }
 
 function findFinalTotal(lines: string[]) {
