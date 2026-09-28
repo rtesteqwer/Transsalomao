@@ -26,3 +26,5 @@ execFileSync("patch", ["--batch", "--forward", "--dry-run", "-p1", "-d", work, "
 execFileSync("patch", ["--batch", "--forward", "-p1", "-d", work, "-i", patchPath], { stdio: "inherit" });
 
 console.log("[security-hardening] protected fleet reads, driver writes, passwords, sessions, login throttling, tickets and Salomao IA");
+
+// Final validation marker: async ticket-auth tests updated on 2026-09-28.
