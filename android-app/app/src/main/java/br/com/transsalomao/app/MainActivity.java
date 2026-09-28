@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -63,6 +64,14 @@ public class MainActivity extends Activity {
         shell.setOrientation(LinearLayout.VERTICAL);
         shell.setBackgroundColor(BG);
 
+        // Respeita a camera/notch e a barra de status em Android 15/16+.
+        shell.setOnApplyWindowInsetsListener((v, insets) -> {
+            int topInset = insets.getSystemWindowInsetTop();
+            v.setPadding(0, topInset, 0, 0);
+            return insets;
+        });
+        shell.requestApplyInsets();
+
         content = new FrameLayout(this);
         shell.addView(content, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -89,7 +98,7 @@ public class MainActivity extends Activity {
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(18), dp(18), dp(18), dp(28));
+        page.setPadding(dp(18), dp(22), dp(18), dp(28));
         scroll.addView(page, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
