@@ -22,8 +22,8 @@ const patchText = zlib.gunzipSync(archive);
 const patchPath = path.join(os.tmpdir(), "transsalomao-security-hardening-20260928.patch");
 fs.writeFileSync(patchPath, patchText);
 
-execFileSync("patch", ["--batch", "--forward", "--dry-run", "-p1", "-d", work, "-i", patchPath], { stdio: "inherit" });
-execFileSync("patch", ["--batch", "--forward", "-p1", "-d", work, "-i", patchPath], { stdio: "inherit" });
+execFileSync("git", ["apply", "--no-index", "--check", "-p1", patchPath], { cwd: work, stdio: "inherit" });
+execFileSync("git", ["apply", "--no-index", "-p1", patchPath], { cwd: work, stdio: "inherit" });
 
 console.log("[security-hardening] protected fleet reads, driver writes, passwords, sessions, login throttling, tickets and Salomao IA");
 
