@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
+import * as TesseractNode from "tesseract.js";
 
 export type FuelingPhotoReading = {
   document_type: "pump_display" | "fuel_receipt" | "pos_receipt" | "invoice" | "unknown";
@@ -410,15 +410,13 @@ let serverOcrWorkerPromise: Promise<any> | null = null;
 async function getServerOcrWorker() {
   if (!serverOcrWorkerPromise) {
     serverOcrWorkerPromise = (async () => {
-      // Tesseract.js é CommonJS no runtime Node. Carregá-lo via import()
-      // dentro do bundle ESM da Vercel altera o formato do módulo e pode
-      // eliminar createWorker / __dirname. createRequire preserva o runtime
-      // nativo do pacote dentro da função serverless.
-      const require = createRequire(import.meta.url);
-      const tesseract: any = require("tesseract.js");
+      // Import estático para a Vercel rastrear e incluir tesseract.js dentro
+      // da função serverless. O pacote CommonJS pode aparecer no namespace
+      // ESM diretamente ou em default, então aceitamos os dois formatos.
+      const moduleValue: any = TesseractNode as any;
       const createWorker =
-        tesseract?.createWorker ||
-        tesseract?.default?.createWorker;
+        moduleValue?.createWorker ||
+        moduleValue?.default?.createWorker;
       if (typeof createWorker !== "function") {
         throw new Error("Tesseract createWorker indisponível no runtime Node.");
       }
@@ -448,7 +446,6 @@ async function getServerOcrWorker() {
   }
   return serverOcrWorkerPromise;
 }
-
 async function withServerOcrTimeout<T>(promise: Promise<T>, ms: number, message: string) {
   return await Promise.race([
     promise,
