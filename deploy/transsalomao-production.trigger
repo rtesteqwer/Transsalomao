@@ -1,1 +1,1 @@
-deploy security hardening 2026-09-28
+redeploy portable security hardening 2026-09-28
