@@ -125,6 +125,16 @@ export function FuelingPhotoReader() {
 
           if (response.ok && payload?.reading) {
             nextReading = payload.reading as FuelingReading;
+
+            if (needsSecondOcrPass(nextReading)) {
+              try {
+                setProgress("Conferindo a leitura com uma segunda leitura local: " + file.name);
+                const local = await readFuelingWithLocalOcr(image);
+                nextReading = mergeFuelingReadings(nextReading, local.reading);
+              } catch {
+                // Mantém a leitura do servidor quando a segunda leitura não conclui.
+              }
+            }
           } else if ([429, 502, 503, 504].includes(response.status)) {
             setProgress("Leitura no servidor não concluiu. Última tentativa local: " + file.name);
             const local = await readFuelingWithLocalOcr(image);
@@ -626,17 +636,23 @@ function parseLocalFuelingText(text: string): FuelingReading {
     /arla\s*32/i.test(raw) ? "Arla 32" :
     null;
 
-  const stationName = findStationName(lines);
+  const coossutran = findCoossutranLocal(raw);
+  const stationName = coossutran.detected && /coossutran/i.test(raw) ? "COOSSUTRAN" : findStationName(lines);
   const receiptNumber = findReceiptNumber(raw);
   const discount = findLabeledMoney(lines, ["valor descontos", "valor desconto", "descontos r$", "desconto r$"]);
   const total = findFinalTotal(lines);
+  const grossTotal = findGrossTotal(lines);
+  const grossTarget = grossTotal
+    ? Number(grossTotal)
+    : (total ? Number(total) + Number(discount || 0) : null);
+  const mathPair = findFuelPairFromMathLocal(raw, grossTarget);
   const productNumbers = findFuelProductNumbers(raw);
 
   const pumpNumbers = findPumpDisplayNumbers(lines);
-  let liters = productNumbers.liters ?? pumpNumbers.liters;
-  let price = productNumbers.price ?? pumpNumbers.price;
-  const gross = productNumbers.gross ?? pumpNumbers.total;
-  let resolvedTotal = total ?? pumpNumbers.total;
+  let liters = coossutran.liters ?? mathPair?.liters ?? productNumbers.liters ?? pumpNumbers.liters;
+  let price = coossutran.price ?? mathPair?.price ?? productNumbers.price ?? pumpNumbers.price;
+  const gross = grossTotal ?? productNumbers.gross ?? pumpNumbers.total;
+  let resolvedTotal = coossutran.total ?? total ?? pumpNumbers.total;
 
   // Close de visor: muitas fotos reais mostram somente um campo grande.
   // Não gravamos automaticamente; classificamos o papel provável e depois
@@ -648,9 +664,15 @@ function parseLocalFuelingText(text: string): FuelingReading {
     else if (n >= 1000) resolvedTotal = pumpNumbers.standalone;
   }
 
+  const repaired = repairLocalCoreNumbers(liters, price, resolvedTotal);
+  liters = repaired.liters;
+  price = repaired.price;
+  resolvedTotal = repaired.total;
+
   let consistency: FuelingReading["consistency"] = "partial";
   let confidence = 0.72;
   const alerts: string[] = ["Leitura local usada. Confira os campos antes de gravar."];
+  if (repaired.alert) alerts.push(repaired.alert);
   let calculationBasis: string | null = null;
 
   if (liters && price && resolvedTotal) {
@@ -671,6 +693,19 @@ function parseLocalFuelingText(text: string): FuelingReading {
       consistency = "partial";
       confidence = 0.86;
       alerts.push("Quantidade e preço foram identificados, mas o total final precisa ser conferido.");
+    } else if (repaired.litersWasScaled && price && resolvedTotal) {
+      const derived = (Number(resolvedTotal) + Number(discount || 0)) / Number(price);
+      if (derived >= 20 && derived <= 3000) {
+        liters = derived.toFixed(3);
+        consistency = "calculated";
+        confidence = 0.86;
+        calculationBasis = "Litros recuperados por (total + desconto) ÷ preço/L após perda da vírgula no OCR.";
+        alerts.push("A vírgula dos litros foi recuperada pela conferência matemática.");
+      } else {
+        consistency = "conflict";
+        confidence = 0.78;
+        alerts.push("Os valores reconhecidos não fecharam matematicamente. Confira litros, preço, desconto e total.");
+      }
     } else {
       consistency = "conflict";
       confidence = 0.78;
@@ -682,7 +717,7 @@ function parseLocalFuelingText(text: string): FuelingReading {
   }
 
   return {
-    document_type: pumpNumbers.detected ? "pump_display" : /\bdanfe\b|nota fiscal|nf-?e/i.test(raw) ? "invoice" : "fuel_receipt",
+    document_type: coossutran.detected ? "fuel_receipt" : /\bdanfe\b|nota fiscal|nf-?e/i.test(raw) ? "invoice" : pumpNumbers.detected ? "pump_display" : "fuel_receipt",
     date,
     time,
     station_name: stationName,
@@ -730,7 +765,206 @@ function decimalToken(value: string | undefined | null) {
   else if (/^\d{1,3}(?:,\d{3})+\.\d+$/.test(raw)) raw = raw.replace(/,/g, "");
   if (!/^\d+(?:\.\d+)?$/.test(raw)) return null;
   const number = Number(raw);
-  return Number.isFinite(number) && number > 0 ? String(number) : null;
+  return Number.isFinite(number) && number > 0 ? raw : null;
+}
+
+function fixedRole(value: number, decimals: number) {
+  return value.toFixed(decimals);
+}
+
+function localRoleNumber(rawValue: string, role: "liters" | "price" | "money") {
+  const cleaned = String(rawValue || "").replace(/[^0-9.,]/g, "");
+  if (!cleaned) return null;
+  if (/[.,]/.test(cleaned)) return decimalToken(cleaned);
+
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0) return null;
+
+  if (role === "liters") {
+    if (n >= 20 && n <= 3000) return String(n);
+    if (cleaned.length >= 4 && cleaned.length <= 7) {
+      const scaled = n / 1000;
+      if (scaled >= 20 && scaled <= 3000) return fixedRole(scaled, 3);
+    }
+  }
+
+  if (role === "price") {
+    if (n >= 2 && n <= 20) return String(n);
+    const divisors = cleaned.length >= 4 ? [1000, 100] : [100, 1000];
+    for (const divisor of divisors) {
+      const scaled = n / divisor;
+      if (scaled >= 2 && scaled <= 20) return fixedRole(scaled, divisor === 1000 ? 3 : 2);
+    }
+  }
+
+  if (role === "money") {
+    if (n >= 1 && n <= 100_000 && cleaned.length <= 4) return String(n);
+    if (cleaned.length >= 3 && cleaned.length <= 8) {
+      const scaled = n / 100;
+      if (scaled >= 1 && scaled <= 100_000) return fixedRole(scaled, 2);
+    }
+  }
+  return null;
+}
+
+function repairLocalCoreNumbers(liters: string | null, price: string | null, total: string | null) {
+  let l = liters;
+  let p = price;
+  let t = total;
+  let litersWasScaled = false;
+  let alert: string | null = null;
+
+  if (l && Number.isInteger(Number(l)) && Number(l) > 3000 && Number(l) <= 3_000_000) {
+    const scaled = Number(l) / 1000;
+    if (scaled >= 20 && scaled <= 3000) {
+      l = fixedRole(scaled, 3);
+      litersWasScaled = true;
+      alert = "OCR perdeu a vírgula dos litros; casas decimais foram restauradas.";
+    }
+  }
+
+  if (p && Number.isInteger(Number(p)) && Number(p) > 20) {
+    const repaired = localRoleNumber(p, "price");
+    if (repaired) p = repaired;
+  }
+  if (t && Number.isInteger(Number(t)) && Number(t) > 100_000) {
+    const repaired = localRoleNumber(t, "money");
+    if (repaired) t = repaired;
+  }
+
+  return { liters: l, price: p, total: t, litersWasScaled, alert };
+}
+
+function findCoossutranLocal(text: string) {
+  const normalized = normalizeLocal(text);
+  const detected = /coossutran|ordem\s+abast|veiculo\s+placa/.test(normalized) && /diesel/.test(normalized);
+  if (!detected) return { detected: false, liters: null, price: null, total: null };
+
+  const flat = text.replace(/\r?\n/g, " ").replace(/\s+/g, " ");
+  const diesel = flat.match(/DIESEL\s*[:\-]?\s*([0-9][0-9.,]{2,})\s*(?:LTS?\.?|LITROS?)?[\s\S]{0,55}?R\$?\s*[:\-]?\s*([0-9][0-9.,]{1,})/i);
+  let liters = diesel?.[1] ? localRoleNumber(diesel[1], "liters") : null;
+  let price = diesel?.[2] ? localRoleNumber(diesel[2], "price") : null;
+
+  if (!liters) {
+    const m = flat.match(/DIESEL[\s\S]{0,45}?([0-9]{4,7}|[0-9]{1,4}[.,][0-9]{2,3})\s*(?:LTS?\.?|LITROS?)/i);
+    if (m?.[1]) liters = localRoleNumber(m[1], "liters");
+  }
+  if (!price) {
+    const m = flat.match(/DIESEL[\s\S]{0,80}?R\$?\s*[:\-]?\s*([0-9]{2,5}|[0-9]{1,3}[.,][0-9]{1,3})/i);
+    if (m?.[1]) price = localRoleNumber(m[1], "price");
+  }
+
+  let total: string | null = null;
+  const totals = [...flat.matchAll(/TOTAL\s*:?[^R]{0,45}?R\$\s*[:\-]?\s*([0-9][0-9.,]{2,})/ig)];
+  if (totals.length) total = localRoleNumber(totals[totals.length - 1][1], "money");
+  if (!total && liters && price) total = (Number(liters) * Number(price)).toFixed(2);
+
+  return { detected: true, liters, price, total };
+}
+
+function findFuelPairFromMathLocal(text: string, grossTarget: number | null) {
+  if (!grossTarget || !Number.isFinite(grossTarget) || grossTarget <= 0) return null;
+  const normalized = normalizeLocal(text);
+  const dieselAt = normalized.search(/oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/);
+  const source = dieselAt >= 0
+    ? text.slice(Math.max(0, dieselAt - 260), Math.min(text.length, dieselAt + 700))
+    : text;
+
+  const rawTokens = [...source.matchAll(/\b([0-9]{2,7}(?:[.,][0-9]{1,3})?)\b/g)].map((m) => m[1]);
+  const litersCandidates = new Set<string>();
+  const priceCandidates = new Set<string>();
+
+  for (const token of rawTokens) {
+    const l = localRoleNumber(token, "liters");
+    const p = localRoleNumber(token, "price");
+    if (l && Number(l) >= 20 && Number(l) <= 3000) litersCandidates.add(l);
+    if (p && Number(p) >= 2 && Number(p) <= 20) priceCandidates.add(p);
+  }
+
+  let best: { liters: string; price: string; error: number } | null = null;
+  for (const liters of litersCandidates) {
+    for (const price of priceCandidates) {
+      const expected = Number(liters) * Number(price);
+      const error = Math.abs(expected - grossTarget);
+      const tolerance = Math.max(0.15, grossTarget * 0.0035);
+      if (error <= tolerance && (!best || error < best.error)) best = { liters, price, error };
+    }
+  }
+  return best;
+}
+
+function findGrossTotal(lines: string[]) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const normalized = normalizeLocal(lines[i]);
+    if (!/valor total (?:dos )?produtos|total produtos|vl\.?\s*total (?:dos )?produtos/.test(normalized)) continue;
+    const joined = [lines[i], lines[i + 1] || ""].join(" ");
+    const decimals = [...joined.matchAll(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2})/g)];
+    if (decimals.length) return decimalToken(decimals[decimals.length - 1][1]);
+    const bare = joined.match(/([0-9]{4,8})\b/);
+    if (bare?.[1]) return localRoleNumber(bare[1], "money");
+  }
+  return null;
+}
+
+function coreReadingScore(reading: FuelingReading) {
+  const core = [reading.liters, reading.price_per_liter, reading.total_amount].filter(Boolean).length;
+  const metadata = [reading.date, reading.station_name, reading.fuel_type, reading.plate, reading.receipt_number].filter(Boolean).length;
+  const consistency = reading.consistency === "confirmed" ? 5 : reading.consistency === "calculated" ? 4 : reading.consistency === "partial" ? 2 : 0;
+  return core * 4 + metadata + consistency + Math.round((reading.confidence || 0) * 3);
+}
+
+function needsSecondOcrPass(reading: FuelingReading) {
+  const core = [reading.liters, reading.price_per_liter, reading.total_amount].filter(Boolean).length;
+  return core < 2 || reading.consistency === "conflict" || (reading.confidence || 0) < 0.82;
+}
+
+function mergeFuelingReadings(server: FuelingReading, local: FuelingReading): FuelingReading {
+  const preferred = coreReadingScore(local) > coreReadingScore(server) ? local : server;
+  const other = preferred === server ? local : server;
+
+  const merged: FuelingReading = {
+    ...preferred,
+    date: preferred.date || other.date,
+    time: preferred.time || other.time,
+    station_name: preferred.station_name || other.station_name,
+    station_cnpj: preferred.station_cnpj || other.station_cnpj,
+    station_address: preferred.station_address || other.station_address,
+    pump_number: preferred.pump_number || other.pump_number,
+    nozzle_number: preferred.nozzle_number || other.nozzle_number,
+    fuel_type: preferred.fuel_type || other.fuel_type,
+    liters: preferred.liters || other.liters,
+    price_per_liter: preferred.price_per_liter || other.price_per_liter,
+    total_amount: preferred.total_amount || other.total_amount,
+    discount_amount: preferred.discount_amount || other.discount_amount,
+    odometer_km: preferred.odometer_km || other.odometer_km,
+    plate: preferred.plate || other.plate,
+    driver_name: preferred.driver_name || other.driver_name,
+    receipt_number: preferred.receipt_number || other.receipt_number,
+    payment_method: preferred.payment_method || other.payment_method,
+    alerts: Array.from(new Set([...(preferred.alerts || []), ...(other.alerts || []), "Leitura conferida por duas fontes de OCR."])),
+    visual_hints: Array.from(new Set([...(preferred.visual_hints || []), ...(other.visual_hints || [])])),
+    confidence: Math.max(preferred.confidence || 0, other.confidence || 0),
+  };
+
+  const repaired = repairLocalCoreNumbers(merged.liters, merged.price_per_liter, merged.total_amount);
+  merged.liters = repaired.liters;
+  merged.price_per_liter = repaired.price;
+  merged.total_amount = repaired.total;
+
+  const l = merged.liters ? Number(merged.liters) : null;
+  const p = merged.price_per_liter ? Number(merged.price_per_liter) : null;
+  const t = merged.total_amount ? Number(merged.total_amount) : null;
+  const d = merged.discount_amount ? Number(merged.discount_amount) : 0;
+  if (l && p && t) {
+    const expected = l * p - d;
+    const tolerance = Math.max(0.15, l * p * 0.0035);
+    if (Math.abs(expected - t) <= tolerance) {
+      merged.consistency = "confirmed";
+      merged.confidence = Math.max(merged.confidence, 0.92);
+      merged.calculation_basis = "Leitura conferida por OCR do servidor + OCR local e validada matematicamente.";
+    }
+  }
+  return merged;
 }
 
 function findDate(lines: string[]) {
@@ -790,11 +1024,17 @@ function findDriverName(lines: string[]) {
 }
 
 function findStationName(lines: string[]) {
+  const business = lines.find((line) =>
+    /\b(?:AUTO\s+POSTO|POSTO\s+DE\s+COMBUST|POSTO\s+[A-ZÀ-Ý]|COMBUSTIVEIS|COMBUSTÍVEIS|COOSSUTRAN|LTDA\.?|EIRELI)\b/i.test(line)
+    && !/valor|produto|cliente|destinat|endereco|endereço/i.test(line)
+  );
+  if (business) return business.replace(/\s+/g, " ").trim().slice(0, 220);
+
   const cnpjIndex = lines.findIndex((line) => /\bCNPJ\b/i.test(line));
   if (cnpjIndex > 0) {
-    for (let i = cnpjIndex - 1; i >= Math.max(0, cnpjIndex - 4); i -= 1) {
+    for (let i = cnpjIndex - 1; i >= Math.max(0, cnpjIndex - 7); i -= 1) {
       const line = lines[i];
-      if (/rua|avenida|rodovia|cep|vila|bairro/i.test(line)) continue;
+      if (/rua|avenida|rodovia|cep|bairro|\b[A-ZÀ-Ý ]+\s*-\s*[A-Z]{2}\b/i.test(line)) continue;
       const candidate = looksLikePersonName(line);
       if (candidate) return candidate;
     }
