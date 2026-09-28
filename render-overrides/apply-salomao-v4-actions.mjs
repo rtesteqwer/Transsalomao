@@ -26,6 +26,23 @@ for (const [srcRel, dstRel] of copies) {
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.copyFileSync(src, dst);
 }
+// The security hardening patch was authored against the pre-branding generated files.
+// Normalize only the generated copies here, then re-apply the public Trans Salomão IA
+// wording after security hardening. This keeps the security patch intact and buildable.
+for (const rel of [
+  'src/routes/api/assistant/developer.ts',
+  'src/routes/api/assistant.ts',
+  'src/routes/api/assistant/document-intake.ts',
+  'src/routes/salomao-ia.tsx',
+]) {
+  const file = path.join(target, rel);
+  if (!fs.existsSync(file)) continue;
+  const before = fs.readFileSync(file, 'utf8');
+  const after = before.replaceAll('Trans Salomão IA', 'Salomão IA');
+  if (after !== before) fs.writeFileSync(file, after);
+}
+console.log('[salomao-v4] generated assistant files normalized for security hardening');
+
 console.log('[salomao-v4] auth, actions, assistant API and migration installed');
 
 
