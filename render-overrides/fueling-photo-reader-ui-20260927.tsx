@@ -125,8 +125,8 @@ export function FuelingPhotoReader() {
 
           if (response.ok && payload?.reading) {
             nextReading = payload.reading as FuelingReading;
-          } else if (response.status === 429) {
-            setProgress("IA online sem créditos. Fazendo leitura local rápida no aparelho: " + file.name);
+          } else if ([429, 502, 503, 504].includes(response.status)) {
+            setProgress("Leitura no servidor não concluiu. Última tentativa local: " + file.name);
             const local = await readFuelingWithLocalOcr(image);
             nextReading = local.reading;
 
@@ -155,7 +155,7 @@ export function FuelingPhotoReader() {
             suggestedDriverId,
             suggestedFleetId,
           };
-          setItems((current) => [...current, item]);
+          setItems((current) => reconcileFuelingBatch([...current, item]));
         } catch (error) {
           const detail = error instanceof Error
             ? error.message
@@ -173,7 +173,7 @@ export function FuelingPhotoReader() {
               suggestedDriverId: null,
               suggestedFleetId: null,
             };
-            setItems((current) => [...current, manualItem]);
+            setItems((current) => reconcileFuelingBatch([...current, manualItem]));
           }
           setErrors((current) => [
             ...current,
@@ -633,10 +633,20 @@ function parseLocalFuelingText(text: string): FuelingReading {
   const productNumbers = findFuelProductNumbers(raw);
 
   const pumpNumbers = findPumpDisplayNumbers(lines);
-  const liters = productNumbers.liters ?? pumpNumbers.liters;
-  const price = productNumbers.price ?? pumpNumbers.price;
+  let liters = productNumbers.liters ?? pumpNumbers.liters;
+  let price = productNumbers.price ?? pumpNumbers.price;
   const gross = productNumbers.gross ?? pumpNumbers.total;
-  const resolvedTotal = total ?? pumpNumbers.total;
+  let resolvedTotal = total ?? pumpNumbers.total;
+
+  // Close de visor: muitas fotos reais mostram somente um campo grande.
+  // Não gravamos automaticamente; classificamos o papel provável e depois
+  // cruzamos com as outras fotos do mesmo lote pela relação matemática.
+  if (!liters && !price && !resolvedTotal && pumpNumbers.standalone) {
+    const n = Number(pumpNumbers.standalone);
+    if (n >= 2 && n <= 20) price = pumpNumbers.standalone;
+    else if (n >= 20 && n < 1000) liters = pumpNumbers.standalone;
+    else if (n >= 1000) resolvedTotal = pumpNumbers.standalone;
+  }
 
   let consistency: FuelingReading["consistency"] = "partial";
   let confidence = 0.72;
@@ -826,14 +836,19 @@ function findLabeledMoney(lines: string[], labels: string[]) {
 function findPumpDisplayNumbers(lines: string[]) {
   const joined = lines.join("\n");
   const normalized = normalizeLocal(joined);
-  const detected = /total a pagar|preco por litro|litros/.test(normalized);
-  if (!detected) return { detected: false, total: null, liters: null, price: null };
+  const detected = /total a pagar|preco por litro|litros|r\$/.test(normalized);
+
+  const allTokens = [...joined.matchAll(/\b(\d{1,6}[.,]\d{2,3})\b/g)]
+    .map((m) => ({ raw: m[1], value: decimalToken(m[1]) }))
+    .filter((v): v is { raw: string; value: string } => !!v.value)
+    .map((v) => ({ ...v, number: Number(v.value) }));
 
   const afterLabel = (label: RegExp) => {
+    if (!detected) return null;
     for (let i = 0; i < lines.length; i += 1) {
       if (!label.test(normalizeLocal(lines[i]))) continue;
       const neighborhood = [lines[i - 1] || "", lines[i], lines[i + 1] || ""].join(" ");
-      const values = [...neighborhood.matchAll(/\b(\d{1,5}[.,]\d{2,3})\b/g)]
+      const values = [...neighborhood.matchAll(/\b(\d{1,6}[.,]\d{2,3})\b/g)]
         .map((m) => decimalToken(m[1]))
         .filter((v): v is string => !!v);
       if (values.length) return values[0];
@@ -841,37 +856,32 @@ function findPumpDisplayNumbers(lines: string[]) {
     return null;
   };
 
-  const all = [...joined.matchAll(/\b(\d{1,5}[.,]\d{2,3})\b/g)]
-    .map((m) => decimalToken(m[1]))
-    .filter((v): v is string => !!v)
-    .map((v) => Number(v));
+  let total = afterLabel(/total a pagar|valor total|total r\$/);
+  let liters = afterLabel(/^litros$|\blitros\b|quantidade|\bqtd\b/);
+  let price = afterLabel(/preco por litro|preco\/l|r\$\/l|vl\.?unit/);
 
-  let total = afterLabel(/total a pagar/);
-  let liters = afterLabel(/^litros$|\blitros\b/);
-  let price = afterLabel(/preco por litro/);
-
-  if (!price) {
-    const candidate = all.find((n) => n >= 2 && n <= 20);
-    price = candidate ? String(candidate) : null;
-  }
-  if (!liters) {
-    const candidate = all.find((n) => n >= 20 && n <= 3000);
-    liters = candidate ? String(candidate) : null;
-  }
-  if (!total) {
-    const candidate = all.find((n) => n >= 100 && String(n) !== liters);
-    total = candidate ? String(candidate) : null;
-  }
-
-  if (liters && price && total) {
-    const expected = Number(liters) * Number(price);
-    if (Math.abs(expected - Number(total)) > Math.max(0.2, expected * 0.004)) {
-      const candidate = all.find((n) => n >= 100 && Math.abs(expected - n) <= Math.max(0.2, expected * 0.004));
-      if (candidate) total = String(candidate);
+  // Procura uma combinação matematicamente válida no mesmo visor.
+  if (allTokens.length >= 3) {
+    for (const p of allTokens.filter((x) => x.number >= 2 && x.number <= 20)) {
+      for (const l of allTokens.filter((x) => x.number >= 20 && x.number <= 3000)) {
+        for (const t of allTokens.filter((x) => x.number >= 100)) {
+          const expected = p.number * l.number;
+          if (Math.abs(expected - t.number) <= Math.max(0.25, expected * 0.004)) {
+            price = price || p.value;
+            liters = liters || l.value;
+            total = total || t.value;
+          }
+        }
+      }
     }
   }
 
-  return { detected: true, total, liters, price };
+  if (!price) price = allTokens.find((x) => x.number >= 2 && x.number <= 20)?.value ?? null;
+  if (!liters) liters = allTokens.find((x) => x.number >= 20 && x.number < 1000)?.value ?? null;
+  if (!total) total = allTokens.find((x) => x.number >= 1000)?.value ?? null;
+
+  const standalone = !detected && allTokens.length === 1 ? allTokens[0].value : null;
+  return { detected, total, liters, price, standalone };
 }
 
 function findFinalTotal(lines: string[]) {
@@ -914,6 +924,69 @@ function findFuelProductNumbers(text: string) {
     gross: grossCandidate?.value ?? null,
   };
 }
+
+
+function reconcileFuelingBatch(rows: ReadItem[]) {
+  if (rows.length < 2) return rows;
+
+  const liters = rows
+    .map((row, index) => ({ index, value: row.reading.liters ? Number(row.reading.liters) : NaN, text: row.reading.liters }))
+    .filter((x) => Number.isFinite(x.value) && x.value >= 20 && x.value <= 3000 && x.text);
+  const prices = rows
+    .map((row, index) => ({ index, value: row.reading.price_per_liter ? Number(row.reading.price_per_liter) : NaN, text: row.reading.price_per_liter }))
+    .filter((x) => Number.isFinite(x.value) && x.value >= 2 && x.value <= 20 && x.text);
+  const totals = rows
+    .map((row, index) => ({ index, value: row.reading.total_amount ? Number(row.reading.total_amount) : NaN, text: row.reading.total_amount }))
+    .filter((x) => Number.isFinite(x.value) && x.value >= 100 && x.text);
+
+  const updates = new Map<number, { liters: string; price: string; total: string }>();
+
+  for (const l of liters) {
+    for (const p of prices) {
+      const expected = l.value * p.value;
+      for (const t of totals) {
+        const tolerance = Math.max(0.25, expected * 0.0035);
+        if (Math.abs(expected - t.value) > tolerance) continue;
+
+        const distinctPhotos = new Set([l.index, p.index, t.index]).size;
+        if (distinctPhotos < 2 && rows[l.index]?.reading.consistency !== "confirmed") continue;
+
+        for (const idx of new Set([l.index, p.index, t.index])) {
+          updates.set(idx, {
+            liters: String(l.text),
+            price: String(p.text),
+            total: String(t.text),
+          });
+        }
+      }
+    }
+  }
+
+  if (!updates.size) return rows;
+
+  return rows.map((row, index) => {
+    const match = updates.get(index);
+    if (!match) return row;
+    const existingAlerts = row.reading.alerts || [];
+    return {
+      ...row,
+      reading: {
+        ...row.reading,
+        liters: match.liters,
+        price_per_liter: match.price,
+        total_amount: match.total,
+        consistency: "confirmed" as const,
+        confidence: Math.max(row.reading.confidence || 0, 0.92),
+        calculation_basis: "Valores cruzados entre fotos do mesmo lote: litros × preço/L confere com o total.",
+        alerts: [
+          "Esta foto foi vinculada a outras do mesmo lote por conferência matemática.",
+          ...existingAlerts.filter((alert) => !/vinculada a outras/i.test(alert)),
+        ],
+      },
+    };
+  });
+}
+
 
 function matchLocalDriver(name: string | null, drivers: any[]) {
   if (!name) return null;
