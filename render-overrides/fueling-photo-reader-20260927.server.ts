@@ -155,7 +155,7 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
     document_type: documentType,
     date: dateRaw && /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : null,
     time: timeRaw && /^\d{2}:\d{2}(?::\d{2})?$/.test(timeRaw) ? timeRaw : null,
-    station_name: text(source.station_name, 220),
+    station_name: cleanStationText(text(source.station_name, 220)),
     station_cnpj: text(source.station_cnpj, 40),
     station_address: text(source.station_address, 350),
     pump_number: text(source.pump_number, 80),
@@ -177,6 +177,8 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
     visual_hints: stringArray(source.visual_hints, 12, 220),
   };
 
+  sanitizeFuelingFieldRoles(reading);
+
   const repaired = repairOcrNumericRoles(reading);
   reading.liters = repaired.liters;
   reading.price_per_liter = repaired.price;
@@ -193,9 +195,21 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
     let expectedNet = gross - d;
     let tolerance = Math.max(0.12, gross * 0.0005);
 
+    if (Math.abs(expectedNet - t) > tolerance) {
+      const scaledTotal = repairTotalByExpectedValue(t, expectedNet, tolerance);
+      if (scaledTotal) {
+        reading.total_amount = scaledTotal;
+        t = Number(scaledTotal);
+        reading.consistency = "calculated";
+        reading.confidence = Math.min(reading.confidence, 0.88);
+        reading.calculation_basis = "Separador decimal do total recuperado pela conferência litros × preço/L.";
+        reading.alerts = unique([...reading.alerts, "O separador decimal do total foi restaurado pela conferência matemática."]);
+      }
+    }
+
     if (Math.abs(expectedNet - t) > tolerance && repaired.litersWasScaled && p >= 2 && p <= 20) {
       const derivedLiters = (t + d) / p;
-      if (derivedLiters >= 20 && derivedLiters <= 3000) {
+      if (derivedLiters >= 5 && derivedLiters <= 2500 && !(Number.isInteger(derivedLiters) && derivedLiters >= 1900 && derivedLiters <= 2100)) {
         reading.liters = preciseDecimal(derivedLiters, 3);
         l = Number(reading.liters);
         gross = l * p;
@@ -203,31 +217,139 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
         tolerance = Math.max(0.12, gross * 0.0005);
         reading.consistency = "calculated";
         reading.confidence = Math.min(reading.confidence, 0.88);
-        reading.calculation_basis = "Litros recuperados por (total + desconto) ÷ preço/L porque o OCR perdeu a vírgula do campo de litros.";
-        reading.alerts = unique([...reading.alerts, "A vírgula dos litros estava ausente no OCR; o valor foi recuperado pela conferência matemática."]);
+        reading.calculation_basis = "Litros recuperados por (total + desconto) ÷ preço/L porque o OCR perdeu a vírgula.";
+        reading.alerts = unique([...reading.alerts, "A vírgula dos litros foi recuperada pela conferência matemática."]);
       }
+    }
+
+    // Em visor de bomba, desconto não existe. Se litros e preço estão coerentes,
+    // um "total" muito distante costuma ser data/hora/código capturado no campo errado.
+    if (
+      Math.abs(expectedNet - t) > tolerance &&
+      reading.document_type === "pump_display" &&
+      l >= 5 && l <= 2500 &&
+      p >= 2 && p <= 20 &&
+      (t < gross * 0.25 || t > gross * 4)
+    ) {
+      reading.total_amount = preciseDecimal(gross, 2);
+      t = Number(reading.total_amount);
+      expectedNet = gross;
+      reading.consistency = "calculated";
+      reading.confidence = Math.min(reading.confidence, 0.86);
+      reading.calculation_basis = "Total corrigido por litros × preço/L; o número anterior não era compatível com o visor.";
+      reading.alerts = unique([...reading.alerts, "O número que estava no total foi descartado por pertencer a outro campo da foto."]);
     }
 
     if (Math.abs(expectedNet - t) > tolerance) {
       reading.consistency = "conflict";
+      reading.confidence = Math.min(reading.confidence, 0.79);
       reading.alerts = unique([
         ...reading.alerts,
         d
-          ? "Os valores visíveis não fecham: litros × preço/L − desconto difere do valor final. Confira a foto antes de gravar."
-          : "Os valores visíveis não fecham: litros × preço/L difere do total. Confira a foto antes de gravar.",
+          ? "Os valores visíveis não fecham: litros × preço/L − desconto difere do valor final. O campo duvidoso deve ser corrigido antes de gravar."
+          : "Os valores visíveis não fecham: litros × preço/L difere do total. O campo duvidoso deve ser corrigido antes de gravar.",
       ]);
     } else if (reading.consistency !== "calculated") {
       reading.consistency = "confirmed";
     }
-  } else if (reading.consistency === "confirmed") {
-    reading.consistency = "partial";
+  } else {
+    if (reading.consistency === "confirmed") reading.consistency = "partial";
+    if ([reading.liters, reading.price_per_liter, reading.total_amount].filter(Boolean).length < 2) {
+      reading.confidence = Math.min(reading.confidence, 0.84);
+    }
   }
   return reading;
 }
 
-
 function preciseDecimal(value: number, decimals: number) {
   return value.toFixed(decimals).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function cleanStationText(value: string | null) {
+  if (!value) return null;
+  let out = value
+    .replace(/^\s*(?:fisc?l?|emitente|estabelecimento)\s*[:\-]\s*/i, "")
+    .replace(/\bCNPJ\b[\s\S]*$/i, "")
+    .replace(/\b\d{2}[.\s]?\d{3}[.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2}\b[\s\S]*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^coossutran\b/i.test(out)) return "COOSSUTRAN";
+  return out ? out.slice(0, 220) : null;
+}
+
+function sanitizeFuelingFieldRoles(reading: FuelingPhotoReading) {
+  const alerts = [...reading.alerts];
+  const originalLiters = reading.liters;
+  const originalPrice = reading.price_per_liter;
+  const originalTotal = reading.total_amount;
+
+  const l = originalLiters ? Number(originalLiters) : null;
+  const p = originalPrice ? Number(originalPrice) : null;
+  const t = originalTotal ? Number(originalTotal) : null;
+
+  const year = reading.date ? Number(reading.date.slice(0, 4)) : null;
+  if (l && Number.isInteger(l) && ((year && l === year) || (l >= 1900 && l <= 2100))) {
+    reading.liters = null;
+    alerts.push("Um ano/data foi impedido de entrar no campo de litros.");
+  } else if (l && (l < 1 || l > 2500)) {
+    reading.liters = null;
+    alerts.push("Quantidade de litros fora da faixa de um abastecimento individual foi descartada.");
+  }
+
+  if (p && (p < 2 || p > 20)) {
+    reading.price_per_liter = null;
+    alerts.push("Número incompatível com preço por litro foi descartado.");
+  }
+
+  if (reading.document_type === "pump_display" && reading.discount_amount) {
+    reading.discount_amount = null;
+    alerts.push("Desconto foi removido: visor de bomba não possui campo de desconto.");
+  }
+
+  const cnpjDigits = String(reading.station_cnpj ?? "").replace(/\D/g, "");
+  if (cnpjDigits.length >= 14) {
+    const roleDigits = [originalLiters, originalPrice, originalTotal].map((value) =>
+      String(value ?? "").replace(/\D/g, "").replace(/^0+/, "")
+    );
+    const contaminated = roleDigits.map((digits) => digits.length >= 3 && cnpjDigits.includes(digits));
+    const contaminatedCount = contaminated.filter(Boolean).length;
+    if (contaminatedCount >= 2) {
+      if (contaminated[0]) reading.liters = null;
+      if (contaminated[1]) reading.price_per_liter = null;
+      if (contaminated[2]) reading.total_amount = null;
+      if (
+        !contaminated[2] &&
+        l && p && t &&
+        Math.abs(l * p - t) <= Math.max(0.12, l * p * 0.001)
+      ) {
+        reading.total_amount = null;
+      }
+      alerts.push("Fragmentos do CNPJ foram impedidos de virar litros, preço ou total.");
+    }
+  }
+
+  if (
+    reading.liters &&
+    reading.total_amount &&
+    Math.abs(Number(reading.liters) - Number(reading.total_amount)) < 0.000001 &&
+    Number(reading.price_per_liter || 0) !== 1
+  ) {
+    reading.total_amount = null;
+    alerts.push("O mesmo número apareceu em litros e total; o total foi deixado vazio para não duplicar um campo.");
+  }
+
+  reading.alerts = unique(alerts);
+}
+
+function repairTotalByExpectedValue(total: number, expected: number, tolerance: number) {
+  if (!Number.isFinite(total) || !Number.isFinite(expected) || total <= 0 || expected <= 0) return null;
+  for (const divisor of [10, 100, 1000]) {
+    const candidate = total / divisor;
+    if (Math.abs(candidate - expected) <= Math.max(tolerance, expected * 0.001)) {
+      return preciseDecimal(candidate, divisor === 1000 ? 3 : 2);
+    }
+  }
+  return null;
 }
 
 function repairOcrNumericRoles(reading: FuelingPhotoReading) {
@@ -276,16 +398,27 @@ function repairOcrNumericRoles(reading: FuelingPhotoReading) {
 function ocrRoleNumber(rawValue: string, role: "liters" | "price" | "money") {
   const cleaned = String(rawValue || "").replace(/[^0-9.,]/g, "");
   if (!cleaned) return null;
-  if (/[.,]/.test(cleaned)) return serverDecimalToken(cleaned);
+
+  if (/[.,]/.test(cleaned)) {
+    const direct = serverDecimalToken(cleaned);
+    if (!direct) return null;
+    const n = Number(direct);
+    if (role === "liters") {
+      if (n < 1 || n > 2500 || (Number.isInteger(n) && n >= 1900 && n <= 2100)) return null;
+      return direct;
+    }
+    if (role === "price") return n >= 2 && n <= 20 ? direct : null;
+    return n >= 1 && n <= 100_000 ? direct : null;
+  }
 
   const n = Number(cleaned);
   if (!Number.isFinite(n) || n <= 0) return null;
 
   if (role === "liters") {
-    if (n >= 20 && n <= 3000) return String(n);
+    if (n >= 1 && n <= 2500 && !(Number.isInteger(n) && n >= 1900 && n <= 2100)) return String(n);
     if (cleaned.length >= 4 && cleaned.length <= 7) {
       const scaled = n / 1000;
-      if (scaled >= 20 && scaled <= 3000) return scaled.toFixed(3);
+      if (scaled >= 1 && scaled <= 2500) return scaled.toFixed(3);
     }
   }
 
@@ -301,8 +434,8 @@ function ocrRoleNumber(rawValue: string, role: "liters" | "price" | "money") {
   if (role === "money") {
     if (n >= 1 && n <= 100_000 && cleaned.length <= 4) return String(n);
     if (cleaned.length >= 3 && cleaned.length <= 8) {
-      const scaled = n / 100;
-      if (scaled >= 1 && scaled <= 100_000) return scaled.toFixed(2);
+      const scaled100 = n / 100;
+      if (scaled100 >= 1 && scaled100 <= 100_000) return scaled100.toFixed(2);
     }
   }
   return null;
@@ -338,22 +471,36 @@ function serverFindCoossutran(text: string) {
   return { detected: true, liters, price, total };
 }
 
+function protectedFuelingNumericLine(line: string) {
+  const normalized = normalizeServerOcr(line);
+  return /\b(?:cnpj|cpf|chave|protocolo|serie|nfc|nf-e|nsu|autorizacao|telefone|fone|cep|consumidor)\b/.test(normalized)
+    || /\b\d{1,2}[\/.\-]\d{1,2}[\/.\-](?:20)?\d{2}\b/.test(line)
+    || /\b(?:[01]?\d|2[0-3]):[0-5]\d\b/.test(line);
+}
+
+function serverFuelContextLines(text: string) {
+  const lines = text.replace(/\r/g, "\n").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const index = lines.findIndex((line) => /oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/i.test(normalizeServerOcr(line)));
+  if (index < 0) return [];
+  return lines
+    .slice(Math.max(0, index - 1), Math.min(lines.length, index + 5))
+    .filter((line) => !protectedFuelingNumericLine(line));
+}
+
 function serverFuelPairFromMath(text: string, grossTarget: number | null) {
   if (!grossTarget || !Number.isFinite(grossTarget) || grossTarget <= 0) return null;
-  const dieselAt = normalizeServerOcr(text).search(/oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/);
-  const source = dieselAt >= 0
-    ? text.slice(Math.max(0, dieselAt - 260), Math.min(text.length, dieselAt + 700))
-    : text;
+  const sourceLines = serverFuelContextLines(text);
+  if (!sourceLines.length) return null;
 
-  const rawTokens = [...source.matchAll(/\b([0-9]{2,7}(?:[.,][0-9]{1,3})?)\b/g)].map((m) => m[1]);
+  const rawTokens = [...sourceLines.join(" ").matchAll(/\b([0-9]{1,7}(?:[.,][0-9]{1,3})?)\b/g)].map((m) => m[1]);
   const litersCandidates = new Set<string>();
   const priceCandidates = new Set<string>();
 
   for (const token of rawTokens) {
     const l = ocrRoleNumber(token, "liters");
     const p = ocrRoleNumber(token, "price");
-    if (l && Number(l) >= 20 && Number(l) <= 3000) litersCandidates.add(l);
-    if (p && Number(p) >= 2 && Number(p) <= 20) priceCandidates.add(p);
+    if (l) litersCandidates.add(l);
+    if (p) priceCandidates.add(p);
   }
 
   let best: { liters: string; price: string; error: number } | null = null;
@@ -361,7 +508,7 @@ function serverFuelPairFromMath(text: string, grossTarget: number | null) {
     for (const price of priceCandidates) {
       const expected = Number(liters) * Number(price);
       const error = Math.abs(expected - grossTarget);
-      const tolerance = Math.max(0.12, grossTarget * 0.0005);
+      const tolerance = Math.max(0.12, grossTarget * 0.0008);
       if (error <= tolerance && (!best || error < best.error)) best = { liters, price, error };
     }
   }
@@ -484,6 +631,13 @@ export async function readFuelingPhoto(sql: any, input: {
     "22. Em ordens COOSSUTRAN, leia DIESEL como litros, o R$ da mesma linha como preço por litro, o TOTAL de litros no centro, o TOTAL R$ no canto inferior direito, Veículo Placa no canto inferior esquerdo e DIA/MÊS/ANO na base. Exemplos confirmados incluem QWS-3E13 com 465,000 L a 6,30 = 2929,50 e 44,120 L a 2,80 = 123,54; use apenas como padrão de layout.",
     "23. Em documentos do Posto Rosalem/Fred Rosalem Heliodoro, a linha do combustível e os totais podem ter desconto. Valor Total dos Produtos é o bruto; Valor Descontos R$ é o desconto; Valor Total R$ é o valor efetivamente pago. Um comprovante Getnet/Cielo sobreposto pode confirmar data/hora e valor final, mas não substitui a leitura dos litros.",
     "24. Se houver duas fotos muito parecidas do mesmo DANFE/cupom, receipt_number, data, litros, preço/L, placa e valores iguais são sinais fortes de duplicidade/vinculação; preserve os dados e deixe a API de gravação vincular ao mesmo abastecimento.",
+    "25. VALIDE CAMPO POR CAMPO antes de responder. Um número só pode preencher o papel em cujo contexto ele aparece; não redistribua números apenas para fazer a conta fechar.",
+    "26. CNPJ, CPF, chave de acesso, protocolo, série, NFC-e/NF-e, NSU, autorização, telefone, CEP, data e hora NUNCA podem fornecer litros, preço/L, total ou desconto.",
+    "27. Um ano como 2024, 2025 ou 2026 nunca é litros. Dia/mês/hora também não devem virar quantidade ou dinheiro.",
+    "28. Em POS/comprovante de cartão, total_amount vem de VALOR PAGO/VALOR TOTAL. Se não houver produto/visor na mesma foto, liters e price_per_liter devem ser null.",
+    "29. Se station_name vier na mesma linha do CNPJ, devolva somente o nome do estabelecimento, sem CNPJ, IE, números fiscais ou prefixos como 'Fisc:'.",
+    "30. Não use o mesmo número simultaneamente em dois campos (ex.: liters e total_amount), salvo se a foto mostrar explicitamente dois campos diferentes com o mesmo valor.",
+    "31. Quando uma leitura conflitar, prefira null no campo duvidoso. Não use números aleatórios do documento para forçar consistency=confirmed.",
     "",
     "CONTEXTO SELECIONADO:",
     selectedContext,
@@ -827,40 +981,39 @@ function serverNumberTokens(text: string) {
 function serverFindPumpDisplayNumbers(lines: string[]) {
   const joined = lines.join("\n");
   const normalized = normalizeServerOcr(joined);
-  const tokens = serverNumberTokens(joined);
   const detected = /total a pagar|preco por litro|litros|r\$/.test(normalized);
-  const receiptLike = /cnpj|danfe|nota fiscal|nf-?e|cupom|comprovante|nsu|autorizacao/.test(normalized);
+  const receiptLike = /cnpj|danfe|nota fiscal|nf-?e|cupom|comprovante|nsu|autorizacao|chave de acesso/.test(normalized);
 
-  const afterLabel = (label: RegExp) => {
+  const afterLabel = (label: RegExp, role: "liters" | "price" | "money") => {
     for (let i = 0; i < lines.length; i += 1) {
       if (!label.test(normalizeServerOcr(lines[i]))) continue;
-      const neighborhood = [lines[i - 1] || "", lines[i], lines[i + 1] || ""].join(" ");
-      const values = serverNumberTokens(neighborhood);
-      if (values.length) return values[0].value;
+      const neighborhood = [lines[i], lines[i + 1] || ""].join(" ");
+      const raw = [...neighborhood.matchAll(/\b(\d{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
+      for (const token of raw) {
+        const value = ocrRoleNumber(token, role);
+        if (value) return value;
+      }
     }
     return null;
   };
 
-  let total = afterLabel(/total a pagar|valor total|total r\$/);
-  let liters = afterLabel(/^litros$|\blitros\b|\bqtd\b|quantidade/);
-  let price = afterLabel(/preco por litro|preco\/l|r\$\/l|vl\.?unit/);
+  let total = afterLabel(/total a pagar|valor total|total r\$/, "money");
+  let liters = afterLabel(/^litros$|\blitros\b|\bqtd\b|quantidade/, "liters");
+  let price = afterLabel(/preco por litro|preco\/l|r\$\/l|vl\.?unit/, "price");
 
-  // Regra visual confirmada pela Trans Salomão para fotos de bomba:
-  // 1º número de cima = total em R$; 2º = litros; 3º de baixo = preço/L.
-  // Também recupera vírgulas/pontos perdidos pelo OCR, por exemplo
-  // 100000 / 156495 / 6390 => 1000,00 / 156,495 / 6,390.
+  // Documento fiscal/cartão: nunca escolher "o primeiro número plausível".
+  // Somente os rótulos explícitos acima podem alimentar os campos do visor.
+  if (receiptLike) return { detected, total, liters, price, standalone: null };
+
   const orderedRaw = [...joined.matchAll(/\b(\d{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
-  if (!receiptLike && orderedRaw.length >= 3) {
+  if (orderedRaw.length >= 3) {
     for (let i = 0; i <= orderedRaw.length - 3; i += 1) {
       const top = ocrRoleNumber(orderedRaw[i], "money");
       const middle = ocrRoleNumber(orderedRaw[i + 1], "liters");
       const bottom = ocrRoleNumber(orderedRaw[i + 2], "price");
       if (!top || !middle || !bottom) continue;
-
       const expected = Number(middle) * Number(bottom);
-      const diff = Math.abs(expected - Number(top));
-      const tolerance = Math.max(0.20, expected * 0.004);
-      if (diff <= tolerance) {
+      if (Math.abs(expected - Number(top)) <= Math.max(0.20, expected * 0.004)) {
         total = total || top;
         liters = liters || middle;
         price = price || bottom;
@@ -869,74 +1022,88 @@ function serverFindPumpDisplayNumbers(lines: string[]) {
     }
   }
 
-  // Segunda validação independente da posição: procura qualquer combinação
-  // matematicamente consistente entre os números reconhecidos.
-  if (tokens.length >= 3) {
-    for (const p of tokens.filter((x) => x.number >= 2 && x.number <= 20)) {
-      for (const l of tokens.filter((x) => x.number >= 20 && x.number <= 3000)) {
-        for (const t of tokens.filter((x) => x.number >= 100)) {
-          const expected = p.number * l.number;
-          if (Math.abs(expected - t.number) <= Math.max(0.12, expected * 0.0005)) {
-            price = price || p.value;
-            liters = liters || l.value;
-            total = total || t.value;
+  // Fora de documento fiscal, ainda aceitamos um trio apenas se a matemática fechar.
+  const candidates = orderedRaw.map((raw) => ({
+    liters: ocrRoleNumber(raw, "liters"),
+    price: ocrRoleNumber(raw, "price"),
+    total: ocrRoleNumber(raw, "money"),
+  }));
+  if (!liters || !price || !total) {
+    outer:
+    for (const l of candidates.map((x) => x.liters).filter((v): v is string => !!v)) {
+      for (const p of candidates.map((x) => x.price).filter((v): v is string => !!v)) {
+        for (const t of candidates.map((x) => x.total).filter((v): v is string => !!v)) {
+          const expected = Number(l) * Number(p);
+          if (Math.abs(expected - Number(t)) <= Math.max(0.20, expected * 0.004)) {
+            liters = liters || l;
+            price = price || p;
+            total = total || t;
+            break outer;
           }
         }
       }
     }
   }
 
-  if (!price) price = tokens.find((x) => x.number >= 2 && x.number <= 20)?.value ?? null;
-  if (!liters) liters = tokens.find((x) => x.number >= 20 && x.number < 1000)?.value ?? null;
-  if (!total) total = tokens.find((x) => x.number >= 1000)?.value ?? null;
-
-  const standalone = !detected && tokens.length === 1 ? tokens[0].value : null;
+  const standaloneTokens = orderedRaw
+    .map((raw) => serverDecimalToken(raw))
+    .filter((v): v is string => !!v);
+  const standalone = !detected && standaloneTokens.length === 1 ? standaloneTokens[0] : null;
   return { detected, total, liters, price, standalone };
 }
 
 function serverFindFuelProductNumbers(text: string) {
-  const normalized = normalizeServerOcr(text);
-  const dieselIndex = normalized.search(/oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/);
-  const source = dieselIndex >= 0
-    ? text.slice(Math.max(0, dieselIndex - 220), Math.min(text.length, dieselIndex + 520))
-    : text;
+  const lines = serverFuelContextLines(text);
+  if (!lines.length) return { liters: null, price: null, gross: null };
 
-  const rawTokens = [...source.matchAll(/\b([0-9]{1,8}(?:[.,][0-9]{1,3})?)\b/g)].map((m) => m[1]);
-  const candidates = rawTokens.map((raw) => ({
-    raw,
-    liters: ocrRoleNumber(raw, "liters"),
-    price: ocrRoleNumber(raw, "price"),
-    money: ocrRoleNumber(raw, "money"),
-  }));
+  let labeledLiters: string | null = null;
+  let labeledPrice: string | null = null;
+  let labeledGross: string | null = null;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const normalized = normalizeServerOcr(lines[i]);
+    const neighborhood = [lines[i], lines[i + 1] || ""].join(" ");
+    const raw = [...neighborhood.matchAll(/\b([0-9]{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
+
+    if (!labeledLiters && /\b(?:qtd|quantidade|litros|lts?)\b/.test(normalized)) {
+      labeledLiters = raw.map((x) => ocrRoleNumber(x, "liters")).find(Boolean) as string | null || null;
+    }
+    if (!labeledPrice && /preco|preço|vl\.?\s*unit|r\$\s*\/\s*l/.test(normalized)) {
+      labeledPrice = raw.map((x) => ocrRoleNumber(x, "price")).find(Boolean) as string | null || null;
+    }
+    if (!labeledGross && /vl\.?\s*total|valor\s+produto|total\s+produto/.test(normalized)) {
+      labeledGross = raw.map((x) => ocrRoleNumber(x, "money")).filter(Boolean).pop() as string | null || null;
+    }
+  }
+
+  const rawTokens = [...lines.join(" ").matchAll(/\b([0-9]{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
+  const litersCandidates = unique(rawTokens.map((raw) => ocrRoleNumber(raw, "liters")).filter((v): v is string => !!v));
+  const priceCandidates = unique(rawTokens.map((raw) => ocrRoleNumber(raw, "price")).filter((v): v is string => !!v));
+  const moneyCandidates = unique(rawTokens.map((raw) => ocrRoleNumber(raw, "money")).filter((v): v is string => !!v));
 
   let best: { liters: string; price: string; gross: string; error: number } | null = null;
-  for (const l of candidates.map((x) => x.liters).filter((v): v is string => !!v)) {
-    for (const p of candidates.map((x) => x.price).filter((v): v is string => !!v)) {
+  for (const l of litersCandidates) {
+    for (const p of priceCandidates) {
       const expected = Number(l) * Number(p);
-      for (const g of candidates.map((x) => x.money).filter((v): v is string => !!v)) {
+      for (const g of moneyCandidates) {
         const error = Math.abs(expected - Number(g));
-        const tolerance = Math.max(0.12, expected * 0.0005);
-        if (error <= tolerance && (!best || error < best.error)) {
+        if (error <= Math.max(0.12, expected * 0.0008) && (!best || error < best.error)) {
           best = { liters: l, price: p, gross: g, error };
         }
       }
     }
   }
-  if (best) return { liters: best.liters, price: best.price, gross: best.gross };
 
-  const liters = candidates.map((x) => x.liters).find((v) => v && Number(v) >= 20 && Number(v) <= 3000) ?? null;
-  const price = candidates.map((x) => x.price).find((v) => v && Number(v) >= 2 && Number(v) <= 20) ?? null;
-
-  let gross: string | null = null;
-  if (liters && price) {
-    const expected = Number(liters) * Number(price);
-    const moneyCandidates = candidates.map((x) => x.money).filter((v): v is string => !!v);
-    gross = moneyCandidates
-      .sort((a, b) => Math.abs(Number(a) - expected) - Math.abs(Number(b) - expected))[0] ?? null;
-    if (gross && Math.abs(Number(gross) - expected) > Math.max(0.12, expected * 0.0005)) gross = null;
+  if (best) {
+    return {
+      liters: labeledLiters || best.liters,
+      price: labeledPrice || best.price,
+      gross: labeledGross || best.gross,
+    };
   }
 
-  return { liters, price, gross };
+  // Sem trio matematicamente confirmado, somente campos explicitamente rotulados sobrevivem.
+  return { liters: labeledLiters, price: labeledPrice, gross: labeledGross };
 }
 
 function serverFindDate(lines: string[]) {
@@ -981,17 +1148,21 @@ function serverFindDriverName(lines: string[]) {
 
 function serverFindStationName(lines: string[]) {
   const business = lines.find((line) =>
-    /\b(?:AUTO\s+POSTO|POSTO\s+DE\s+COMBUST|POSTO\s+[A-ZÀ-Ý]|COMBUSTIVEIS|COMBUSTÍVEIS|COOSSUTRAN|LTDA\.?|EIRELI)\b/i.test(line)
-    && !/valor|produto|cliente|destinat|endereco|endereço/i.test(line)
+    /\b(?:AUTO\s+POSTO|POSTO\s+DE\s+COMBUST|POSTO\s+[A-ZÀ-Ý]|COMBUSTIVEIS|COMBUSTÍVEIS|COOSSUTRAN|LTDA\.?|EIRELI|COOPERATIVA)\b/i.test(line)
+    && !/valor|produto|cliente|destinat|endereco|endereço|chave|protocolo/i.test(line)
   );
-  if (business) return business.replace(/\s+/g, " ").trim().slice(0, 220);
+  if (business) {
+    const cleaned = cleanStationText(business);
+    if (cleaned) return cleaned;
+  }
 
   const idx = lines.findIndex((line) => /\bCNPJ\b/i.test(line));
   if (idx > 0) {
     for (let i = idx - 1; i >= Math.max(0, idx - 7); i -= 1) {
-      if (/rua|avenida|rodovia|cep|bairro|\b[A-ZÀ-Ý ]+\s*-\s*[A-Z]{2}\b/i.test(lines[i])) continue;
+      if (/rua|avenida|rodovia|cep|bairro|valor|produto|nota|cupom|\b[A-ZÀ-Ý ]+\s*-\s*[A-Z]{2}\b/i.test(lines[i])) continue;
       const candidate = serverLooksLikePerson(lines[i]);
-      if (candidate) return candidate;
+      const cleaned = cleanStationText(candidate);
+      if (cleaned) return cleaned;
     }
   }
   return null;
