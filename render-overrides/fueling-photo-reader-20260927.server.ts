@@ -217,7 +217,14 @@ export async function readFuelingPhoto(sql: any, input: {
   `.catch(() => []);
 
   const keys = await getSalomaoOpenAIKeys();
-  if (!keys.length) throw new FuelingPhotoError(503, "Leitor de abastecimento sem credencial de IA configurada.");
+  if (!keys.length) {
+    try {
+      return await readFuelingWithServerOcr(input.imageDataUrl);
+    } catch (ocrError) {
+      console.error("[fueling-photo] server OCR without online key failed", ocrError instanceof Error ? ocrError.message : ocrError);
+      throw new FuelingPhotoError(503, "A leitura no servidor e a IA online estão indisponíveis. O aparelho vai tentar a leitura local.");
+    }
+  }
   const model =
     process.env.OPENAI_FUELING_MODEL?.trim() ||
     process.env.OPENAI_TICKET_MODEL?.trim() ||
@@ -378,14 +385,379 @@ export async function readFuelingPhoto(sql: any, input: {
     }
   }
 
+  // Não dependa do celular quando a IA online estiver sem crédito ou instável.
+  // O servidor faz OCR com o mesmo idioma português usado no app e aplica as
+  // regras/padrões já confirmados antes de recorrer ao OCR do aparelho.
+  try {
+    return await readFuelingWithServerOcr(input.imageDataUrl);
+  } catch (ocrError) {
+    console.error("[fueling-photo] server OCR fallback failed", ocrError instanceof Error ? ocrError.message : ocrError);
+  }
+
   if (sawQuotaError) {
-    throw new FuelingPhotoError(429, "Créditos da IA online indisponíveis. O aplicativo vai tentar a leitura local da foto.");
+    throw new FuelingPhotoError(429, "A IA online está sem créditos e a leitura de contingência no servidor não concluiu. O aparelho vai tentar a leitura local.");
   }
   if (sawTimeout) {
-    throw new FuelingPhotoError(504, "A leitura online demorou demais. Tente novamente.");
+    throw new FuelingPhotoError(504, "A leitura online e a leitura de contingência demoraram demais. A foto continuará disponível para conferência.");
   }
-  throw new FuelingPhotoError(502, "A IA não conseguiu ler a foto agora. Tente novamente.");
+  throw new FuelingPhotoError(502, "A leitura automática não conseguiu concluir. A foto continuará disponível para conferência.");
 }
+
+
+let serverOcrWorkerPromise: Promise<any> | null = null;
+
+async function getServerOcrWorker() {
+  if (!serverOcrWorkerPromise) {
+    serverOcrWorkerPromise = (async () => {
+      const module: any = await import("tesseract.js");
+      const host = String(
+        process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+        process.env.VERCEL_URL ||
+        "transsalomao.vercel.app"
+      ).replace(/^https?:\/\//i, "").replace(/\/$/, "");
+      const worker = await module.createWorker("por", 1, {
+        langPath: "https://" + host + "/ocr/lang",
+        gzip: true,
+        logger: () => {},
+      });
+      try {
+        await worker.setParameters({
+          preserve_interword_spaces: "1",
+          user_defined_dpi: "180",
+        });
+      } catch {}
+      return worker;
+    })().catch((error) => {
+      serverOcrWorkerPromise = null;
+      throw error;
+    });
+  }
+  return serverOcrWorkerPromise;
+}
+
+async function withServerOcrTimeout<T>(promise: Promise<T>, ms: number, message: string) {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
+
+async function readFuelingWithServerOcr(imageDataUrl: string): Promise<FuelingPhotoReading> {
+  const match = imageDataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,(.*)$/s);
+  if (!match) throw new Error("Imagem inválida para OCR de contingência.");
+  const buffer = Buffer.from(match[2], "base64");
+  const worker = await withServerOcrTimeout(
+    getServerOcrWorker(),
+    25_000,
+    "OCR do servidor demorou para iniciar.",
+  );
+  const result: any = await withServerOcrTimeout(
+    worker.recognize(buffer),
+    28_000,
+    "OCR do servidor demorou para reconhecer a foto.",
+  );
+  const rawText = String(result?.data?.text || "").trim();
+  if (!rawText) throw new Error("OCR do servidor não encontrou texto.");
+  return normalizeFuelingReading(parseServerFuelingOcr(rawText));
+}
+
+function parseServerFuelingOcr(textValue: string): FuelingPhotoReading {
+  const raw = textValue.replace(/\r/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n").trim();
+  const normalized = normalizeServerOcr(raw);
+  const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+
+  const date = serverFindDate(lines);
+  const time = serverFindTime(lines);
+  const plate = serverFindPlate(raw);
+  const fuelType =
+    /diesel\s*s[\s-]*500/i.test(raw) ? "Diesel S500" :
+    /diesel\s*s[\s-]*10/i.test(raw) ? "Diesel S10" :
+    /\bdiesel\b/i.test(raw) ? "Diesel" :
+    /arla\s*32/i.test(raw) ? "Arla 32" :
+    null;
+
+  const discount = serverFindLabeledMoney(lines, ["valor descontos", "valor desconto", "descontos r$", "desconto r$"]);
+  const finalTotal = serverFindFinalTotal(lines);
+  const product = serverFindFuelProductNumbers(raw);
+  const display = serverFindPumpDisplayNumbers(lines);
+
+  let liters = product.liters ?? display.liters;
+  let price = product.price ?? display.price;
+  let total = finalTotal ?? display.total ?? product.gross;
+  let consistency: FuelingPhotoReading["consistency"] = "partial";
+  let confidence = 0.76;
+  const alerts = ["Leitura de contingência feita no servidor; confira antes de gravar."];
+  let calculationBasis: string | null = null;
+
+  // Fotos de visor frequentemente mostram apenas UM dos três campos.
+  // Os exemplos confirmados da Trans Salomão têm preço/L entre 2 e 20,
+  // litros normalmente entre 20 e 3000 e total acima de 1000 quando o
+  // enquadramento mostra apenas os dígitos do visor.
+  if (!liters && !price && !total && display.standalone) {
+    const n = Number(display.standalone);
+    if (n >= 2 && n <= 20) {
+      price = display.standalone;
+      confidence = 0.84;
+      alerts.push("Visor isolado compatível com preço por litro; confirme junto das outras fotos do mesmo abastecimento.");
+    } else if (n >= 20 && n < 1000) {
+      liters = display.standalone;
+      confidence = 0.86;
+      alerts.push("Visor isolado compatível com litros; a confirmação será cruzada com preço/total quando disponíveis.");
+    } else if (n >= 1000) {
+      total = display.standalone;
+      confidence = 0.84;
+      alerts.push("Visor isolado compatível com valor total; confirme junto das outras fotos do mesmo abastecimento.");
+    }
+  }
+
+  if (liters && price && total) {
+    const l = Number(liters);
+    const p = Number(price);
+    const t = Number(total);
+    const d = Number(discount || 0);
+    const expected = l * p - d;
+    const tolerance = Math.max(0.20, l * p * 0.004);
+    if (Math.abs(expected - t) <= tolerance) {
+      consistency = "confirmed";
+      confidence = 0.92;
+      calculationBasis = discount
+        ? "OCR do servidor: litros × preço/L − desconto confere com o total."
+        : "OCR do servidor: litros × preço/L confere com o total.";
+    } else {
+      consistency = "conflict";
+      confidence = 0.78;
+      alerts.push("Os números reconhecidos não fecharam matematicamente; não serão gravados automaticamente.");
+    }
+  } else if (liters && price && !total) {
+    consistency = "calculated";
+    const calc = Number(liters) * Number(price);
+    total = serverDecimal(calc, 4);
+    confidence = Math.max(confidence, 0.88);
+    calculationBasis = "Total calculado por litros × preço/L a partir de dois campos reconhecidos.";
+  } else if (liters && total && !price) {
+    const calc = Number(total) / Number(liters);
+    if (calc >= 2 && calc <= 20) {
+      price = serverDecimal(calc, 4);
+      consistency = "calculated";
+      confidence = Math.max(confidence, 0.87);
+      calculationBasis = "Preço/L calculado por total ÷ litros a partir de dois campos reconhecidos.";
+    }
+  } else if (price && total && !liters) {
+    const calc = Number(total) / Number(price);
+    if (calc >= 20 && calc <= 3000) {
+      liters = serverDecimal(calc, 4);
+      consistency = "calculated";
+      confidence = Math.max(confidence, 0.87);
+      calculationBasis = "Litros calculados por total ÷ preço/L a partir de dois campos reconhecidos.";
+    }
+  }
+
+  return {
+    document_type: display.detected || display.standalone ? "pump_display" : /\bdanfe\b|nota fiscal|nf-?e/i.test(raw) ? "invoice" : "fuel_receipt",
+    date,
+    time,
+    station_name: serverFindStationName(lines),
+    station_cnpj: serverFindCnpj(raw),
+    station_address: null,
+    pump_number: null,
+    nozzle_number: null,
+    fuel_type: fuelType,
+    liters,
+    price_per_liter: price,
+    total_amount: total,
+    discount_amount: discount,
+    odometer_km: serverFindOdometer(raw),
+    plate,
+    driver_name: serverFindDriverName(lines),
+    receipt_number: serverFindReceiptNumber(raw),
+    payment_method: null,
+    consistency,
+    confidence,
+    calculation_basis: calculationBasis,
+    alerts,
+    visual_hints: [
+      display.detected ? "Visor de bomba com rótulos" : "",
+      display.standalone ? "Visor de bomba em close com número isolado" : "",
+      normalized.includes("danfe") ? "DANFE simplificado" : "",
+      normalized.includes("valor total") ? "Valor Total" : "",
+      normalized.includes("placa") ? "Placa" : "",
+    ].filter(Boolean),
+  };
+}
+
+function normalizeServerOcr(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
+}
+
+function serverDecimalToken(value: string | undefined | null) {
+  if (!value) return null;
+  let raw = value.replace(/[^\d.,]/g, "");
+  if (!raw) return null;
+  if (/^\d{1,3}(?:\.\d{3})+,\d+$/.test(raw)) raw = raw.replace(/\./g, "").replace(",", ".");
+  else if (/^\d+,\d+$/.test(raw)) raw = raw.replace(",", ".");
+  else if (/^\d{1,3}(?:,\d{3})+\.\d+$/.test(raw)) raw = raw.replace(/,/g, "");
+  if (!/^\d+(?:\.\d+)?$/.test(raw)) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? raw : null;
+}
+
+function serverDecimal(value: number, maxDecimals = 4) {
+  return value.toFixed(maxDecimals).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function serverNumberTokens(text: string) {
+  return [...text.matchAll(/\b(\d{1,6}[.,]\d{2,3})\b/g)]
+    .map((m) => ({ raw: m[1], value: serverDecimalToken(m[1]) }))
+    .filter((x): x is { raw: string; value: string } => !!x.value)
+    .map((x) => ({ ...x, number: Number(x.value) }));
+}
+
+function serverFindPumpDisplayNumbers(lines: string[]) {
+  const joined = lines.join("\n");
+  const normalized = normalizeServerOcr(joined);
+  const tokens = serverNumberTokens(joined);
+  const detected = /total a pagar|preco por litro|litros|r\$/.test(normalized);
+
+  const afterLabel = (label: RegExp) => {
+    for (let i = 0; i < lines.length; i += 1) {
+      if (!label.test(normalizeServerOcr(lines[i]))) continue;
+      const neighborhood = [lines[i - 1] || "", lines[i], lines[i + 1] || ""].join(" ");
+      const values = serverNumberTokens(neighborhood);
+      if (values.length) return values[0].value;
+    }
+    return null;
+  };
+
+  let total = afterLabel(/total a pagar|valor total|total r\$/);
+  let liters = afterLabel(/^litros$|\blitros\b|\bqtd\b|quantidade/);
+  let price = afterLabel(/preco por litro|preco\/l|r\$\/l|vl\.?unit/);
+
+  // Reconhece os layouts de visor confirmados nos exemplos:
+  // total / litros / preço por litro (ex.: 3420,41 / 519,03 / 6,590).
+  if (tokens.length >= 3) {
+    for (const p of tokens.filter((x) => x.number >= 2 && x.number <= 20)) {
+      for (const l of tokens.filter((x) => x.number >= 20 && x.number <= 3000)) {
+        for (const t of tokens.filter((x) => x.number >= 100)) {
+          const expected = p.number * l.number;
+          if (Math.abs(expected - t.number) <= Math.max(0.25, expected * 0.004)) {
+            price = price || p.value;
+            liters = liters || l.value;
+            total = total || t.value;
+          }
+        }
+      }
+    }
+  }
+
+  if (!price) price = tokens.find((x) => x.number >= 2 && x.number <= 20)?.value ?? null;
+  if (!liters) liters = tokens.find((x) => x.number >= 20 && x.number < 1000)?.value ?? null;
+  if (!total) total = tokens.find((x) => x.number >= 1000)?.value ?? null;
+
+  const standalone = !detected && tokens.length === 1 ? tokens[0].value : null;
+  return { detected, total, liters, price, standalone };
+}
+
+function serverFindFuelProductNumbers(text: string) {
+  const normalized = normalizeServerOcr(text);
+  const dieselIndex = normalized.search(/oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/);
+  const source = dieselIndex >= 0 ? text.slice(Math.max(0, dieselIndex - 180), Math.min(text.length, dieselIndex + 420)) : text;
+  const tokens = serverNumberTokens(source);
+  const liters = tokens.find((x) => x.number >= 20 && x.number <= 3000)?.value ?? null;
+  const price = tokens.find((x) => x.number >= 2 && x.number <= 20)?.value ?? null;
+  const gross = tokens.find((x) => x.number >= 1000)?.value ?? null;
+  return { liters, price, gross };
+}
+
+function serverFindDate(lines: string[]) {
+  for (const line of lines) {
+    const m = line.match(/\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2}|\d{2})\b/);
+    if (!m) continue;
+    const y = m[3].length === 2 ? "20" + m[3] : m[3];
+    return y + "-" + String(Number(m[2])).padStart(2, "0") + "-" + String(Number(m[1])).padStart(2, "0");
+  }
+  return null;
+}
+
+function serverFindTime(lines: string[]) {
+  for (const line of lines) {
+    const m = line.match(/\b([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?\b/);
+    if (m) return String(Number(m[1])).padStart(2, "0") + ":" + m[2] + (m[3] ? ":" + m[3] : "");
+  }
+  return null;
+}
+
+function serverFindPlate(text: string) {
+  const m = text.toUpperCase().match(/\bPLACA\s*[:\-]?\s*([A-Z]{3})[\s.-]*([0-9][A-Z0-9][0-9]{2})\b/);
+  return m ? m[1] + m[2] : null;
+}
+
+function serverLooksLikePerson(value: string) {
+  const cleaned = value.replace(/[^A-Za-zÀ-ÿ .'’-]/g, " ").replace(/\s+/g, " ").trim();
+  const words = cleaned.match(/[A-Za-zÀ-ÿ]{2,}/g) || [];
+  return words.length >= 2 && words.length <= 8 ? cleaned : null;
+}
+
+function serverFindDriverName(lines: string[]) {
+  for (const line of lines) {
+    const m = line.match(/\b(?:MOTORISTA|CLIENTE|DESTINAT[ÁA]RIO)\s*[:\-]\s*(.+)$/i);
+    if (m?.[1]) {
+      const candidate = serverLooksLikePerson(m[1]);
+      if (candidate) return candidate;
+    }
+  }
+  return null;
+}
+
+function serverFindStationName(lines: string[]) {
+  const idx = lines.findIndex((line) => /\bCNPJ\b/i.test(line));
+  if (idx > 0) {
+    for (let i = idx - 1; i >= Math.max(0, idx - 4); i -= 1) {
+      if (/rua|avenida|rodovia|cep|bairro/i.test(lines[i])) continue;
+      const candidate = serverLooksLikePerson(lines[i]);
+      if (candidate) return candidate;
+    }
+  }
+  return null;
+}
+
+function serverFindCnpj(text: string) {
+  const m = text.match(/\bCNPJ\s*[:\-]?\s*(\d{2}\D?\d{3}\D?\d{3}\D?\d{4}\D?\d{2})/i);
+  return m?.[1]?.replace(/\D/g, "") || null;
+}
+
+function serverFindReceiptNumber(text: string) {
+  const m = text.match(/\b(?:N[uú]mero|Cupom|Documento)\s*[:\-]?\s*([0-9][0-9.\-]{2,})/i);
+  return m?.[1]?.trim() || null;
+}
+
+function serverFindOdometer(text: string) {
+  const m = text.match(/\bOD[ÔO]METRO\s*[:\-]?\s*([0-9.]{2,})/i);
+  if (!m) return null;
+  const n = Number(m[1].replace(/\./g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+function serverFindLabeledMoney(lines: string[], labels: string[]) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const normalized = normalizeServerOcr(lines[i]);
+    if (!labels.some((label) => normalized.includes(normalizeServerOcr(label)))) continue;
+    const tokens = serverNumberTokens([lines[i], lines[i + 1] || ""].join(" "));
+    if (tokens.length) return tokens[tokens.length - 1].value;
+  }
+  return null;
+}
+
+function serverFindFinalTotal(lines: string[]) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const normalized = normalizeServerOcr(lines[i]);
+    if (!normalized.includes("valor total") && !normalized.includes("total a pagar")) continue;
+    if (normalized.includes("produtos") || normalized.includes("desconto")) continue;
+    const tokens = serverNumberTokens([lines[i], lines[i + 1] || ""].join(" "));
+    if (tokens.length) return tokens[tokens.length - 1].value;
+  }
+  return null;
+}
+
 
 export function fuelingPhotoErrorResponse(error: unknown) {
   if (error instanceof FuelingPhotoError) {
