@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
 
 export type FuelingPhotoReading = {
@@ -409,13 +410,26 @@ let serverOcrWorkerPromise: Promise<any> | null = null;
 async function getServerOcrWorker() {
   if (!serverOcrWorkerPromise) {
     serverOcrWorkerPromise = (async () => {
-      const module: any = await import("tesseract.js");
+      // Tesseract.js é CommonJS no runtime Node. Carregá-lo via import()
+      // dentro do bundle ESM da Vercel altera o formato do módulo e pode
+      // eliminar createWorker / __dirname. createRequire preserva o runtime
+      // nativo do pacote dentro da função serverless.
+      const require = createRequire(import.meta.url);
+      const tesseract: any = require("tesseract.js");
+      const createWorker =
+        tesseract?.createWorker ||
+        tesseract?.default?.createWorker;
+      if (typeof createWorker !== "function") {
+        throw new Error("Tesseract createWorker indisponível no runtime Node.");
+      }
+
       const host = String(
         process.env.VERCEL_PROJECT_PRODUCTION_URL ||
         process.env.VERCEL_URL ||
         "transsalomao.vercel.app"
       ).replace(/^https?:\/\//i, "").replace(/\/$/, "");
-      const worker = await module.createWorker("por", 1, {
+
+      const worker = await createWorker("por", 1, {
         langPath: "https://" + host + "/ocr/lang",
         gzip: true,
         logger: () => {},
