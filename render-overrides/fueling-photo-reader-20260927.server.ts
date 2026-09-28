@@ -480,7 +480,7 @@ export async function readFuelingPhoto(sql: any, input: {
     "18. Em DANFE, procure PLACA para identificar o veículo. Se DESTINATÁRIO/CLIENTE mostrar uma pessoa que coincide com motorista cadastrado, use esse nome em driver_name; não use o emitente/posto.",
     "19. UMA MESMA COMPRA pode aparecer em várias fotos: visor da bomba, comprovante Cielo/Getnet, DANFE/cupom e ordem de abastecimento. Trate esses documentos como evidências do mesmo abastecimento quando os números visíveis forem compatíveis; não invente uma segunda compra só porque o tipo de documento mudou.",
     "20. Se a MESMA FOTO mostrar visor da bomba e comprovante POS, combine as fontes: use litros/preço/total do visor e use data, hora, posto e forma de pagamento do comprovante. O valor pago no POS deve ser comparado ao total do visor.",
-    "21. Em visores Wayne/Shell semelhantes aos exemplos confirmados, o campo grande superior sob R$ é o TOTAL A PAGAR, o campo grande do meio é LITROS e o visor pequeno inferior em R$ é o PREÇO POR LITRO. Exemplos de layout já confirmados: 3420,41 / 519,03 / 6,590 e 1000,00 / 151,745 / 6,590. Use os exemplos somente para entender o layout; nunca copie esses números para outra foto.",
+    "21. REGRA FIXA para o visor de bomba usado pela Trans Salomão: quando houver três mostradores empilhados, o mostrador de CIMA é o VALOR TOTAL abastecido em R$, o mostrador do MEIO é a LITRAGEM de diesel e o mostrador de BAIXO é o PREÇO POR LITRO em R$/L. Leia primeiro pela posição e depois valide matematicamente total ≈ litros × preço/L. Exemplos confirmados de layout: 3420,41 / 519,03 / 6,590 e 1000,00 / 156,495 / 6,390. Use os exemplos somente para entender o layout; nunca copie esses números para outra foto.",
     "22. Em ordens COOSSUTRAN, leia DIESEL como litros, o R$ da mesma linha como preço por litro, o TOTAL de litros no centro, o TOTAL R$ no canto inferior direito, Veículo Placa no canto inferior esquerdo e DIA/MÊS/ANO na base. Exemplos confirmados incluem QWS-3E13 com 465,000 L a 6,30 = 2929,50 e 44,120 L a 2,80 = 123,54; use apenas como padrão de layout.",
     "23. Em documentos do Posto Rosalem/Fred Rosalem Heliodoro, a linha do combustível e os totais podem ter desconto. Valor Total dos Produtos é o bruto; Valor Descontos R$ é o desconto; Valor Total R$ é o valor efetivamente pago. Um comprovante Getnet/Cielo sobreposto pode confirmar data/hora e valor final, mas não substitui a leitura dos litros.",
     "24. Se houver duas fotos muito parecidas do mesmo DANFE/cupom, receipt_number, data, litros, preço/L, placa e valores iguais são sinais fortes de duplicidade/vinculação; preserve os dados e deixe a API de gravação vincular ao mesmo abastecimento.",
@@ -829,6 +829,7 @@ function serverFindPumpDisplayNumbers(lines: string[]) {
   const normalized = normalizeServerOcr(joined);
   const tokens = serverNumberTokens(joined);
   const detected = /total a pagar|preco por litro|litros|r\$/.test(normalized);
+  const receiptLike = /cnpj|danfe|nota fiscal|nf-?e|cupom|comprovante|nsu|autorizacao/.test(normalized);
 
   const afterLabel = (label: RegExp) => {
     for (let i = 0; i < lines.length; i += 1) {
@@ -844,8 +845,32 @@ function serverFindPumpDisplayNumbers(lines: string[]) {
   let liters = afterLabel(/^litros$|\blitros\b|\bqtd\b|quantidade/);
   let price = afterLabel(/preco por litro|preco\/l|r\$\/l|vl\.?unit/);
 
-  // Reconhece os layouts de visor confirmados nos exemplos:
-  // total / litros / preço por litro (ex.: 3420,41 / 519,03 / 6,590).
+  // Regra visual confirmada pela Trans Salomão para fotos de bomba:
+  // 1º número de cima = total em R$; 2º = litros; 3º de baixo = preço/L.
+  // Também recupera vírgulas/pontos perdidos pelo OCR, por exemplo
+  // 100000 / 156495 / 6390 => 1000,00 / 156,495 / 6,390.
+  const orderedRaw = [...joined.matchAll(/\b(\d{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
+  if (!receiptLike && orderedRaw.length >= 3) {
+    for (let i = 0; i <= orderedRaw.length - 3; i += 1) {
+      const top = ocrRoleNumber(orderedRaw[i], "money");
+      const middle = ocrRoleNumber(orderedRaw[i + 1], "liters");
+      const bottom = ocrRoleNumber(orderedRaw[i + 2], "price");
+      if (!top || !middle || !bottom) continue;
+
+      const expected = Number(middle) * Number(bottom);
+      const diff = Math.abs(expected - Number(top));
+      const tolerance = Math.max(0.20, expected * 0.004);
+      if (diff <= tolerance) {
+        total = total || top;
+        liters = liters || middle;
+        price = price || bottom;
+        break;
+      }
+    }
+  }
+
+  // Segunda validação independente da posição: procura qualquer combinação
+  // matematicamente consistente entre os números reconhecidos.
   if (tokens.length >= 3) {
     for (const p of tokens.filter((x) => x.number >= 2 && x.number <= 20)) {
       for (const l of tokens.filter((x) => x.number >= 20 && x.number <= 3000)) {
