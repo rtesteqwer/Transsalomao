@@ -30,6 +30,24 @@ copy("render-overrides/0018_fueling_photo_reader.sql", "migrations/0018_fueling_
   fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
 }
 
+// Nitro v3 bundles dependencies by default. tesseract.js relies on CommonJS
+// runtime globals such as __dirname and worker files, so it must be traced as
+// an external dependency instead of being transformed into an ESM _libs chunk.
+{
+  const vitePath = dst("vite.config.ts");
+  if (!fs.existsSync(vitePath)) throw new Error("fueling-photo-reader: vite.config.ts missing");
+  let vite = fs.readFileSync(vitePath, "utf8");
+  const nitroMarker = 'nitro({\n            preset: "vercel",';
+  if (!vite.includes('traceDeps: ["tesseract.js*", "tesseract.js-core*"]')) {
+    if (!vite.includes(nitroMarker)) throw new Error("fueling-photo-reader: nitro config marker missing");
+    vite = vite.replace(
+      nitroMarker,
+      'nitro({\n            preset: "vercel",\n            traceDeps: ["tesseract.js*", "tesseract.js-core*"],'
+    );
+    fs.writeFileSync(vitePath, vite);
+  }
+}
+
 
 const rel = "src/routes/dono/abastecimentos.tsx";
 const file = dst(rel);
