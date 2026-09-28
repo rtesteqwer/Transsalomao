@@ -1,1 +1,1 @@
-deploy tesseract node runtime fix 2026-09-28
+deploy statically bundled tesseract runtime fix 2026-09-28
