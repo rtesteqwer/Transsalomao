@@ -241,7 +241,7 @@ function repairOcrNumericRoles(reading: FuelingPhotoReading) {
   if (l && Number.isInteger(l) && l > 3000 && l <= 3_000_000) {
     const scaled = l / 1000;
     if (scaled >= 20 && scaled <= 3000) {
-      liters = preciseDecimal(scaled, 3);
+      liters = scaled.toFixed(3);
       litersWasScaled = true;
       alert = "OCR perdeu a vírgula dos litros; casas decimais foram restauradas.";
     }
@@ -254,7 +254,7 @@ function repairOcrNumericRoles(reading: FuelingPhotoReading) {
     for (const divisor of divisors) {
       const scaled = p / divisor;
       if (scaled >= 2 && scaled <= 20) {
-        price = preciseDecimal(scaled, divisor === 1000 ? 3 : 2);
+        price = scaled.toFixed(divisor === 1000 ? 3 : 2);
         alert = alert || "OCR perdeu a vírgula do preço por litro; casas decimais foram restauradas.";
         break;
       }
@@ -265,7 +265,7 @@ function repairOcrNumericRoles(reading: FuelingPhotoReading) {
   if (t && Number.isInteger(t) && t > 100_000 && t <= 10_000_000) {
     const scaled = t / 100;
     if (scaled >= 1 && scaled <= 100_000) {
-      total = preciseDecimal(scaled, 2);
+      total = scaled.toFixed(2);
       alert = alert || "OCR perdeu a vírgula do valor total; centavos foram restaurados.";
     }
   }
@@ -285,7 +285,7 @@ function ocrRoleNumber(rawValue: string, role: "liters" | "price" | "money") {
     if (n >= 20 && n <= 3000) return String(n);
     if (cleaned.length >= 4 && cleaned.length <= 7) {
       const scaled = n / 1000;
-      if (scaled >= 20 && scaled <= 3000) return preciseDecimal(scaled, 3);
+      if (scaled >= 20 && scaled <= 3000) return scaled.toFixed(3);
     }
   }
 
@@ -294,7 +294,7 @@ function ocrRoleNumber(rawValue: string, role: "liters" | "price" | "money") {
     const divisors = cleaned.length >= 4 ? [1000, 100] : [100, 1000];
     for (const divisor of divisors) {
       const scaled = n / divisor;
-      if (scaled >= 2 && scaled <= 20) return preciseDecimal(scaled, divisor === 1000 ? 3 : 2);
+      if (scaled >= 2 && scaled <= 20) return scaled.toFixed(divisor === 1000 ? 3 : 2);
     }
   }
 
@@ -302,7 +302,7 @@ function ocrRoleNumber(rawValue: string, role: "liters" | "price" | "money") {
     if (n >= 1 && n <= 100_000 && cleaned.length <= 4) return String(n);
     if (cleaned.length >= 3 && cleaned.length <= 8) {
       const scaled = n / 100;
-      if (scaled >= 1 && scaled <= 100_000) return preciseDecimal(scaled, 2);
+      if (scaled >= 1 && scaled <= 100_000) return scaled.toFixed(2);
     }
   }
   return null;
