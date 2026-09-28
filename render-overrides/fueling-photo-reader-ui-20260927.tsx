@@ -767,16 +767,27 @@ function fixedRole(value: number, decimals: number) {
 function localRoleNumber(rawValue: string, role: "liters" | "price" | "money") {
   const cleaned = String(rawValue || "").replace(/[^0-9.,]/g, "");
   if (!cleaned) return null;
-  if (/[.,]/.test(cleaned)) return decimalToken(cleaned);
+
+  if (/[.,]/.test(cleaned)) {
+    const direct = decimalToken(cleaned);
+    if (!direct) return null;
+    const n = Number(direct);
+    if (role === "liters") {
+      if (n < 1 || n > 2500 || (Number.isInteger(n) && n >= 1900 && n <= 2100)) return null;
+      return direct;
+    }
+    if (role === "price") return n >= 2 && n <= 20 ? direct : null;
+    return n >= 1 && n <= 100_000 ? direct : null;
+  }
 
   const n = Number(cleaned);
   if (!Number.isFinite(n) || n <= 0) return null;
 
   if (role === "liters") {
-    if (n >= 20 && n <= 3000) return String(n);
+    if (n >= 1 && n <= 2500 && !(Number.isInteger(n) && n >= 1900 && n <= 2100)) return String(n);
     if (cleaned.length >= 4 && cleaned.length <= 7) {
       const scaled = n / 1000;
-      if (scaled >= 20 && scaled <= 3000) return fixedRole(scaled, 3);
+      if (scaled >= 1 && scaled <= 2500) return fixedRole(scaled, 3);
     }
   }
 
@@ -854,23 +865,36 @@ function findCoossutranLocal(text: string) {
   return { detected: true, liters, price, total };
 }
 
+function protectedFuelingNumericLineLocal(line: string) {
+  const normalized = normalizeLocal(line);
+  return /\b(?:cnpj|cpf|chave|protocolo|serie|nfc|nf-e|nsu|autorizacao|telefone|fone|cep|consumidor)\b/.test(normalized)
+    || /\b\d{1,2}[\/.\-]\d{1,2}[\/.\-](?:20)?\d{2}\b/.test(line)
+    || /\b(?:[01]?\d|2[0-3]):[0-5]\d\b/.test(line);
+}
+
+function fuelContextLinesLocal(text: string) {
+  const lines = text.replace(/\r/g, "\n").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const index = lines.findIndex((line) => /oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/i.test(normalizeLocal(line)));
+  if (index < 0) return [];
+  return lines
+    .slice(Math.max(0, index - 1), Math.min(lines.length, index + 5))
+    .filter((line) => !protectedFuelingNumericLineLocal(line));
+}
+
 function findFuelPairFromMathLocal(text: string, grossTarget: number | null) {
   if (!grossTarget || !Number.isFinite(grossTarget) || grossTarget <= 0) return null;
-  const normalized = normalizeLocal(text);
-  const dieselAt = normalized.search(/oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/);
-  const source = dieselAt >= 0
-    ? text.slice(Math.max(0, dieselAt - 260), Math.min(text.length, dieselAt + 700))
-    : text;
+  const sourceLines = fuelContextLinesLocal(text);
+  if (!sourceLines.length) return null;
 
-  const rawTokens = [...source.matchAll(/\b([0-9]{2,7}(?:[.,][0-9]{1,3})?)\b/g)].map((m) => m[1]);
+  const rawTokens = [...sourceLines.join(" ").matchAll(/\b([0-9]{1,7}(?:[.,][0-9]{1,3})?)\b/g)].map((m) => m[1]);
   const litersCandidates = new Set<string>();
   const priceCandidates = new Set<string>();
 
   for (const token of rawTokens) {
     const l = localRoleNumber(token, "liters");
     const p = localRoleNumber(token, "price");
-    if (l && Number(l) >= 20 && Number(l) <= 3000) litersCandidates.add(l);
-    if (p && Number(p) >= 2 && Number(p) <= 20) priceCandidates.add(p);
+    if (l) litersCandidates.add(l);
+    if (p) priceCandidates.add(p);
   }
 
   let best: { liters: string; price: string; error: number } | null = null;
@@ -878,7 +902,7 @@ function findFuelPairFromMathLocal(text: string, grossTarget: number | null) {
     for (const price of priceCandidates) {
       const expected = Number(liters) * Number(price);
       const error = Math.abs(expected - grossTarget);
-      const tolerance = Math.max(0.15, grossTarget * 0.0035);
+      const tolerance = Math.max(0.15, grossTarget * 0.001);
       if (error <= tolerance && (!best || error < best.error)) best = { liters, price, error };
     }
   }
@@ -1015,20 +1039,36 @@ function findDriverName(lines: string[]) {
   return null;
 }
 
+function cleanLocalStationName(value: string | null) {
+  if (!value) return null;
+  let out = value
+    .replace(/^\s*(?:fisc?l?|emitente|estabelecimento)\s*[:\-]\s*/i, "")
+    .replace(/\bCNPJ\b[\s\S]*$/i, "")
+    .replace(/\b\d{2}[.\s]?\d{3}[.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2}\b[\s\S]*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^coossutran\b/i.test(out)) return "COOSSUTRAN";
+  return out ? out.slice(0, 220) : null;
+}
+
 function findStationName(lines: string[]) {
   const business = lines.find((line) =>
-    /\b(?:AUTO\s+POSTO|POSTO\s+DE\s+COMBUST|POSTO\s+[A-ZÀ-Ý]|COMBUSTIVEIS|COMBUSTÍVEIS|COOSSUTRAN|LTDA\.?|EIRELI)\b/i.test(line)
-    && !/valor|produto|cliente|destinat|endereco|endereço/i.test(line)
+    /\b(?:AUTO\s+POSTO|POSTO\s+DE\s+COMBUST|POSTO\s+[A-ZÀ-Ý]|COMBUSTIVEIS|COMBUSTÍVEIS|COOSSUTRAN|LTDA\.?|EIRELI|COOPERATIVA)\b/i.test(line)
+    && !/valor|produto|cliente|destinat|endereco|endereço|chave|protocolo/i.test(line)
   );
-  if (business) return business.replace(/\s+/g, " ").trim().slice(0, 220);
+  if (business) {
+    const cleaned = cleanLocalStationName(business);
+    if (cleaned) return cleaned;
+  }
 
   const cnpjIndex = lines.findIndex((line) => /\bCNPJ\b/i.test(line));
   if (cnpjIndex > 0) {
     for (let i = cnpjIndex - 1; i >= Math.max(0, cnpjIndex - 7); i -= 1) {
       const line = lines[i];
-      if (/rua|avenida|rodovia|cep|bairro|\b[A-ZÀ-Ý ]+\s*-\s*[A-Z]{2}\b/i.test(line)) continue;
+      if (/rua|avenida|rodovia|cep|bairro|valor|produto|nota|cupom|\b[A-ZÀ-Ý ]+\s*-\s*[A-Z]{2}\b/i.test(line)) continue;
       const candidate = looksLikePersonName(line);
-      if (candidate) return candidate;
+      const cleaned = cleanLocalStationName(candidate);
+      if (cleaned) return cleaned;
     }
   }
   return null;
@@ -1069,45 +1109,37 @@ function findPumpDisplayNumbers(lines: string[]) {
   const joined = lines.join("\n");
   const normalized = normalizeLocal(joined);
   const detected = /total a pagar|preco por litro|litros|r\$/.test(normalized);
-  const receiptLike = /cnpj|danfe|nota fiscal|nf-?e|cupom|comprovante|nsu|autorizacao/.test(normalized);
+  const receiptLike = /cnpj|danfe|nota fiscal|nf-?e|cupom|comprovante|nsu|autorizacao|chave de acesso/.test(normalized);
 
-  const allTokens = [...joined.matchAll(/\b(\d{1,6}[.,]\d{2,3})\b/g)]
-    .map((m) => ({ raw: m[1], value: decimalToken(m[1]) }))
-    .filter((v): v is { raw: string; value: string } => !!v.value)
-    .map((v) => ({ ...v, number: Number(v.value) }));
-
-  const afterLabel = (label: RegExp) => {
+  const afterLabel = (label: RegExp, role: "liters" | "price" | "money") => {
     if (!detected) return null;
     for (let i = 0; i < lines.length; i += 1) {
       if (!label.test(normalizeLocal(lines[i]))) continue;
-      const neighborhood = [lines[i - 1] || "", lines[i], lines[i + 1] || ""].join(" ");
-      const values = [...neighborhood.matchAll(/\b(\d{1,6}[.,]\d{2,3})\b/g)]
-        .map((m) => decimalToken(m[1]))
-        .filter((v): v is string => !!v);
-      if (values.length) return values[0];
+      const neighborhood = [lines[i], lines[i + 1] || ""].join(" ");
+      const raw = [...neighborhood.matchAll(/\b(\d{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
+      for (const token of raw) {
+        const value = localRoleNumber(token, role);
+        if (value) return value;
+      }
     }
     return null;
   };
 
-  let total = afterLabel(/total a pagar|valor total|total r\$/);
-  let liters = afterLabel(/^litros$|\blitros\b|quantidade|\bqtd\b/);
-  let price = afterLabel(/preco por litro|preco\/l|r\$\/l|vl\.?unit/);
+  let total = afterLabel(/total a pagar|valor total|total r\$/, "money");
+  let liters = afterLabel(/^litros$|\blitros\b|quantidade|\bqtd\b/, "liters");
+  let price = afterLabel(/preco por litro|preco\/l|r\$\/l|vl\.?unit/, "price");
 
-  // Regra visual fixa confirmada para a bomba usada pela Trans Salomão:
-  // topo = valor total; meio = litros; parte inferior = preço por litro.
-  // Se o OCR perder os separadores, recuperamos pelo papel de cada posição.
+  if (receiptLike) return { detected, total, liters, price, standalone: null };
+
   const orderedRaw = [...joined.matchAll(/\b(\d{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
-  if (!receiptLike && orderedRaw.length >= 3) {
+  if (orderedRaw.length >= 3) {
     for (let i = 0; i <= orderedRaw.length - 3; i += 1) {
       const top = localRoleNumber(orderedRaw[i], "money");
       const middle = localRoleNumber(orderedRaw[i + 1], "liters");
       const bottom = localRoleNumber(orderedRaw[i + 2], "price");
       if (!top || !middle || !bottom) continue;
-
       const expected = Number(middle) * Number(bottom);
-      const diff = Math.abs(expected - Number(top));
-      const tolerance = Math.max(0.20, expected * 0.004);
-      if (diff <= tolerance) {
+      if (Math.abs(expected - Number(top)) <= Math.max(0.20, expected * 0.004)) {
         total = total || top;
         liters = liters || middle;
         price = price || bottom;
@@ -1116,28 +1148,31 @@ function findPumpDisplayNumbers(lines: string[]) {
     }
   }
 
-  // Depois da posição, uma segunda conferência encontra qualquer trio
-  // total/litros/preço que feche matematicamente.
-  if (allTokens.length >= 3) {
-    for (const p of allTokens.filter((x) => x.number >= 2 && x.number <= 20)) {
-      for (const l of allTokens.filter((x) => x.number >= 20 && x.number <= 3000)) {
-        for (const t of allTokens.filter((x) => x.number >= 100)) {
-          const expected = p.number * l.number;
-          if (Math.abs(expected - t.number) <= Math.max(0.25, expected * 0.004)) {
-            price = price || p.value;
-            liters = liters || l.value;
-            total = total || t.value;
+  const candidates = orderedRaw.map((raw) => ({
+    liters: localRoleNumber(raw, "liters"),
+    price: localRoleNumber(raw, "price"),
+    total: localRoleNumber(raw, "money"),
+  }));
+
+  if (!liters || !price || !total) {
+    outer:
+    for (const l of candidates.map((x) => x.liters).filter((v): v is string => !!v)) {
+      for (const p of candidates.map((x) => x.price).filter((v): v is string => !!v)) {
+        for (const t of candidates.map((x) => x.total).filter((v): v is string => !!v)) {
+          const expected = Number(l) * Number(p);
+          if (Math.abs(expected - Number(t)) <= Math.max(0.20, expected * 0.004)) {
+            liters = liters || l;
+            price = price || p;
+            total = total || t;
+            break outer;
           }
         }
       }
     }
   }
 
-  if (!price) price = allTokens.find((x) => x.number >= 2 && x.number <= 20)?.value ?? null;
-  if (!liters) liters = allTokens.find((x) => x.number >= 20 && x.number < 1000)?.value ?? null;
-  if (!total) total = allTokens.find((x) => x.number >= 1000)?.value ?? null;
-
-  const standalone = !detected && allTokens.length === 1 ? allTokens[0].value : null;
+  const standaloneTokens = orderedRaw.map((raw) => decimalToken(raw)).filter((v): v is string => !!v);
+  const standalone = !detected && standaloneTokens.length === 1 ? standaloneTokens[0] : null;
   return { detected, total, liters, price, standalone };
 }
 
@@ -1157,45 +1192,56 @@ function findFinalTotal(lines: string[]) {
 }
 
 function findFuelProductNumbers(text: string) {
-  const normalized = normalizeLocal(text);
-  const dieselIndex = normalized.search(/oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/);
-  const source = dieselIndex >= 0
-    ? text.slice(Math.max(0, dieselIndex - 220), Math.min(text.length, dieselIndex + 520))
-    : text;
+  const lines = fuelContextLinesLocal(text);
+  if (!lines.length) return { liters: null, price: null, gross: null };
 
-  const rawTokens = [...source.matchAll(/\b([0-9]{1,8}(?:[.,][0-9]{1,3})?)\b/g)].map((m) => m[1]);
-  const candidates = rawTokens.map((raw) => ({
-    raw,
-    liters: localRoleNumber(raw, "liters"),
-    price: localRoleNumber(raw, "price"),
-    money: localRoleNumber(raw, "money"),
-  }));
+  let labeledLiters: string | null = null;
+  let labeledPrice: string | null = null;
+  let labeledGross: string | null = null;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const normalized = normalizeLocal(lines[i]);
+    const neighborhood = [lines[i], lines[i + 1] || ""].join(" ");
+    const raw = [...neighborhood.matchAll(/\b([0-9]{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
+
+    if (!labeledLiters && /\b(?:qtd|quantidade|litros|lts?)\b/.test(normalized)) {
+      labeledLiters = (raw.map((x) => localRoleNumber(x, "liters")).find(Boolean) as string | undefined) || null;
+    }
+    if (!labeledPrice && /preco|preço|vl\.?\s*unit|r\$\s*\/\s*l/.test(normalized)) {
+      labeledPrice = (raw.map((x) => localRoleNumber(x, "price")).find(Boolean) as string | undefined) || null;
+    }
+    if (!labeledGross && /vl\.?\s*total|valor\s+produto|total\s+produto/.test(normalized)) {
+      labeledGross = (raw.map((x) => localRoleNumber(x, "money")).filter(Boolean).pop() as string | undefined) || null;
+    }
+  }
+
+  const rawTokens = [...lines.join(" ").matchAll(/\b([0-9]{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
+  const litersCandidates = Array.from(new Set(rawTokens.map((raw) => localRoleNumber(raw, "liters")).filter((v): v is string => !!v)));
+  const priceCandidates = Array.from(new Set(rawTokens.map((raw) => localRoleNumber(raw, "price")).filter((v): v is string => !!v)));
+  const moneyCandidates = Array.from(new Set(rawTokens.map((raw) => localRoleNumber(raw, "money")).filter((v): v is string => !!v)));
 
   let best: { liters: string; price: string; gross: string; error: number } | null = null;
-  for (const l of candidates.map((x) => x.liters).filter((v): v is string => !!v)) {
-    for (const p of candidates.map((x) => x.price).filter((v): v is string => !!v)) {
+  for (const l of litersCandidates) {
+    for (const p of priceCandidates) {
       const expected = Number(l) * Number(p);
-      for (const g of candidates.map((x) => x.money).filter((v): v is string => !!v)) {
+      for (const g of moneyCandidates) {
         const error = Math.abs(expected - Number(g));
-        const tolerance = Math.max(0.12, expected * 0.0005);
-        if (error <= tolerance && (!best || error < best.error)) best = { liters: l, price: p, gross: g, error };
+        if (error <= Math.max(0.12, expected * 0.001) && (!best || error < best.error)) {
+          best = { liters: l, price: p, gross: g, error };
+        }
       }
     }
   }
-  if (best) return { liters: best.liters, price: best.price, gross: best.gross };
 
-  const liters = candidates.map((x) => x.liters).find((v) => v && Number(v) >= 20 && Number(v) <= 3000) ?? null;
-  const price = candidates.map((x) => x.price).find((v) => v && Number(v) >= 2 && Number(v) <= 20) ?? null;
-  let gross: string | null = null;
-
-  if (liters && price) {
-    const expected = Number(liters) * Number(price);
-    const money = candidates.map((x) => x.money).filter((v): v is string => !!v)
-      .sort((a, b) => Math.abs(Number(a) - expected) - Math.abs(Number(b) - expected))[0] ?? null;
-    if (money && Math.abs(Number(money) - expected) <= Math.max(0.12, expected * 0.0005)) gross = money;
+  if (best) {
+    return {
+      liters: labeledLiters || best.liters,
+      price: labeledPrice || best.price,
+      gross: labeledGross || best.gross,
+    };
   }
 
-  return { liters, price, gross };
+  return { liters: labeledLiters, price: labeledPrice, gross: labeledGross };
 }
 
 
