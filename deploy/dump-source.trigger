@@ -1,10 +1,1 @@
-dump
-
-dump-salomao-vision
-prefill-caixa-ticket-data-20260925
-validate-caixa-prefill-20260925
-validate-excel-date-mode-20260925
-validate-reports-excel-fix-20260925
-validate-fixed-photo-batch-20260925
-validate-excel-group-black-20260925
-inspect-driver-fueling-20260927
+dump source for vite OCR externalization 2026-09-28
