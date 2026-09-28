@@ -13,6 +13,7 @@ const copy = (from, to) => {
   fs.writeFileSync(dst(to), fs.readFileSync(src(from), "utf8"));
 };
 
+copy("render-overrides/fueling-receipt-rules-20260928.ts", "src/lib/fueling-receipt-rules.ts");
 copy("render-overrides/fueling-photo-reader-20260927.server.ts", "src/lib/fueling-photo-reader.server.ts");
 copy("render-overrides/fueling-photo-read-api-20260927.ts", "src/routes/api/ler-abastecimento.ts");
 copy("render-overrides/fueling-photo-save-api-20260927.ts", "src/routes/api/salvar-abastecimento-foto.ts");

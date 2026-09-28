@@ -1,3 +1,4 @@
+import { FUELING_MONEY_TOLERANCE } from "@/lib/fueling-receipt-rules";
 import { createHash, randomUUID } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
@@ -25,13 +26,14 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           if (body?.confirmed !== true) throw new FuelingPhotoError(400, "Confira os dados antes de gravar.");
 
           const image = validateFuelingImage(body?.imagem);
-          const reading = normalizeFuelingReading(body?.reading);
+          const reading = normalizeFuelingReading(body?.reading, { repairOcr: false });
           const liters = normalizeDecimalText(reading.liters);
           const price = normalizeDecimalText(reading.price_per_liter);
           const total = normalizeDecimalText(reading.total_amount);
           const discount = normalizeDecimalText(reading.discount_amount);
           if (!liters) throw new FuelingPhotoError(400, "Informe a quantidade exata de litros.");
           if (!price) throw new FuelingPhotoError(400, "Informe o preço exato por litro.");
+          if (!total) throw new FuelingPhotoError(400, "Confira e informe o total do abastecimento antes de gravar.");
           if (reading.consistency === "conflict") {
             throw new FuelingPhotoError(409, "Os valores da foto estão em conflito. Corrija litros, preço/L ou total antes de gravar.");
           }
@@ -40,7 +42,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             const gross = Number(liters) * Number(price);
             const expected = gross - Number(discount || 0);
             const diff = Math.abs(expected - Number(total));
-            const tolerance = Math.max(0.05, gross * 0.0015);
+            const tolerance = FUELING_MONEY_TOLERANCE;
             if (diff > tolerance) {
               throw new FuelingPhotoError(
                 409,

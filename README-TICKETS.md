@@ -33,3 +33,23 @@ TRANS_TEST_APP=/caminho/absoluto/app node --test tests/tickets.test.mjs
 ```
 
 Os testes usam PostgreSQL embarcado (PGlite), incluindo gravação do lançamento pendente, concorrência, duplicidade, rollback, autenticação, validação de peso/imagem, limite de leitura e os dois provedores com respostas simuladas. Eles não gravam dados de teste no Neon de produção.
+
+
+## Abastecimentos: padrão NFC-e/Linx (2026-09-28)
+
+As regras persistentes ficam em `render-overrides/fueling-receipt-rules-20260928.ts`,
+compartilhadas pelo servidor e pela leitura local. Nos itens, `Qtde` é litros,
+`UN L` identifica a unidade, `Vl Unit` é preço/L e `Total` pertence à linha do diesel.
+`Qtde. total de itens`, códigos fiscais, tributos e pagamentos não são litros.
+Notas com vários produtos ou mais de uma linha de diesel exigem conferência.
+
+Decimais JSON são preservados em todas as etapas: `156,495` vira `156.495`,
+sem virar 156495 na segunda normalização. Totais brasileiros como `1.000,00`
+são lidos por inteiro. A gravação exige litros, preço/L e total, não recupera
+separadores silenciosamente e recusa divergência superior a dois centavos.
+Se o OCR confundir zeros e não confirmar o total, o campo fica vazio e o
+lançamento fica pendente de correção. Fotos de outras compras não resolvem
+automaticamente um cupom fiscal em conflito.
+
+Teste: `TRANS_TEST_APP=/caminho/do/app-reconstruido node --test tests/fueling-reader.test.mjs`.
+Os exemplos são casos de regressão; seus valores nunca são copiados para outra foto.

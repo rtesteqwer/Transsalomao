@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
+import { applyFuelReceiptLine, readFuelReceiptLine, normalizeFuelDecimal, FUEL_RECEIPT_INSTRUCTIONS, FUELING_MONEY_TOLERANCE } from "@/lib/fueling-receipt-rules";
 import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
 
 export type FuelingPhotoReading = {
@@ -118,30 +119,10 @@ export function normalizeName(value: unknown) {
 }
 
 export function normalizeDecimalText(value: unknown) {
-  if (value == null || value === "") return null;
-  let raw = String(value).trim().replace(/\s+/g, "").replace(/^R\$/i, "").replace(/[Ll]$/i, "");
-  raw = raw.replace(/[^\d.,-]/g, "");
-  if (!raw || raw.startsWith("-")) return null;
-
-  if (/^\d{1,3}(?:\.\d{3})+,\d+$/.test(raw)) {
-    raw = raw.replace(/\./g, "").replace(",", ".");
-  } else if (/^\d{1,3}(?:,\d{3})+\.\d+$/.test(raw)) {
-    raw = raw.replace(/,/g, "");
-  } else if (/^\d+,\d+$/.test(raw)) {
-    raw = raw.replace(",", ".");
-  } else if (/^\d{1,3}(?:\.\d{3})+$/.test(raw)) {
-    raw = raw.replace(/\./g, "");
-  } else if (/^\d{1,3}(?:,\d{3})+$/.test(raw)) {
-    raw = raw.replace(/,/g, "");
-  }
-
-  if (!/^\d+(?:\.\d+)?$/.test(raw)) return null;
-  const number = Number(raw);
-  if (!Number.isFinite(number) || number <= 0 || number > 100_000_000) return null;
-  return raw;
+  return normalizeFuelDecimal(value);
 }
 
-export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
+export function normalizeFuelingReading(value: unknown, options: { repairOcr?: boolean } = {}): FuelingPhotoReading {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const documentType = ["pump_display", "fuel_receipt", "pos_receipt", "invoice", "unknown"].includes(String(source.document_type))
     ? String(source.document_type) as FuelingPhotoReading["document_type"]
@@ -179,7 +160,9 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
 
   sanitizeFuelingFieldRoles(reading);
 
-  const repaired = repairOcrNumericRoles(reading);
+  const repaired = options.repairOcr === false
+    ? { liters: reading.liters, price: reading.price_per_liter, total: reading.total_amount, litersWasScaled: false, alert: null }
+    : repairOcrNumericRoles(reading);
   reading.liters = repaired.liters;
   reading.price_per_liter = repaired.price;
   reading.total_amount = repaired.total;
@@ -193,10 +176,10 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
   if (l && p && t) {
     let gross = l * p;
     let expectedNet = gross - d;
-    let tolerance = Math.max(0.12, gross * 0.0005);
+    let tolerance = FUELING_MONEY_TOLERANCE;
 
     if (Math.abs(expectedNet - t) > tolerance) {
-      const scaledTotal = repairTotalByExpectedValue(t, expectedNet, tolerance);
+      const scaledTotal = options.repairOcr === false ? null : repairTotalByExpectedValue(t, expectedNet, tolerance);
       if (scaledTotal) {
         reading.total_amount = scaledTotal;
         t = Number(scaledTotal);
@@ -214,7 +197,7 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
         l = Number(reading.liters);
         gross = l * p;
         expectedNet = gross - d;
-        tolerance = Math.max(0.12, gross * 0.0005);
+        tolerance = FUELING_MONEY_TOLERANCE;
         reading.consistency = "calculated";
         reading.confidence = Math.min(reading.confidence, 0.88);
         reading.calculation_basis = "Litros recuperados por (total + desconto) ÷ preço/L porque o OCR perdeu a vírgula.";
@@ -226,6 +209,7 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
     // um "total" muito distante costuma ser data/hora/código capturado no campo errado.
     if (
       Math.abs(expectedNet - t) > tolerance &&
+      options.repairOcr !== false &&
       reading.document_type === "pump_display" &&
       l >= 5 && l <= 2500 &&
       p >= 2 && p <= 20 &&
@@ -606,6 +590,7 @@ export async function readFuelingPhoto(sql: any, input: {
     "Extraia somente o que estiver visível. Não invente números, datas, placas ou nomes.",
     "",
     "REGRAS CRÍTICAS:",
+    FUEL_RECEIPT_INSTRUCTIONS,
     "1. Diferencie visor da bomba (pump_display), cupom/ticket do posto (fuel_receipt), comprovante POS (pos_receipt) e nota fiscal (invoice).",
     "2. Preserve TODOS os algarismos e casas decimais visíveis. Não arredonde litros, preço por litro nem total.",
     "3. liters é a QUANTIDADE abastecida. price_per_liter é o PREÇO UNITÁRIO por litro. total_amount é o VALOR FINAL efetivamente cobrado/pago em reais. discount_amount é o DESCONTO em reais quando estiver visível.",
@@ -806,8 +791,8 @@ async function readFuelingWithServerOcr(imageDataUrl: string): Promise<FuelingPh
     const secondText = await recognize(18_000);
     await worker.setParameters({ tessedit_pageseg_mode: "3", preserve_interword_spaces: "1" }).catch(() => {});
     if (secondText) {
-      const combined = rawText + "\n" + secondText;
-      const second = normalizeFuelingReading(parseServerFuelingOcr(combined));
+      // Parse each pass independently: concatenating repeats every receipt item.
+      const second = normalizeFuelingReading(parseServerFuelingOcr(secondText));
       const secondCore = [second.liters, second.price_per_liter, second.total_amount].filter(Boolean).length;
       if (secondCore > firstCore || (secondCore === firstCore && second.consistency !== "conflict")) {
         second.alerts = unique([...second.alerts, "Leitura conferida por duas passagens de OCR no servidor."]);
@@ -821,7 +806,7 @@ async function readFuelingWithServerOcr(imageDataUrl: string): Promise<FuelingPh
   return first;
 }
 
-function parseServerFuelingOcr(textValue: string): FuelingPhotoReading {
+export function parseServerFuelingOcr(textValue: string): FuelingPhotoReading {
   const raw = textValue.replace(/\r/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n").trim();
   const normalized = normalizeServerOcr(raw);
   const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
@@ -882,7 +867,7 @@ function parseServerFuelingOcr(textValue: string): FuelingPhotoReading {
     const t = Number(total);
     const d = Number(discount || 0);
     const expected = l * p - d;
-    const tolerance = Math.max(0.12, l * p * 0.0005);
+    const tolerance = FUELING_MONEY_TOLERANCE;
     if (Math.abs(expected - t) <= tolerance) {
       consistency = "confirmed";
       confidence = 0.92;
@@ -918,7 +903,7 @@ function parseServerFuelingOcr(textValue: string): FuelingPhotoReading {
     }
   }
 
-  return {
+  return applyFuelReceiptLine({
     document_type: coossutran.detected ? "fuel_receipt" : /\bdanfe\b|nota fiscal|nf-?e/i.test(raw) ? "invoice" : display.detected || display.standalone ? "pump_display" : "fuel_receipt",
     date,
     time,
@@ -948,7 +933,7 @@ function parseServerFuelingOcr(textValue: string): FuelingPhotoReading {
       normalized.includes("valor total") ? "Valor Total" : "",
       normalized.includes("placa") ? "Placa" : "",
     ].filter(Boolean),
-  };
+  } as FuelingPhotoReading, readFuelReceiptLine(raw));
 }
 
 function normalizeServerOcr(value: string) {
@@ -972,7 +957,7 @@ function serverDecimal(value: number, maxDecimals = 4) {
 }
 
 function serverNumberTokens(text: string) {
-  return [...text.matchAll(/\b(\d{1,6}[.,]\d{2,3})\b/g)]
+  return [...text.matchAll(/(?<![\d.,])(\d{1,3}(?:\.\d{3})+,\d{2,3}|\d+[.,]\d{2,3})(?![\d.,])/g)]
     .map((m) => ({ raw: m[1], value: serverDecimalToken(m[1]) }))
     .filter((x): x is { raw: string; value: string } => !!x.value)
     .map((x) => ({ ...x, number: Number(x.value) }));
@@ -1189,7 +1174,8 @@ function serverFindLabeledMoney(lines: string[], labels: string[]) {
   for (let i = 0; i < lines.length; i += 1) {
     const normalized = normalizeServerOcr(lines[i]);
     if (!labels.some((label) => normalized.includes(normalizeServerOcr(label)))) continue;
-    const tokens = serverNumberTokens([lines[i], lines[i + 1] || ""].join(" "));
+    const sameLine = serverNumberTokens(lines[i]);
+    const tokens = sameLine.length ? sameLine : /^\s*(?:R\$\s*)?[\d., ]+\s*$/.test(lines[i + 1] || "") ? serverNumberTokens(lines[i + 1]) : [];
     if (tokens.length) return tokens[tokens.length - 1].value;
   }
   return null;
@@ -1199,7 +1185,8 @@ function serverFindGrossTotal(lines: string[]) {
   for (let i = 0; i < lines.length; i += 1) {
     const normalized = normalizeServerOcr(lines[i]);
     if (!/valor total (?:dos )?produtos|total produtos|vl\.?\s*total (?:dos )?produtos/.test(normalized)) continue;
-    const tokens = serverNumberTokens([lines[i], lines[i + 1] || ""].join(" "));
+    const sameLine = serverNumberTokens(lines[i]);
+    const tokens = sameLine.length ? sameLine : /^\s*(?:R\$\s*)?[\d., ]+\s*$/.test(lines[i + 1] || "") ? serverNumberTokens(lines[i + 1]) : [];
     if (tokens.length) return tokens[tokens.length - 1].value;
     const bare = [lines[i], lines[i + 1] || ""].join(" ").match(/([0-9]{4,8})\b/);
     if (bare?.[1]) return ocrRoleNumber(bare[1], "money");
@@ -1212,7 +1199,8 @@ function serverFindFinalTotal(lines: string[]) {
     const normalized = normalizeServerOcr(lines[i]);
     if (!normalized.includes("valor total") && !normalized.includes("total a pagar")) continue;
     if (normalized.includes("produtos") || normalized.includes("desconto")) continue;
-    const tokens = serverNumberTokens([lines[i], lines[i + 1] || ""].join(" "));
+    const sameLine = serverNumberTokens(lines[i]);
+    const tokens = sameLine.length ? sameLine : /^\s*(?:R\$\s*)?[\d., ]+\s*$/.test(lines[i + 1] || "") ? serverNumberTokens(lines[i + 1]) : [];
     if (tokens.length) return tokens[tokens.length - 1].value;
   }
   return null;

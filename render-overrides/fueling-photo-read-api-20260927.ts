@@ -1,3 +1,4 @@
+import { FUELING_READER_VERSION } from "@/lib/fueling-receipt-rules";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { managementSession } from "@/lib/management-auth.server";
@@ -14,7 +15,7 @@ export const Route = createFileRoute("/api/ler-abastecimento")({
     handlers: {
       POST: async ({ request }) => {
         if (!managementSession()) {
-          return Response.json({ ok: false, message: "Entre na Gerência novamente." }, { status: 401 });
+          return Response.json({ ok: false, message: "Entre na Gerência novamente." }, { status: 401, headers: { "X-Fueling-Reader-Version": FUELING_READER_VERSION } });
         }
         try {
           const body: any = await request.json();
@@ -58,7 +59,7 @@ export const Route = createFileRoute("/api/ler-abastecimento")({
             reading,
             suggestedDriverId: suggestedDriver?.id ?? null,
             suggestedFleetId: suggestedFleet?.id ?? null,
-          }, { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+          }, { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Fueling-Reader-Version": FUELING_READER_VERSION } });
         } catch (error) {
           return fuelingPhotoErrorResponse(error);
         }

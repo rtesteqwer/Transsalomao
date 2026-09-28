@@ -1,3 +1,4 @@
+import { applyFuelReceiptLine, readFuelReceiptLine, FUELING_MONEY_TOLERANCE } from "@/lib/fueling-receipt-rules";
 import { useMemo, useRef, useState } from "react";
 import { AlertTriangle, Camera, CheckCircle2, Fuel, LoaderCircle, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -90,6 +91,7 @@ export function FuelingPhotoReader() {
     !!item.reading.date &&
     !!item.reading.liters &&
     !!item.reading.price_per_liter &&
+    !!item.reading.total_amount &&
     !!(fleetId || item.suggestedFleetId)
   ).length, [items, fleetId]);
 
@@ -243,6 +245,7 @@ export function FuelingPhotoReader() {
       !!item.reading.date &&
       !!item.reading.liters &&
       !!item.reading.price_per_liter &&
+      !!item.reading.total_amount &&
       !!(fleetId || item.suggestedFleetId)
     );
     for (const item of candidates) {
@@ -518,7 +521,7 @@ function FuelingReadCard({
       ) : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Button type="button" onClick={onSave} disabled={item.saving || item.saved || r.consistency === "conflict"}>
+        <Button type="button" onClick={onSave} disabled={item.saving || item.saved || r.consistency === "conflict" || !r.liters || !r.price_per_liter || !r.total_amount}>
           {item.saving ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
           {item.saved ? "Gravado" : item.saving ? "Gravando…" : "Gravar abastecimento"}
         </Button>
@@ -582,9 +585,9 @@ async function prepareLocalOcrImage(dataUrl: string) {
     element.src = dataUrl;
   });
 
-  // Android/WebView: reduzir a imagem antes do Tesseract diminui bastante
-  // memória, download para o worker e tempo de reconhecimento.
-  const maxSide = 1100;
+  // Preserve small receipt digits and decimal separators. The upload is already
+  // size-limited; downsampling again to 1100 px destroyed the fiscal item row.
+  const maxSide = 1900;
   const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
 
   const canvas = document.createElement("canvas");
@@ -673,7 +676,7 @@ function parseLocalFuelingText(text: string): FuelingReading {
     const t = Number(resolvedTotal);
     const d = Number(discount || 0);
     const expected = l * p - d;
-    const tolerance = Math.max(0.12, l * p * 0.0005);
+    const tolerance = FUELING_MONEY_TOLERANCE;
 
     if (Math.abs(expected - t) <= tolerance) {
       consistency = "confirmed";
@@ -708,7 +711,7 @@ function parseLocalFuelingText(text: string): FuelingReading {
     confidence = 0.84;
   }
 
-  return {
+  return applyFuelReceiptLine({
     document_type: coossutran.detected ? "fuel_receipt" : /\bdanfe\b|nota fiscal|nf-?e/i.test(raw) ? "invoice" : pumpNumbers.detected ? "pump_display" : "fuel_receipt",
     date,
     time,
@@ -736,7 +739,7 @@ function parseLocalFuelingText(text: string): FuelingReading {
       normalized.includes("valor total") ? "Valor Total" : "",
       normalized.includes("placa") ? "Placa" : "",
     ].filter(Boolean),
-  };
+  } as FuelingReading, readFuelReceiptLine(raw));
 }
 
 function normalizeLocal(value: string) {
@@ -973,7 +976,7 @@ function mergeFuelingReadings(server: FuelingReading, local: FuelingReading): Fu
   const d = merged.discount_amount ? Number(merged.discount_amount) : 0;
   if (l && p && t) {
     const expected = l * p - d;
-    const tolerance = Math.max(0.12, l * p * 0.0005);
+    const tolerance = FUELING_MONEY_TOLERANCE;
     if (Math.abs(expected - t) <= tolerance) {
       merged.consistency = "confirmed";
       merged.confidence = Math.max(merged.confidence, 0.92);
@@ -1248,15 +1251,16 @@ function findFuelProductNumbers(text: string) {
 function reconcileFuelingBatch(rows: ReadItem[]) {
   if (rows.length < 2) return rows;
 
+  const eligible = (index: number) => !rows[index].saved && rows[index].reading.document_type === "pump_display" && rows[index].reading.consistency !== "conflict";
   const liters = rows
     .map((row, index) => ({ index, value: row.reading.liters ? Number(row.reading.liters) : NaN, text: row.reading.liters }))
-    .filter((x) => Number.isFinite(x.value) && x.value >= 20 && x.value <= 3000 && x.text);
+    .filter((x) => eligible(x.index) && Number.isFinite(x.value) && x.value >= 20 && x.value <= 3000 && x.text);
   const prices = rows
     .map((row, index) => ({ index, value: row.reading.price_per_liter ? Number(row.reading.price_per_liter) : NaN, text: row.reading.price_per_liter }))
-    .filter((x) => Number.isFinite(x.value) && x.value >= 2 && x.value <= 20 && x.text);
+    .filter((x) => eligible(x.index) && Number.isFinite(x.value) && x.value >= 2 && x.value <= 20 && x.text);
   const totals = rows
     .map((row, index) => ({ index, value: row.reading.total_amount ? Number(row.reading.total_amount) : NaN, text: row.reading.total_amount }))
-    .filter((x) => Number.isFinite(x.value) && x.value >= 100 && x.text);
+    .filter((x) => eligible(x.index) && Number.isFinite(x.value) && x.value >= 100 && x.text);
 
   const updates = new Map<number, { liters: string; price: string; total: string }>();
 
@@ -1264,7 +1268,7 @@ function reconcileFuelingBatch(rows: ReadItem[]) {
     for (const p of prices) {
       const expected = l.value * p.value;
       for (const t of totals) {
-        const tolerance = Math.max(0.12, expected * 0.0005);
+        const tolerance = FUELING_MONEY_TOLERANCE;
         if (Math.abs(expected - t.value) > tolerance) continue;
 
         const distinctPhotos = new Set([l.index, p.index, t.index]).size;
