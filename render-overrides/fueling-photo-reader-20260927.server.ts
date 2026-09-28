@@ -191,7 +191,7 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
   if (l && p && t) {
     let gross = l * p;
     let expectedNet = gross - d;
-    let tolerance = Math.max(0.08, gross * 0.0025);
+    let tolerance = Math.max(0.12, gross * 0.0005);
 
     if (Math.abs(expectedNet - t) > tolerance && repaired.litersWasScaled && p >= 2 && p <= 20) {
       const derivedLiters = (t + d) / p;
@@ -200,7 +200,7 @@ export function normalizeFuelingReading(value: unknown): FuelingPhotoReading {
         l = Number(reading.liters);
         gross = l * p;
         expectedNet = gross - d;
-        tolerance = Math.max(0.08, gross * 0.0025);
+        tolerance = Math.max(0.12, gross * 0.0005);
         reading.consistency = "calculated";
         reading.confidence = Math.min(reading.confidence, 0.88);
         reading.calculation_basis = "Litros recuperados por (total + desconto) ÷ preço/L porque o OCR perdeu a vírgula do campo de litros.";
@@ -361,7 +361,7 @@ function serverFuelPairFromMath(text: string, grossTarget: number | null) {
     for (const price of priceCandidates) {
       const expected = Number(liters) * Number(price);
       const error = Math.abs(expected - grossTarget);
-      const tolerance = Math.max(0.15, grossTarget * 0.0035);
+      const tolerance = Math.max(0.12, grossTarget * 0.0005);
       if (error <= tolerance && (!best || error < best.error)) best = { liters, price, error };
     }
   }
@@ -631,14 +631,40 @@ async function readFuelingWithServerOcr(imageDataUrl: string): Promise<FuelingPh
     25_000,
     "OCR do servidor demorou para iniciar.",
   );
-  const result: any = await withServerOcrTimeout(
-    worker.recognize(buffer),
-    28_000,
-    "OCR do servidor demorou para reconhecer a foto.",
-  );
-  const rawText = String(result?.data?.text || "").trim();
+
+  const recognize = async (timeoutMs: number) => {
+    const result: any = await withServerOcrTimeout(
+      worker.recognize(buffer),
+      timeoutMs,
+      "OCR do servidor demorou para reconhecer a foto.",
+    );
+    return String(result?.data?.text || "").trim();
+  };
+
+  const rawText = await recognize(28_000);
   if (!rawText) throw new Error("OCR do servidor não encontrou texto.");
-  return normalizeFuelingReading(parseServerFuelingOcr(rawText));
+  const first = normalizeFuelingReading(parseServerFuelingOcr(rawText));
+  const firstCore = [first.liters, first.price_per_liter, first.total_amount].filter(Boolean).length;
+  if (firstCore >= 2 && first.consistency !== "conflict") return first;
+
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" });
+    const secondText = await recognize(18_000);
+    await worker.setParameters({ tessedit_pageseg_mode: "3", preserve_interword_spaces: "1" }).catch(() => {});
+    if (secondText) {
+      const combined = rawText + "\n" + secondText;
+      const second = normalizeFuelingReading(parseServerFuelingOcr(combined));
+      const secondCore = [second.liters, second.price_per_liter, second.total_amount].filter(Boolean).length;
+      if (secondCore > firstCore || (secondCore === firstCore && second.consistency !== "conflict")) {
+        second.alerts = unique([...second.alerts, "Leitura conferida por duas passagens de OCR no servidor."]);
+        return second;
+      }
+    }
+  } catch (error) {
+    console.warn("[fueling-photo] second server OCR pass skipped", error instanceof Error ? error.message : error);
+  }
+
+  return first;
 }
 
 function parseServerFuelingOcr(textValue: string): FuelingPhotoReading {
@@ -702,7 +728,7 @@ function parseServerFuelingOcr(textValue: string): FuelingPhotoReading {
     const t = Number(total);
     const d = Number(discount || 0);
     const expected = l * p - d;
-    const tolerance = Math.max(0.20, l * p * 0.004);
+    const tolerance = Math.max(0.12, l * p * 0.0005);
     if (Math.abs(expected - t) <= tolerance) {
       consistency = "confirmed";
       confidence = 0.92;
@@ -825,7 +851,7 @@ function serverFindPumpDisplayNumbers(lines: string[]) {
       for (const l of tokens.filter((x) => x.number >= 20 && x.number <= 3000)) {
         for (const t of tokens.filter((x) => x.number >= 100)) {
           const expected = p.number * l.number;
-          if (Math.abs(expected - t.number) <= Math.max(0.25, expected * 0.004)) {
+          if (Math.abs(expected - t.number) <= Math.max(0.12, expected * 0.0005)) {
             price = price || p.value;
             liters = liters || l.value;
             total = total || t.value;
@@ -846,11 +872,45 @@ function serverFindPumpDisplayNumbers(lines: string[]) {
 function serverFindFuelProductNumbers(text: string) {
   const normalized = normalizeServerOcr(text);
   const dieselIndex = normalized.search(/oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/);
-  const source = dieselIndex >= 0 ? text.slice(Math.max(0, dieselIndex - 180), Math.min(text.length, dieselIndex + 420)) : text;
-  const tokens = serverNumberTokens(source);
-  const liters = tokens.find((x) => x.number >= 20 && x.number <= 3000)?.value ?? null;
-  const price = tokens.find((x) => x.number >= 2 && x.number <= 20)?.value ?? null;
-  const gross = tokens.find((x) => x.number >= 1000)?.value ?? null;
+  const source = dieselIndex >= 0
+    ? text.slice(Math.max(0, dieselIndex - 220), Math.min(text.length, dieselIndex + 520))
+    : text;
+
+  const rawTokens = [...source.matchAll(/\b([0-9]{1,8}(?:[.,][0-9]{1,3})?)\b/g)].map((m) => m[1]);
+  const candidates = rawTokens.map((raw) => ({
+    raw,
+    liters: ocrRoleNumber(raw, "liters"),
+    price: ocrRoleNumber(raw, "price"),
+    money: ocrRoleNumber(raw, "money"),
+  }));
+
+  let best: { liters: string; price: string; gross: string; error: number } | null = null;
+  for (const l of candidates.map((x) => x.liters).filter((v): v is string => !!v)) {
+    for (const p of candidates.map((x) => x.price).filter((v): v is string => !!v)) {
+      const expected = Number(l) * Number(p);
+      for (const g of candidates.map((x) => x.money).filter((v): v is string => !!v)) {
+        const error = Math.abs(expected - Number(g));
+        const tolerance = Math.max(0.12, expected * 0.0005);
+        if (error <= tolerance && (!best || error < best.error)) {
+          best = { liters: l, price: p, gross: g, error };
+        }
+      }
+    }
+  }
+  if (best) return { liters: best.liters, price: best.price, gross: best.gross };
+
+  const liters = candidates.map((x) => x.liters).find((v) => v && Number(v) >= 20 && Number(v) <= 3000) ?? null;
+  const price = candidates.map((x) => x.price).find((v) => v && Number(v) >= 2 && Number(v) <= 20) ?? null;
+
+  let gross: string | null = null;
+  if (liters && price) {
+    const expected = Number(liters) * Number(price);
+    const moneyCandidates = candidates.map((x) => x.money).filter((v): v is string => !!v);
+    gross = moneyCandidates
+      .sort((a, b) => Math.abs(Number(a) - expected) - Math.abs(Number(b) - expected))[0] ?? null;
+    if (gross && Math.abs(Number(gross) - expected) > Math.max(0.12, expected * 0.0005)) gross = null;
+  }
+
   return { liters, price, gross };
 }
 
