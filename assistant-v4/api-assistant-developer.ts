@@ -44,7 +44,7 @@ export const Route = createFileRoute("/api/assistant/developer")({
           return Response.json({
             ok:false,
             code:"DEVELOPER_FORBIDDEN",
-            answer:"Somente Felipe pode autorizar a Salomão IA a programar ou publicar alterações do sistema."
+            answer:"Somente Felipe pode autorizar a Trans Salomão IA a programar ou publicar alterações do sistema."
           }, { status:403 });
         }
 
@@ -91,7 +91,7 @@ export const Route = createFileRoute("/api/assistant/developer")({
 
         const requestText=String(body?.request??"").trim().slice(0,12000);
         if(!requestText)return Response.json({ok:false,code:"EMPTY_REQUEST"},{status:400});
-        const title=String(body?.title??requestText.split(/\n/)[0]??"Alteração Salomão IA").trim().slice(0,180);
+        const title=String(body?.title??requestText.split(/\n/)[0]??"Alteração Trans Salomão IA").trim().slice(0,180);
         const scope=["web","android","backend","database","full"].includes(String(body?.scope))?String(body.scope):"full";
         const publish=body?.publish===true || /\b(publique|publicar|produção|producao|aplique|aplicar no site|coloque em produção|coloque em producao)\b/i.test(requestText);
         const id="chg_"+crypto.randomUUID().replace(/-/g,"").slice(0,12);
