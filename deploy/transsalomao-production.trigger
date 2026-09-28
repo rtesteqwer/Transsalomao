@@ -1,1 +1,1 @@
-restore stable runtime before isolated OCR fix 2026-09-28
+deploy nitro traced tesseract runtime 2026-09-28
