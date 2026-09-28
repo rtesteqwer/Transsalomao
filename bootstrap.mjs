@@ -265,7 +265,7 @@ if (!original.includes("apply-financial-document-reader-20260927.mjs")) {
 // Segurança final: autenticação, sessões, rate limit, tickets atômicos e proteção da Salomão IA.
 if (!original.includes("apply-security-hardening-20260928.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error('Missing security hardening insertion point');
-  original = original.replace(dailyMarker, `const securityHardening = path.join(repo, 'render-overrides', 'apply-security-hardening-20260928.mjs');\nif (!fs.existsSync(securityHardening)) throw new Error('Missing security hardening patch');\nexecFileSync(process.execPath, [securityHardening, work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
+  original = original.replace(dailyMarker, `const securityHardening = path.join(repo, 'render-overrides', 'apply-security-hardening-20260928.mjs');\nif (!fs.existsSync(securityHardening)) throw new Error('Missing security hardening patch');\nexecFileSync(process.execPath, [securityHardening, work], { cwd: repo, stdio: 'inherit', env: process.env });\nconst securityFrontendGate = path.join(repo, 'render-overrides', 'apply-security-frontend-gate-20260928.mjs');\nif (!fs.existsSync(securityFrontendGate)) throw new Error('Missing security frontend gate patch');\nexecFileSync(process.execPath, [securityFrontendGate, work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
 // Fix the TanStack Start transport before Vite hashes the browser assets.
