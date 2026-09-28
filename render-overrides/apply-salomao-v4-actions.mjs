@@ -27,3 +27,14 @@ for (const [srcRel, dstRel] of copies) {
   fs.copyFileSync(src, dst);
 }
 console.log('[salomao-v4] auth, actions, assistant API and migration installed');
+
+
+// Keep the legacy /salomao-ia route and expose the new branded URL as well.
+const legacyAssistantRoute = path.join(target, 'src/routes/salomao-ia.tsx');
+const brandedAssistantRoute = path.join(target, 'src/routes/trans-salomao-ia.tsx');
+if (fs.existsSync(legacyAssistantRoute)) {
+  const brandedSource = fs.readFileSync(legacyAssistantRoute, 'utf8')
+    .replace('createFileRoute("/salomao-ia")', 'createFileRoute("/trans-salomao-ia")');
+  fs.writeFileSync(brandedAssistantRoute, brandedSource);
+}
+console.log('[salomao-v4] Trans Salomão IA route installed at /trans-salomao-ia');
