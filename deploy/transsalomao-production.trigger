@@ -1,1 +1,1 @@
-deploy robust fueling ticket extraction 2026-09-28
+deploy light ui and strict fueling OCR 2026-09-28
