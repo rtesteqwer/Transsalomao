@@ -1,1 +1,1 @@
-dump source for vite OCR externalization 2026-09-28
+dump stable production source for persistent login 2026-09-28
