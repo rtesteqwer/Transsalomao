@@ -54,14 +54,14 @@ test('requires explicit review and rejects malformed/non-integer/negative weight
  assert.equal(validateSave(input(' ab123 ')).ticket.numero_ticket,'AB123');
 });
 
-test('refuses unauthenticated same-origin headers and unset/incorrect tokens', () => {
+test('refuses unauthenticated same-origin headers and unset/incorrect tokens', async () => {
  delete process.env.TICKET_TOKEN;
  const request = headers => new Request('https://example.com/api/ler-ticket', {headers});
- assert.throws(()=>ticketAccess(request({'origin':'https://example.com','sec-fetch-site':'same-origin'})),expectStatus(401));
+ await assert.rejects(()=>ticketAccess(request({'origin':'https://example.com','sec-fetch-site':'same-origin'})),expectStatus(401));
  process.env.TICKET_TOKEN='x'.repeat(32);
- assert.throws(()=>ticketAccess(request({'x-app-token':'wrong'})),expectStatus(401));
- assert.equal(ticketAccess(request({'x-app-token':process.env.TICKET_TOKEN})).role,'service');
- assert.throws(()=>ticketAccess(request({'origin':'https://evil.example'})),expectStatus(403));
+ await assert.rejects(()=>ticketAccess(request({'x-app-token':'wrong'})),expectStatus(401));
+ assert.equal((await ticketAccess(request({'x-app-token':process.env.TICKET_TOKEN}))).role,'service');
+ await assert.rejects(()=>ticketAccess(request({'origin':'https://evil.example'})),expectStatus(403));
  delete process.env.TICKET_TOKEN;
 });
 
