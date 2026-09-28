@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -39,10 +39,26 @@ jobs:
         run: gradle :app:assembleRelease --no-daemon
 
       - name: Prepare APK
-        run: cp android-app/app/build/outputs/apk/release/app-release.apk TransSalomao-2026-09-27.apk
+        run: |
+          mkdir -p releases
+          cp android-app/app/build/outputs/apk/release/app-release.apk releases/TransSalomao-latest.apk
+          cp releases/TransSalomao-latest.apk TransSalomao-2026-09-27-clean.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: TransSalomao-APK
-          path: TransSalomao-2026-09-27.apk
+          path: TransSalomao-2026-09-27-clean.apk
           if-no-files-found: error
+
+      - name: Publish latest APK in repository
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f releases/TransSalomao-latest.apk
+          if git diff --cached --quiet; then
+            echo "APK unchanged"
+            exit 0
+          fi
+          git commit -m "build(android): publish latest TransSalomao APK [skip ci]"
+          git push
