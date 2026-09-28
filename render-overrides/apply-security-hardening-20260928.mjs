@@ -14,7 +14,7 @@ if (!fs.existsSync(payloadPath)) throw new Error("Missing security hardening pay
 
 const archive = Buffer.from(fs.readFileSync(payloadPath, "utf8").replace(/\s+/g, ""), "base64");
 const digest = crypto.createHash("sha256").update(archive).digest("hex");
-if (digest !== "e97a1f80e627d6fa4be2be1e6855cd4178adbb14643c49b54ac4e071a0f4151b") {
+if (digest !== "48decf40bd6ef9ec17b6134e74605e10f0db014c98ed5a6549fa5988b2897005") {
   throw new Error("Security hardening payload hash mismatch");
 }
 
