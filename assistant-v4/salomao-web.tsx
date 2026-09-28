@@ -146,7 +146,7 @@ function SalomaoWeb() {
           action: "login",
           username: username.trim(),
           password,
-          deviceLabel: "Salomão IA Web • PC",
+          deviceLabel: "Trans Salomão IA Web • PC",
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -247,7 +247,7 @@ function SalomaoWeb() {
             <div className="flex items-center gap-3">
               <div className="grid size-12 place-items-center rounded-full bg-[#005c4b] text-2xl">🚛</div>
               <div className="min-w-0">
-                <h1 className="truncate text-lg font-semibold text-white">Salomão IA</h1>
+                <h1 className="truncate text-lg font-semibold text-white">Trans Salomão IA</h1>
                 <p className="truncate text-xs text-[#8696a0]">{session.model} • Trans Salomão</p>
               </div>
             </div>
@@ -313,7 +313,7 @@ function SalomaoWeb() {
             <div className="flex min-w-0 items-center gap-3">
               <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[#005c4b] text-xl">🚛</div>
               <div className="min-w-0">
-                <h2 className="truncate font-semibold text-white">Salomão IA</h2>
+                <h2 className="truncate font-semibold text-white">Trans Salomão IA</h2>
                 <p className="truncate text-xs text-[#8696a0]">
                   {developerMode ? "🛠 desenvolvedor • " : "online • "}{session.model} • {session.username}
                 </p>
@@ -344,7 +344,7 @@ function SalomaoWeb() {
               {history.length === 0 ? (
                 <div className="mx-auto mt-10 max-w-xl rounded-2xl border border-white/10 bg-[#111b21]/95 p-6 text-center shadow-xl">
                   <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#005c4b] text-3xl">🚛</div>
-                  <h3 className="mt-4 text-xl font-semibold text-white">Salomão IA no PC</h3>
+                  <h3 className="mt-4 text-xl font-semibold text-white">Trans Salomão IA no PC</h3>
                   <p className="mt-2 text-sm leading-relaxed text-[#aebac1]">
                     Digite uma consulta ou comando do Trans Salomão. Para ações que alteram dados, a IA valida os campos antes de executar.
                   </p>
@@ -385,7 +385,7 @@ function SalomaoWeb() {
                   }}
                   rows={1}
                   disabled={sending}
-                  placeholder="Digite uma mensagem para Salomão IA"
+                  placeholder="Digite uma mensagem para Trans Salomão IA"
                   className="max-h-36 min-h-8 w-full resize-none bg-transparent py-1 text-[15px] leading-6 text-white outline-none placeholder:text-[#8696a0] disabled:opacity-70"
                   autoFocus
                 />
@@ -453,7 +453,7 @@ function CheckingScreen() {
     <main className="grid min-h-dvh place-items-center bg-[#0b141a] px-4 text-[#e9edef]">
       <div className="text-center">
         <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#005c4b] text-3xl">🚛</div>
-        <p className="mt-4 text-sm text-[#aebac1]">Conectando à Salomão IA…</p>
+        <p className="mt-4 text-sm text-[#aebac1]">Conectando à Trans Salomão IA…</p>
       </div>
     </main>
   );
@@ -483,7 +483,7 @@ function LoginScreen({
           <div className="flex items-center gap-3">
             <div className="grid size-14 place-items-center rounded-full bg-[#005c4b] text-3xl">🚛</div>
             <div>
-              <h1 className="text-2xl font-semibold text-white">Salomão IA</h1>
+              <h1 className="text-2xl font-semibold text-white">Trans Salomão IA</h1>
               <p className="text-sm text-[#8696a0]">Acesso pelo computador</p>
             </div>
           </div>
@@ -491,7 +491,7 @@ function LoginScreen({
 
         <form className="p-6" onSubmit={onSubmit}>
           <p className="text-sm leading-relaxed text-[#aebac1]">
-            Entre com seu login da Gerência do Trans Salomão. A sessão da Salomão IA fica somente nesta aba do navegador.
+            Entre com seu login da Gerência do Trans Salomão. A sessão da Trans Salomão IA fica somente nesta aba do navegador.
           </p>
 
           <label className="mt-6 block text-sm">
@@ -525,7 +525,7 @@ function LoginScreen({
             disabled={busy || !username.trim() || !password}
             className="mt-6 h-12 w-full rounded-xl bg-[#00a884] font-semibold text-white disabled:opacity-50"
           >
-            {busy ? "Entrando…" : "Entrar na Salomão IA"}
+            {busy ? "Entrando…" : "Entrar na Trans Salomão IA"}
           </button>
 
           <a href="/dono" className="mt-4 block text-center text-xs text-[#8696a0] hover:text-[#d1d7db]">
