@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trans Salomão | Gestão de Frota Simples e Acessível</title>
+<meta name="description" content="Gestão de frota simples para transportadoras de todos os tamanhos. Controle viagens, diesel, motoristas, comissões, despesas e resultados em um só lugar.">
+<style>
+:root{--blue:#0868f8;--blue2:#0c4fc9;--navy:#0b1730;--ink:#121d31;--muted:#64748b;--soft:#f4f8ff;--line:#dfe8f4;--green:#25d366;--white:#fff}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:#fff;line-height:1.55}
+a{text-decoration:none;color:inherit}.container{width:min(1160px,calc(100% - 32px));margin:auto}
+header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid rgba(223,232,244,.85)}
+.nav{height:76px;display:flex;align-items:center;justify-content:space-between;gap:24px}.brand{display:flex;align-items:center;gap:10px;font-weight:900}.mark{width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,var(--blue),#042f7e);color:#fff;display:grid;place-items:center;font-size:21px;box-shadow:0 10px 28px rgba(8,104,248,.22)}.brand span{font-size:22px}.brand b{color:var(--blue)}
+.navlinks{display:flex;gap:24px;color:#43506a;font-weight:700;font-size:14px}.navlinks a:hover{color:var(--blue)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:14px 20px;border-radius:13px;font-weight:850;border:1px solid transparent;transition:.2s;cursor:pointer}.btn:hover{transform:translateY(-1px)}.btn.primary{background:linear-gradient(135deg,var(--blue),var(--blue2));color:#fff;box-shadow:0 14px 30px rgba(8,104,248,.22)}.btn.ghost{border-color:#bfd0e7;background:#fff;color:var(--navy)}.btn.whatsapp{background:var(--green);color:#fff}
+.hero{padding:78px 0 66px;background:radial-gradient(circle at 80% 20%,#dbeaff 0,transparent 34%),linear-gradient(180deg,#fbfdff,#fff)}.hero-grid{display:grid;grid-template-columns:1.04fr .96fr;gap:54px;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:#eaf2ff;color:#0c4fc9;font-size:13px;font-weight:850}.dot{width:8px;height:8px;border-radius:50%;background:var(--blue)}
+h1{font-size:clamp(42px,6vw,72px);line-height:1.01;letter-spacing:-.045em;margin:20px 0 20px;max-width:780px}h1 span{color:var(--blue)}.lead{font-size:20px;color:#526078;max-width:690px}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin:30px 0}.trust{display:flex;gap:18px;flex-wrap:wrap;color:#526078;font-size:14px;font-weight:700}.check{color:#149447;font-weight:900}
+.mock{background:linear-gradient(145deg,#0c1a34,#142b55);border-radius:28px;padding:18px;box-shadow:0 34px 80px rgba(21,50,95,.28);transform:rotate(-1deg);position:relative;overflow:hidden}.screen{background:#f8fbff;border-radius:20px;padding:18px}.screen-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.screen-head strong{font-size:18px}.badge{background:#e8f1ff;color:var(--blue2);padding:6px 9px;border-radius:9px;font-size:11px;font-weight:800}.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.metric{background:#fff;border:1px solid #e3ecf8;border-radius:16px;padding:16px;box-shadow:0 8px 18px rgba(15,35,70,.05)}.metric small{display:block;color:#77849a}.metric b{font-size:24px;display:block;margin-top:4px}.metric em{font-style:normal;color:#159447;font-size:12px;font-weight:800}.chart{height:104px;margin-top:12px;border-radius:14px;background:linear-gradient(180deg,#e6f0ff,#f7fbff);position:relative;overflow:hidden}.chart:before{content:"";position:absolute;inset:20px 10px 18px;background:linear-gradient(145deg,transparent 0 8%,#2e7df7 8% 10%,transparent 10% 27%,#2e7df7 27% 29%,transparent 29% 46%,#2e7df7 46% 48%,transparent 48% 64%,#2e7df7 64% 66%,transparent 66% 82%,#2e7df7 82% 84%,transparent 84%)}
+section{padding:78px 0}.section-head{max-width:760px;margin-bottom:34px}.section-head h2{font-size:clamp(32px,4.3vw,52px);line-height:1.06;letter-spacing:-.035em;margin:13px 0}.section-head p{font-size:18px;color:#617087}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{padding:26px;border:1px solid var(--line);border-radius:20px;background:#fff;box-shadow:0 12px 32px rgba(20,48,92,.06)}.icon{width:48px;height:48px;border-radius:14px;background:#e9f2ff;display:grid;place-items:center;font-size:22px}.card h3{font-size:20px;margin:16px 0 8px}.card p{margin:0;color:#66758c}
+.dark{background:var(--navy);color:#fff}.dark .section-head p,.dark .card p{color:#aebbd0}.dark .card{background:#101f3d;border-color:#20365d}.dark .icon{background:#17345f}.dark .pill{background:#16345f;color:#a9c8ff}
+.sizes{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.size-card{padding:24px;border-radius:20px;background:var(--soft);border:1px solid #e4edf8}.size-card b{display:block;font-size:38px;color:var(--blue);line-height:1}.size-card strong{display:block;margin:5px 0 12px}.size-card p{margin:0;color:#66758c}
+.demo{display:grid;grid-template-columns:.9fr 1.1fr;gap:42px;align-items:center}.feature-list{display:grid;gap:13px;margin:25px 0}.feature{display:flex;gap:13px;align-items:flex-start}.mini{width:29px;height:29px;border-radius:10px;background:#e5f7ec;color:#159447;display:grid;place-items:center;font-weight:900;flex:none}.feature b,.feature span{display:block}.feature span{color:#68768b;font-size:14px}
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.plan{position:relative;padding:28px;border:1px solid var(--line);border-radius:22px;background:#fff}.plan.featured{border:2px solid var(--blue);box-shadow:0 18px 46px rgba(8,104,248,.12)}.tag{position:absolute;top:-12px;right:18px;background:var(--blue);color:#fff;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:850}.fleet{font-weight:800;color:var(--blue);margin-top:-4px}.price{font-size:23px;font-weight:900;margin:14px 0}.plan ul{padding-left:20px;color:#5f6d83;min-height:160px}.plan li{margin:8px 0}
+.compare{overflow:auto;border:1px solid var(--line);border-radius:20px}table{width:100%;border-collapse:collapse;min-width:720px}th,td{padding:17px 18px;text-align:left;border-bottom:1px solid var(--line)}th{background:#f5f8fc}.compare tr:last-child td{border-bottom:none}
+.faq{display:grid;gap:12px;max-width:900px}.faq details{border:1px solid var(--line);border-radius:16px;padding:18px 20px;background:#fff}.faq summary{font-weight:850;cursor:pointer}.faq p{color:#66758c}
+.final{background:linear-gradient(135deg,#0868f8,#0b3c9b);color:#fff;border-radius:28px;padding:38px;display:grid;grid-template-columns:1.2fr .8fr;gap:30px;align-items:center}.final h2{font-size:40px;line-height:1.05;margin:0 0 10px}.final p{margin:0;color:#dbe9ff}.final-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}.final .btn.ghost{background:#fff;color:#0b3c9b;border-color:#fff}
+footer{padding:32px 0 88px}.footer{display:flex;justify-content:space-between;gap:20px;align-items:center;color:#6b7890;font-size:14px}
+.float-wa{position:fixed;right:18px;bottom:18px;z-index:80;background:#25d366;color:#fff;border-radius:999px;padding:14px 18px;font-weight:900;box-shadow:0 15px 35px rgba(0,0,0,.22)}
+@media(max-width:900px){.navlinks{display:none}.hero-grid,.demo,.final{grid-template-columns:1fr}.grid3,.plans{grid-template-columns:1fr 1fr}.sizes{grid-template-columns:1fr 1fr}.final-actions{justify-content:flex-start}.mock{transform:none}}
+@media(max-width:640px){.container{width:min(100% - 22px,1160px)}.hero{padding-top:42px}.grid3,.plans,.sizes{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr}.hero-actions .btn{width:100%}.nav .btn{padding:11px 13px;font-size:12px}.brand span{font-size:18px}.final{padding:26px}.final h2{font-size:32px}.footer{flex-direction:column;align-items:flex-start}}
+</style>
+</head>
+<body>
+<header>
+<div class="container nav">
+<a class="brand" href="#inicio"><span class="mark">TS</span><span>Trans <b>Salomão</b></span></a>
+<nav class="navlinks"><a href="#beneficios">Benefícios</a><a href="#recursos">Recursos</a><a href="#planos">Planos</a><a href="#duvidas">Dúvidas</a></nav>
+<a class="btn primary" href="https://wa.me/5527996176320" target="_blank" rel="noopener">Converse com Felipe</a>
+</div>
+</header>
+
+<main id="inicio">
+<section class="hero">
+<div class="container hero-grid">
+<div>
+<div class="pill"><span class="dot"></span> Gestão de frota simples, profissional e acessível</div>
+<h1>Sua transportadora no controle, <span>sem complicação.</span></h1>
+<p class="lead">A Trans Salomão reúne viagens, motoristas, diesel, comissões, adiantamentos, despesas e relatórios em um só lugar. Funciona para quem tem 1 carreta e continua funcionando quando a frota cresce.</p>
+<div class="hero-actions">
+<a class="btn primary" href="https://wa.me/5527996176320" target="_blank" rel="noopener">Solicitar demonstração</a>
+<a class="btn ghost" href="#demo">Ver como funciona</a>
+</div>
+<div class="trust"><span><span class="check">✓</span> Celular e computador</span><span><span class="check">✓</span> Feito para transportadoras</span><span><span class="check">✓</span> De 1 carreta a grandes frotas</span></div>
+</div>
+<div class="mock">
+<div class="screen">
+<div class="screen-head"><strong>Painel da gerência</strong><span class="badge">DADOS FICTÍCIOS</span></div>
+<div class="metric-grid">
+<div class="metric"><small>Faturamento</small><b>R$ 285.430</b><em>+18% no período</em></div>
+<div class="metric"><small>Viagens</small><b>128</b><em>+12%</em></div>
+<div class="metric"><small>Diesel</small><b>R$ 71.320</b><em>controle diário</em></div>
+<div class="metric"><small>Comissões</small><b>R$ 24.560</b><em>centralizadas</em></div>
+</div>
+<div class="chart"></div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="beneficios">
+<div class="container">
+<div class="section-head"><div class="pill">Por que usar</div><h2>Menos planilha, menos retrabalho, mais visão do negócio.</h2><p>Deixe de procurar informação em caderno, mensagens e planilhas separadas. Veja a operação por motorista, carreta, viagem e período.</p></div>
+<div class="grid3">
+<article class="card"><div class="icon">🚚</div><h3>Viagens organizadas</h3><p>Registre fretes por tonelada, por viagem, diária e outros formatos usados na operação.</p></article>
+<article class="card"><div class="icon">⛽</div><h3>Diesel sob controle</h3><p>Acompanhe abastecimentos por motorista e veículo e veja o peso do combustível no resultado.</p></article>
+<article class="card"><div class="icon">💰</div><h3>Comissões claras</h3><p>Evite contas espalhadas e acompanhe quanto cada motorista tem a receber.</p></article>
+<article class="card"><div class="icon">📄</div><h3>Relatórios rápidos</h3><p>Tenha faturamento, custos e resultados organizados sem montar tudo do zero.</p></article>
+<article class="card"><div class="icon">📱</div><h3>Motorista participa</h3><p>Informações da estrada chegam à gerência em um fluxo simples e centralizado.</p></article>
+<article class="card"><div class="icon">📈</div><h3>Decisão com números</h3><p>Compare produção e custos para enxergar onde o dinheiro entra e onde está saindo.</p></article>
+</div>
+</div>
+</section>
+
+<section class="dark" id="recursos">
+<div class="container">
+<div class="section-head"><div class="pill">Tudo em um lugar</div><h2>Do pátio ao painel.</h2><p>Uma operação conectada para reduzir erros e dar velocidade ao fechamento.</p></div>
+<div class="grid3">
+<article class="card"><div class="icon">🧾</div><h3>Tickets e comprovantes</h3><p>Centralize documentos ligados a viagens, abastecimentos e adiantamentos.</p></article>
+<article class="card"><div class="icon">🧠</div><h3>Leitura inteligente</h3><p>Automação ajuda a extrair dados e acelera lançamentos e conferências.</p></article>
+<article class="card"><div class="icon">🧮</div><h3>Fechamento simples</h3><p>Visualize valores, comissões e custos antes de concluir a viagem.</p></article>
+<article class="card"><div class="icon">👤</div><h3>Por motorista</h3><p>Consulte produção, abastecimentos, adiantamentos e resultados individuais.</p></article>
+<article class="card"><div class="icon">🚛</div><h3>Por veículo</h3><p>Entenda quanto cada conjunto produz e quanto custa para operar.</p></article>
+<article class="card"><div class="icon">🔎</div><h3>Pesquisa rápida</h3><p>Encontre viagens, motoristas e informações importantes sem perder tempo.</p></article>
+</div>
+</div>
+</section>
+
+<section>
+<div class="container">
+<div class="section-head"><div class="pill">Para qualquer tamanho</div><h2>Não importa se você tem 1 carreta ou uma frota inteira.</h2><p>O sistema pode começar enxuto e ganhar mais usuários, motoristas e veículos conforme sua empresa cresce.</p></div>
+<div class="sizes">
+<div class="size-card"><b>1–3</b><strong>carretas</strong><p>Organize a base e abandone controles espalhados.</p></div>
+<div class="size-card"><b>4–10</b><strong>carretas</strong><p>Ganhe agilidade em viagens, diesel e fechamento.</p></div>
+<div class="size-card"><b>11–30</b><strong>carretas</strong><p>Centralize a equipe e acompanhe indicadores.</p></div>
+<div class="size-card"><b>30+</b><strong>carretas</strong><p>Escale usuários e relatórios mantendo o controle.</p></div>
+</div>
+</div>
+</section>
+
+<section id="demo" style="background:var(--soft)">
+<div class="container demo">
+<div>
+<div class="section-head" style="margin-bottom:0"><div class="pill">Demonstração</div><h2>Abra o painel e entenda o dia em poucos segundos.</h2><p>Os números exibidos são fictícios e servem apenas para mostrar como a informação pode ficar organizada.</p></div>
+<div class="feature-list">
+<div class="feature"><div class="mini">✓</div><div><b>Faturamento visível</b><span>Veja quanto a frota produziu.</span></div></div>
+<div class="feature"><div class="mini">✓</div><div><b>Custos no mesmo painel</b><span>Diesel, comissão, adiantamentos e despesas.</span></div></div>
+<div class="feature"><div class="mini">✓</div><div><b>Resultado fácil de entender</b><span>Mais clareza para dono, financeiro e operação.</span></div></div>
+</div>
+<a class="btn primary" href="https://wa.me/5527996176320" target="_blank" rel="noopener">Quero uma demonstração</a>
+</div>
+<div class="mock">
+<div class="screen">
+<div class="screen-head"><strong>Visão dos últimos 30 dias</strong><span class="badge">DEMO</span></div>
+<div class="metric-grid">
+<div class="metric"><small>Faturamento</small><b>R$ 285.430</b><em>+18%</em></div>
+<div class="metric"><small>Resultado operacional</small><b>R$ 148.250</b><em>visão consolidada</em></div>
+<div class="metric"><small>Motoristas ativos</small><b>14</b><em>na operação</em></div>
+<div class="metric"><small>Viagens realizadas</small><b>128</b><em>no período</em></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="planos">
+<div class="container">
+<div class="section-head"><div class="pill">Planos flexíveis</div><h2>Um plano que acompanha a quantidade de carretas.</h2><p>A transportadora pequena não precisa pagar por estrutura de empresa grande. A proposta cresce junto com a frota.</p></div>
+<div class="plans">
+<article class="plan"><h3>Essencial</h3><div class="fleet">1 a 3 carretas</div><div class="price">Plano sob medida</div><ul><li>Viagens e motoristas</li><li>Abastecimentos</li><li>Comissões</li><li>Relatórios básicos</li><li>Celular e computador</li></ul><a class="btn ghost" href="https://wa.me/5527996176320" target="_blank" rel="noopener">Quero começar</a></article>
+<article class="plan featured"><span class="tag">Mais procurado</span><h3>Frota</h3><div class="fleet">4 a 15 carretas</div><div class="price">Plano sob medida</div><ul><li>Tudo do Essencial</li><li>Mais usuários e motoristas</li><li>Adiantamentos e despesas</li><li>Relatórios completos</li><li>Automação de lançamentos</li></ul><a class="btn primary" href="https://wa.me/5527996176320" target="_blank" rel="noopener">Solicitar proposta</a></article>
+<article class="plan"><h3>Escala</h3><div class="fleet">16+ carretas</div><div class="price">Plano sob medida</div><ul><li>Tudo do plano Frota</li><li>Operação ampliada</li><li>Mais cadastros e acessos</li><li>Relatórios gerenciais</li><li>Configuração conforme a empresa</li></ul><a class="btn ghost" href="https://wa.me/5527996176320" target="_blank" rel="noopener">Falar com Felipe</a></article>
+</div>
+</div>
+</section>
+
+<section style="background:var(--soft)">
+<div class="container">
+<div class="section-head"><div class="pill">Antes e depois</div><h2>Veja o que muda na rotina da transportadora.</h2></div>
+<div class="compare"><table><thead><tr><th>Rotina</th><th>Sem sistema centralizado</th><th>Com Trans Salomão</th></tr></thead><tbody>
+<tr><td>Viagens</td><td>Informações espalhadas</td><td>Registro em um único fluxo</td></tr>
+<tr><td>Diesel</td><td>Conferência manual</td><td>Abastecimentos ligados ao motorista e veículo</td></tr>
+<tr><td>Comissões</td><td>Conta manual e risco de erro</td><td>Acompanhamento centralizado</td></tr>
+<tr><td>Relatórios</td><td>Montagem demorada</td><td>Informação pronta para consulta</td></tr>
+<tr><td>Gestão</td><td>Decisão por memória e mensagem</td><td>Decisão com dados organizados</td></tr>
+</tbody></table></div>
+</div>
+</section>
+
+<section id="duvidas">
+<div class="container">
+<div class="section-head"><div class="pill">Dúvidas frequentes</div><h2>Simples para contratar. Simples para usar.</h2></div>
+<div class="faq">
+<details><summary>Tenho poucas carretas. Vale a pena?</summary><p>Sim. O sistema foi pensado para organizar desde uma pequena operação e continuar útil conforme a frota cresce.</p></details>
+<details><summary>Preciso instalar no computador?</summary><p>O sistema pode ser acessado pelo navegador e foi pensado para uso no celular e no computador.</p></details>
+<details><summary>Consigo acompanhar motorista por motorista?</summary><p>Sim. A operação pode ser organizada por motorista, veículo, viagem e período.</p></details>
+<details><summary>Serve para frota grande?</summary><p>Sim. A estrutura pode escalar com mais motoristas, veículos e usuários.</p></details>
+<details><summary>Posso ver antes de contratar?</summary><p>Sim. A demonstração usa dados fictícios para mostrar a experiência sem expor informações reais.</p></details>
+</div>
+</div>
+</section>
+
+<section>
+<div class="container">
+<div class="final">
+<div><h2>Sua frota pode ser simples de administrar.</h2><p>Conte quantas carretas sua empresa possui e fale diretamente com Felipe para conhecer o plano adequado.</p></div>
+<div class="final-actions"><a class="btn ghost" href="https://wa.me/5527996176320" target="_blank" rel="noopener">Converse com Felipe</a><a class="btn whatsapp" href="https://wa.me/5527996176320" target="_blank" rel="noopener">Abrir WhatsApp</a></div>
+</div>
+</div>
+</section>
+</main>
+
+<footer><div class="container footer"><a class="brand" href="#inicio"><span class="mark">TS</span><span>Trans <b>Salomão</b></span></a><span>Gestão de frota simples e acessível • Demonstração com dados fictícios</span></div></footer>
+<a class="float-wa" href="https://wa.me/5527996176320" target="_blank" rel="noopener" aria-label="Converse com Felipe no WhatsApp">💬 WhatsApp</a>
+</body></html>
