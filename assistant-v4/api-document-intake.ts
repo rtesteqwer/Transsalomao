@@ -42,7 +42,7 @@ export const Route = createFileRoute("/api/assistant/document-intake")({
     handlers: {
       POST: async ({ request }) => {
         const auth = await authenticateAssistantRequest(request);
-        if (!auth) return json({ ok: false, code: "LOGIN_REQUIRED", message: "Autentique o Salomão IA." }, 401);
+        if (!auth) return json({ ok: false, code: "LOGIN_REQUIRED", message: "Autentique o Trans Salomão IA." }, 401);
         if (request.headers.get("x-salomao-app") !== "1") {
           return json({ ok: false, code: "APP_HEADER_REQUIRED", message: "Requisição não autorizada." }, 403);
         }
