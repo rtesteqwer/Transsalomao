@@ -124,17 +124,9 @@ export function FuelingPhotoReader() {
           let suggestedFleetId = payload?.suggestedFleetId ? String(payload.suggestedFleetId) : null;
 
           if (response.ok && payload?.reading) {
+            // O servidor já executa a segunda passagem de OCR quando necessário.
+            // Não bloquear a interface com uma segunda leitura local após sucesso.
             nextReading = payload.reading as FuelingReading;
-
-            if (needsSecondOcrPass(nextReading)) {
-              try {
-                setProgress("Conferindo a leitura com uma segunda leitura local: " + file.name);
-                const local = await readFuelingWithLocalOcr(image);
-                nextReading = mergeFuelingReadings(nextReading, local.reading);
-              } catch {
-                // Mantém a leitura do servidor quando a segunda leitura não conclui.
-              }
-            }
           } else if ([429, 502, 503, 504].includes(response.status)) {
             setProgress("Leitura no servidor não concluiu. Última tentativa local: " + file.name);
             const local = await readFuelingWithLocalOcr(image);
@@ -681,7 +673,7 @@ function parseLocalFuelingText(text: string): FuelingReading {
     const t = Number(resolvedTotal);
     const d = Number(discount || 0);
     const expected = l * p - d;
-    const tolerance = Math.max(0.15, l * p * 0.0035);
+    const tolerance = Math.max(0.12, l * p * 0.0005);
 
     if (Math.abs(expected - t) <= tolerance) {
       consistency = "confirmed";
@@ -957,7 +949,7 @@ function mergeFuelingReadings(server: FuelingReading, local: FuelingReading): Fu
   const d = merged.discount_amount ? Number(merged.discount_amount) : 0;
   if (l && p && t) {
     const expected = l * p - d;
-    const tolerance = Math.max(0.15, l * p * 0.0035);
+    const tolerance = Math.max(0.12, l * p * 0.0005);
     if (Math.abs(expected - t) <= tolerance) {
       merged.consistency = "confirmed";
       merged.confidence = Math.max(merged.confidence, 0.92);
@@ -1143,26 +1135,42 @@ function findFuelProductNumbers(text: string) {
   const normalized = normalizeLocal(text);
   const dieselIndex = normalized.search(/oleo diesel|diesel s ?500|diesel s ?10|\bdiesel\b/);
   const source = dieselIndex >= 0
-    ? text.slice(Math.max(0, dieselIndex - 180), Math.min(text.length, dieselIndex + 380))
+    ? text.slice(Math.max(0, dieselIndex - 220), Math.min(text.length, dieselIndex + 520))
     : text;
 
-  const tokens = [...source.matchAll(/\b(\d{1,4}[.,]\d{2,3})\b/g)]
-    .map((match) => ({ raw: match[1], value: decimalToken(match[1]) }))
-    .filter((item): item is { raw: string; value: string } => !!item.value)
-    .map((item) => ({ ...item, number: Number(item.value) }));
+  const rawTokens = [...source.matchAll(/\b([0-9]{1,8}(?:[.,][0-9]{1,3})?)\b/g)].map((m) => m[1]);
+  const candidates = rawTokens.map((raw) => ({
+    raw,
+    liters: localRoleNumber(raw, "liters"),
+    price: localRoleNumber(raw, "price"),
+    money: localRoleNumber(raw, "money"),
+  }));
 
-  const litersCandidate = tokens.find((item) => {
-    const decimals = (item.raw.split(/[.,]/)[1] || "").length;
-    return item.number >= 50 && item.number <= 3000 && decimals >= 2;
-  });
-  const priceCandidate = tokens.find((item) => item.number >= 2 && item.number <= 20);
-  const grossCandidate = tokens.find((item) => item.number >= 100 && item !== litersCandidate);
+  let best: { liters: string; price: string; gross: string; error: number } | null = null;
+  for (const l of candidates.map((x) => x.liters).filter((v): v is string => !!v)) {
+    for (const p of candidates.map((x) => x.price).filter((v): v is string => !!v)) {
+      const expected = Number(l) * Number(p);
+      for (const g of candidates.map((x) => x.money).filter((v): v is string => !!v)) {
+        const error = Math.abs(expected - Number(g));
+        const tolerance = Math.max(0.12, expected * 0.0005);
+        if (error <= tolerance && (!best || error < best.error)) best = { liters: l, price: p, gross: g, error };
+      }
+    }
+  }
+  if (best) return { liters: best.liters, price: best.price, gross: best.gross };
 
-  return {
-    liters: litersCandidate?.value ?? null,
-    price: priceCandidate?.value ?? null,
-    gross: grossCandidate?.value ?? null,
-  };
+  const liters = candidates.map((x) => x.liters).find((v) => v && Number(v) >= 20 && Number(v) <= 3000) ?? null;
+  const price = candidates.map((x) => x.price).find((v) => v && Number(v) >= 2 && Number(v) <= 20) ?? null;
+  let gross: string | null = null;
+
+  if (liters && price) {
+    const expected = Number(liters) * Number(price);
+    const money = candidates.map((x) => x.money).filter((v): v is string => !!v)
+      .sort((a, b) => Math.abs(Number(a) - expected) - Math.abs(Number(b) - expected))[0] ?? null;
+    if (money && Math.abs(Number(money) - expected) <= Math.max(0.12, expected * 0.0005)) gross = money;
+  }
+
+  return { liters, price, gross };
 }
 
 
@@ -1185,7 +1193,7 @@ function reconcileFuelingBatch(rows: ReadItem[]) {
     for (const p of prices) {
       const expected = l.value * p.value;
       for (const t of totals) {
-        const tolerance = Math.max(0.25, expected * 0.0035);
+        const tolerance = Math.max(0.12, expected * 0.0005);
         if (Math.abs(expected - t.value) > tolerance) continue;
 
         const distinctPhotos = new Set([l.index, p.index, t.index]).size;
