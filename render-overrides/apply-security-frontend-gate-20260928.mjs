@@ -37,30 +37,16 @@ edit("src/routes/index.tsx", (s) => {
   if (s.includes('meta="Acesso restrito à gerência"')) return s;
   let out = s.replace('import { useFleet } from "@/lib/use-fleet";\n', "");
   out = out.replace(
-    `function Home() {
-  const { data } = useFleet();
-  const pending = data?.reports.filter((r) => r.status === "pendente").length ?? 0;
-  const trips = data?.trips.length ?? 0;
-
-`,
-    `function Home() {
-`
+    /function Home\(\) \{\n\s*const \{ data \} = useFleet\(\);\n\s*const pending = [^\n]+\n\s*const trips = [^\n]+\n\n/,
+    "function Home() {\n"
   );
   out = out.replace(
-    `            meta={
-              data
-                ? \`${data.drivers.filter((d) => d.status === "ativo").length} motoristas ativos\`
-                : "Carregando cadastros…"
-            }`,
-    '            meta="Acesso do motorista com login"'
+    /(cta="Abrir app do motorista")\n\s*meta=\{[\s\S]*?\n\s*\}/,
+    '$1\n            meta="Acesso do motorista com login"'
   );
   out = out.replace(
-    `            meta={
-              data
-                ? \`${trips} viagens · ${pending} lançamento${pending === 1 ? "" : "s"} pendente${pending === 1 ? "" : "s"}\`
-                : "Carregando painel…"
-            }`,
-    '            meta="Acesso restrito à gerência"'
+    /(cta="Abrir Painel Gerência")\n\s*meta=\{[\s\S]*?\n\s*\}/,
+    '$1\n            meta="Acesso restrito à gerência"'
   );
   return out;
 });
