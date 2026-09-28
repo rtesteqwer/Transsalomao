@@ -279,6 +279,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                applyCleanWebTheme(view);
                 if (pendingWebsiteTab != null) {
                     String section = pendingWebsiteTab;
                     pendingWebsiteTab = null;
@@ -390,6 +391,42 @@ public class MainActivity extends Activity {
             case "IA": return "Salomão IA";
             default: return "Painel da Gerência";
         }
+    }
+
+    private void applyCleanWebTheme(WebView view) {
+        String js = "(function(){"
+                + "var id='transsalomao-apk-clean-theme';"
+                + "var old=document.getElementById(id);if(old)old.remove();"
+                + "var s=document.createElement('style');s.id=id;"
+                + "s.textContent="
+                + "'html,body{background:#050b12!important;color:#f5f8fc!important;}'"
+                + "+'body{padding-bottom:8px!important;}'"
+                + "+'header,nav,footer{display:none!important;}'"
+                + "+'main{background:#050b12!important;color:#f5f8fc!important;min-height:100vh!important;padding-top:8px!important;}'"
+                + "+'.bg-white,[class*=\\"bg-white\\"],[class*=\\"bg-gray-50\\"],[class*=\\"bg-slate-50\\"]{background:#0c1825!important;color:#f5f8fc!important;}'"
+                + "+'[class*=\\"border-gray\\"],[class*=\\"border-slate\\"]{border-color:#26394c!important;}'"
+                + "+'[class*=\\"text-gray-9\\"],[class*=\\"text-slate-9\\"],[class*=\\"text-gray-8\\"],[class*=\\"text-slate-8\\"]{color:#f5f8fc!important;}'"
+                + "+'[class*=\\"text-gray-7\\"],[class*=\\"text-slate-7\\"],[class*=\\"text-gray-6\\"],[class*=\\"text-slate-6\\"],[class*=\\"text-gray-5\\"],[class*=\\"text-slate-5\\"]{color:#9aaec7!important;}'"
+                + "+'input,select,textarea{background:#111f2f!important;color:#f5f8fc!important;border:1px solid #26394c!important;border-radius:14px!important;}'"
+                + "+'input::placeholder,textarea::placeholder{color:#7890aa!important;}'"
+                + "+'button{border-radius:14px!important;}'"
+                + "+'table,thead,tbody,tr,td,th{background-color:transparent!important;color:inherit!important;border-color:#26394c!important;}'"
+                + "+'section,article,[class*=\\"rounded\\"]{border-color:#26394c!important;}'"
+                + "+'[class*=\\"shadow\\"]{box-shadow:0 10px 30px rgba(0,0,0,.24)!important;}'"
+                + "+'a{color:#4da8ff!important;}'"
+                + "+'*{scrollbar-color:#31465d #050b12;}'"
+                + ";document.head.appendChild(s);"
+                + "var all=[].slice.call(document.querySelectorAll('body *'));"
+                + "all.forEach(function(el){"
+                + "var t=(el.innerText||'').replace(/\\s+/g,' ').trim().toLowerCase();"
+                + "var cs=getComputedStyle(el);"
+                + "if((cs.position==='fixed'||cs.position==='sticky')"
+                + "&&(t.indexOf('início')>=0||t.indexOf('inicio')>=0)"
+                + "&&t.indexOf('caixa')>=0&&t.indexOf('viagens')>=0){el.style.display='none';}"
+                + "});"
+                + "return 'clean-theme-applied';"
+                + "})();";
+        view.evaluateJavascript(js, null);
     }
 
     private void clickWebsiteTab(String section) {
