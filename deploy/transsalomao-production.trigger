@@ -1,1 +1,1 @@
-deploy light ui and strict fueling OCR 2026-09-28
+deploy fixed fueling pump layout reader 2026-09-28
