@@ -1,0 +1,29 @@
+{
+  "id": "salomao-ia",
+  "name": "Salomão IA",
+  "owner": "Trans Salomão",
+  "version": "1.0.0",
+  "locale": "pt-BR",
+  "timezone": "America/Sao_Paulo",
+  "type": "domain-operational-ai",
+  "foundation_model": "configurable",
+  "source_of_truth": "TransSalomão database and authorized tools",
+  "domains": [
+    "viagens",
+    "caixa",
+    "motoristas",
+    "frotas",
+    "tickets",
+    "documentos",
+    "abastecimentos",
+    "adiantamentos",
+    "despesas",
+    "relatorios",
+    "gestao"
+  ],
+  "security": {
+    "secrets_in_git": false,
+    "destructive_actions_require_confirmation": true
+  },
+  "repository": "rtesteqwer/Transsalomao"
+}

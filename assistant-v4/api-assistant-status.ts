@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
+import { SALOMAO_AI_IDENTITY } from "@/lib/salomao-identity.server";
 
 export const Route = createFileRoute("/api/assistant/status")({
   server: {
@@ -22,6 +23,7 @@ export const Route = createFileRoute("/api/assistant/status")({
         return Response.json({
           ok: true,
           aiConfigured: !!env || dbConfigured,
+          identity: { id: SALOMAO_AI_IDENTITY.id, name: SALOMAO_AI_IDENTITY.name, organization: SALOMAO_AI_IDENTITY.organization, version: SALOMAO_AI_IDENTITY.version },
           model: process.env.OPENAI_ASSISTANT_MODEL?.trim() || "gpt-5.6-sol",
         }, { headers: { "Cache-Control": "no-store" } });
       },
