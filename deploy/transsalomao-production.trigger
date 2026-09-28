@@ -1,1 +1,1 @@
-deploy shared fueling OCR worker fix 2026-09-27
+deploy server OCR and batch fueling reconciliation 2026-09-27
