@@ -101,4 +101,12 @@ if (!css.includes(marker)) {
   css += '\n:root { ' + marker + ' }\n';
 }
 fs.writeFileSync(cssPath, css);
+
+const rootPath = path.join(target, 'src', 'routes', '__root.tsx');
+if (fs.existsSync(rootPath)) {
+  let root = fs.readFileSync(rootPath, 'utf8');
+  root = root.replace('{ name: "theme-color", content: "#f7f9fc" },', '{ name: "theme-color", content: "#ffffff" },\n      { name: "color-scheme", content: "light only" },');
+  fs.writeFileSync(rootPath, root);
+}
+
 console.log('[css-cache-bust] forced light theme, black text and fresh hashed CSS asset');
