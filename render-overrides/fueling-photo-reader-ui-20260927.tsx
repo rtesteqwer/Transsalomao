@@ -259,8 +259,8 @@ export function FuelingPhotoReader() {
             <h2 className="font-display text-xl font-semibold sm:text-2xl">Leitor de abastecimento</h2>
           </div>
           <p className="mt-2 max-w-3xl text-sm text-muted">
-            Envie fotos do ticket do posto ou do visor da bomba. A Salomão IA identifica litros,
-            preço por litro, total, posto, combustível, bomba, data, placa e odômetro sem arredondar os valores.
+            Envie fotos do ticket do posto ou do visor da bomba. No visor padrão da Trans Salomão:
+            cima = valor total, meio = litros e baixo = preço por litro. A leitura preserva as casas decimais e confere os valores matematicamente.
           </p>
         </div>
 
@@ -1069,6 +1069,7 @@ function findPumpDisplayNumbers(lines: string[]) {
   const joined = lines.join("\n");
   const normalized = normalizeLocal(joined);
   const detected = /total a pagar|preco por litro|litros|r\$/.test(normalized);
+  const receiptLike = /cnpj|danfe|nota fiscal|nf-?e|cupom|comprovante|nsu|autorizacao/.test(normalized);
 
   const allTokens = [...joined.matchAll(/\b(\d{1,6}[.,]\d{2,3})\b/g)]
     .map((m) => ({ raw: m[1], value: decimalToken(m[1]) }))
@@ -1092,7 +1093,31 @@ function findPumpDisplayNumbers(lines: string[]) {
   let liters = afterLabel(/^litros$|\blitros\b|quantidade|\bqtd\b/);
   let price = afterLabel(/preco por litro|preco\/l|r\$\/l|vl\.?unit/);
 
-  // Procura uma combinação matematicamente válida no mesmo visor.
+  // Regra visual fixa confirmada para a bomba usada pela Trans Salomão:
+  // topo = valor total; meio = litros; parte inferior = preço por litro.
+  // Se o OCR perder os separadores, recuperamos pelo papel de cada posição.
+  const orderedRaw = [...joined.matchAll(/\b(\d{1,8}(?:[.,]\d{1,3})?)\b/g)].map((m) => m[1]);
+  if (!receiptLike && orderedRaw.length >= 3) {
+    for (let i = 0; i <= orderedRaw.length - 3; i += 1) {
+      const top = localRoleNumber(orderedRaw[i], "money");
+      const middle = localRoleNumber(orderedRaw[i + 1], "liters");
+      const bottom = localRoleNumber(orderedRaw[i + 2], "price");
+      if (!top || !middle || !bottom) continue;
+
+      const expected = Number(middle) * Number(bottom);
+      const diff = Math.abs(expected - Number(top));
+      const tolerance = Math.max(0.20, expected * 0.004);
+      if (diff <= tolerance) {
+        total = total || top;
+        liters = liters || middle;
+        price = price || bottom;
+        break;
+      }
+    }
+  }
+
+  // Depois da posição, uma segunda conferência encontra qualquer trio
+  // total/litros/preço que feche matematicamente.
   if (allTokens.length >= 3) {
     for (const p of allTokens.filter((x) => x.number >= 2 && x.number <= 20)) {
       for (const l of allTokens.filter((x) => x.number >= 20 && x.number <= 3000)) {
