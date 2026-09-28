@@ -266,7 +266,7 @@ if (!original.includes("apply-financial-document-reader-20260927.mjs")) {
 // Toda viagem comprovadamente faltante entra somente como pendente na aba Caixa.
 if (!original.includes("apply-klebersom-legacy-caixa-20260928.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error('Missing Klebersom legacy Caixa insertion point');
-  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-klebersom-legacy-caixa-20260928.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n${dailyMarker}`);
+  original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-klebersom-legacy-caixa-20260928.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
 // Segurança final: autenticação, sessões, rate limit, tickets atômicos e proteção da Salomão IA.
