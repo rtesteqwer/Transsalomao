@@ -24,7 +24,7 @@ export const Route = createFileRoute("/api/assistant")({
 
       POST: async ({ request }) => {
         const auth = await authenticateAssistantRequest(request);
-        if (!auth) return out({ ok: false, code: "LOGIN_REQUIRED", answer: "Faça a autenticação do Salomão IA para liberar o acesso independente." }, 401);
+        if (!auth) return out({ ok: false, code: "LOGIN_REQUIRED", answer: "Faça a autenticação do Trans Salomão IA para liberar o acesso independente." }, 401);
         if (request.headers.get("x-salomao-app") !== "1") return out({ ok: false, code: "APP_HEADER_REQUIRED" }, 403);
 
         let body: any = {};
@@ -58,7 +58,7 @@ export const Route = createFileRoute("/api/assistant")({
               ok: false,
               mode: "gpt-unavailable",
               code: "OPENAI_BILLING_INACTIVE",
-              answer: "A Salomão IA está conectada à OpenAI, mas a conta da API está sem créditos. Não vou executar comandos por um modo inferior para evitar alterações erradas."
+              answer: "A Trans Salomão IA está conectada à OpenAI, mas a conta da API está sem créditos. Não vou executar comandos por um modo inferior para evitar alterações erradas."
             }, 503);
           }
           if (lastAiError.includes("invalid_api_key") || lastAiError.includes("Incorrect API key")) {
@@ -758,7 +758,7 @@ async function executeAssistantTool(name:string,args:Row,actor:string,userMessag
 
 async function gptAnswer(message:string,history:Turn[],key:string,actor:string){
   const prior=history.map((x)=>`${x.role==="user"?"Usuário":"Salomão"}: ${x.role==="user"?redactSecrets(x.content):x.content}`).join("\n")||"(sem histórico)";
-  const instructions=`Você é Salomão IA, agente operacional autônomo da transportadora Trans Salomão. Fale em português do Brasil, natural, curto e preciso.
+  const instructions=`Você é Trans Salomão IA, agente operacional autônomo da transportadora Trans Salomão. Fale em português do Brasil, natural, curto e preciso.
 
 MISSÃO:
 - Trate cada mensagem como um OBJETIVO a ser concluído, não como uma única ação.
