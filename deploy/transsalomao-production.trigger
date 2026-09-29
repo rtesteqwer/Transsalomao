@@ -3,3 +3,4 @@ fix-persistence-duplicates-20260929-1
 fix-global-reread-20260929-1
 deploy-klebersom-fueling-zip-reader-20260929-1
 deploy-fueling-pending-reconcile-20260929-2
+deploy-driver-trip-zip-upload-20260929-1
