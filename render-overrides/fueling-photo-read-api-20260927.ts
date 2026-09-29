@@ -32,6 +32,7 @@ export const Route = createFileRoute("/api/ler-abastecimento")({
             imageDataUrl: image.dataUrl,
             fileName: typeof body?.fileName === "string" ? body.fileName.slice(0, 180) : null,
             originalFileHash: typeof body?.originalFileHash === "string" ? body.originalFileHash : null,
+            visualFingerprint: typeof body?.visualFingerprint === "string" ? body.visualFingerprint : null,
             selectedDriverName: selectedDriver?.name ?? null,
             selectedFleetName: selectedFleet?.name ?? null,
             tractorPlate: selectedFleet?.tractor_plate ?? null,
