@@ -31,6 +31,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               f.file_name,
               f.mime_type,
               f.image_base64,
+              f.source_hash,
               r.driver_id,
               r.fleet_id,
               r.read_json,
@@ -48,6 +49,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               id: String(row.file_id),
               fileName: String(row.file_name || "abastecimento.jpg"),
               image: `data:${row.mime_type || "image/jpeg"};base64,${row.image_base64}`,
+              originalFileHash: row.source_hash ? String(row.source_hash) : null,
               reading: row.read_json || {},
               driverId: row.driver_id ? String(row.driver_id) : null,
               fleetId: row.fleet_id ? String(row.fleet_id) : null,
@@ -67,6 +69,10 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           if (body?.confirmed !== true) throw new FuelingPhotoError(400, "Confira os dados antes de gravar.");
 
           const image = validateFuelingImage(body?.imagem);
+          const claimedOriginalHash = String(body?.originalFileHash ?? "").trim().toLowerCase();
+          const sourceHash = /^[a-f0-9]{64}$/.test(claimedOriginalHash)
+            ? claimedOriginalHash
+            : image.sourceHash;
           const reading = normalizeFuelingReading(body?.reading, { repairOcr: false });
           const liters = normalizeDecimalText(reading.liters);
           const price = normalizeDecimalText(reading.price_per_liter);
@@ -132,7 +138,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             from fueling_photo_files f
             left join fueling_photo_reads r on r.file_id=f.id
             left join fuelings fu on fu.id=r.fueling_id
-            where f.source_hash=${image.sourceHash}
+            where f.source_hash=${sourceHash}
             limit 1
           `;
 
@@ -293,7 +299,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               insert into fueling_photo_files(id,source_hash,file_name,mime_type,image_base64,created_at)
               values(
                 ${fileId},
-                ${image.sourceHash},
+                ${sourceHash},
                 ${String(body?.fileName ?? "abastecimento.jpg").slice(0,180)},
                 ${image.mime},
                 ${image.base64},
@@ -301,7 +307,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               )
               on conflict(source_hash) do nothing
             `;
-            const actual = await sql`select id from fueling_photo_files where source_hash=${image.sourceHash} limit 1`;
+            const actual = await sql`select id from fueling_photo_files where source_hash=${sourceHash} limit 1`;
             fileId = String(actual[0]?.id ?? fileId);
           }
 
