@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { managementSession } from "@/lib/management-auth.server";
+import { authenticateAssistantRequest } from "@/lib/assistant-auth.server";
 import {
   ensureFuelingPhotoTables,
   fuelingPhotoErrorResponse,
@@ -18,8 +19,8 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!managementSession()) {
-          return Response.json({ ok: false, message: "Entre na Gerência novamente." }, { status: 401 });
+        if (!managementSession() && !(await authenticateAssistantRequest(request))) {
+          return Response.json({ ok: false, message: "Entre na Gerência ou na Trans Salomão IA novamente." }, { status: 401 });
         }
         try {
           const body: any = await request.json();

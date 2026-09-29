@@ -13,9 +13,11 @@ const copies = [
   ['assistant-v4/api-assistant.ts', 'src/routes/api/assistant.ts'],
   ['assistant-v4/api-assistant-status.ts', 'src/routes/api/assistant/status.ts'],
   ['assistant-v4/api-document-intake.ts', 'src/routes/api/assistant/document-intake.ts'],
+  ['assistant-v4/api-document-launch-trip.ts', 'src/routes/api/assistant/document-launch-trip.ts'],
   ['assistant-v4/api-assistant-developer.ts', 'src/routes/api/assistant/developer.ts'],
   ['assistant-v4/api-assistant-programmer-proxy.ts', 'src/routes/api/assistant/programmer-proxy.ts'],
   ['assistant-v4/api-axor-sample-import.ts', 'src/routes/api/assistant/axor-sample-import.ts'],
+  ['assistant-v4/document-uploader.tsx', 'src/components/document-uploader.tsx'],
   ['assistant-v4/salomao-web.tsx', 'src/routes/salomao-ia.tsx'],
   ['assistant-v4/0012_management_users_assistant_sessions.sql', 'migrations/0012_management_users_assistant_sessions.sql'],
 ];
