@@ -1,5 +1,5 @@
 import { applyFuelReceiptLine, readFuelReceiptLine, FUELING_MONEY_TOLERANCE } from "@/lib/fueling-receipt-rules";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Camera, CheckCircle2, Fuel, LoaderCircle, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ type ReadItem = {
   saving?: boolean;
   saved?: boolean;
   message?: string;
+  pending?: boolean;
 };
 
 // Um único worker é compartilhado entre todas as fotos e entre novos lotes.
@@ -83,6 +84,38 @@ export function FuelingPhotoReader() {
   const [errors, setErrors] = useState<string[]>([]);
   const [reading, setReading] = useState(false);
   const [progress, setProgress] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/salvar-abastecimento-foto", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { "Accept": "application/json" },
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload?.message || "Não foi possível carregar os lançamentos pendentes.");
+        if (cancelled || !Array.isArray(payload?.items)) return;
+        const pendingItems: ReadItem[] = payload.items.map((row: any) => ({
+          id: "pending:" + String(row.id),
+          fileName: String(row.fileName || "abastecimento.jpg"),
+          image: String(row.image || ""),
+          reading: row.reading as FuelingReading,
+          suggestedDriverId: row.driverId ? String(row.driverId) : null,
+          suggestedFleetId: row.fleetId ? String(row.fleetId) : null,
+          pending: true,
+          saved: false,
+          message: "Lançamento pendente: complete os dados que faltam e grave novamente.",
+        }));
+        setItems((current) => reconcileFuelingBatch([...pendingItems, ...current]));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "Não foi possível carregar os lançamentos pendentes.";
+        setErrors((current) => [...current, message]);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const safeCount = useMemo(() => items.filter((item) =>
     !item.saved &&
@@ -222,7 +255,13 @@ export function FuelingPhotoReader() {
       if (!response.ok) throw new Error(payload?.message || "Não foi possível gravar.");
       setItems((current) => current.map((row) =>
         row.id === item.id
-          ? { ...row, saving: false, saved: true, message: payload?.message || "Abastecimento gravado." }
+          ? {
+              ...row,
+              saving: false,
+              saved: true,
+              pending: Boolean(payload?.pending),
+              message: payload?.message || (payload?.pending ? "Lançamento salvo para a Gerência completar." : "Abastecimento gravado."),
+            }
           : row
       ));
       await queryClient.invalidateQueries({ queryKey: fleetKey });
@@ -311,7 +350,7 @@ export function FuelingPhotoReader() {
             ))}
           </Select>
         </Field>
-        <Field label="Conjunto" hint="Obrigatório para gravar; pode ser detectado pela placa">
+        <Field label="Conjunto" hint="Em foto da bomba, pode ficar pendente para a Gerência completar depois">
           <Select value={fleetId} onChange={(event) => setFleetId(event.target.value)}>
             <option value="">Detectar pela placa / selecionar depois</option>
             {(data?.fleets ?? []).filter((fleet) => fleet.status === "ativo").map((fleet) => (
@@ -415,6 +454,11 @@ function FuelingReadCard({
             <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted">
               {Math.round(r.confidence * 100)}% confiança
             </span>
+            {item.pending ? (
+              <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium">
+                Pendente da Gerência
+              </span>
+            ) : null}
           </div>
           <p className={"mt-2 flex items-center gap-1 text-xs " + (r.consistency === "conflict" ? "text-danger" : "text-muted")}>
             {r.consistency === "conflict" ? <AlertTriangle className="size-3.5" /> : <CheckCircle2 className="size-3.5" />}
@@ -523,7 +567,13 @@ function FuelingReadCard({
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button type="button" onClick={onSave} disabled={item.saving || item.saved || r.consistency === "conflict" || !r.liters || !r.price_per_liter || !r.total_amount}>
           {item.saving ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-          {item.saved ? "Gravado" : item.saving ? "Gravando…" : "Gravar abastecimento"}
+          {item.saved
+            ? (item.pending ? "Pendente salvo" : "Gravado")
+            : item.saving
+              ? "Gravando…"
+              : item.pending
+                ? "Completar lançamento"
+                : "Gravar abastecimento"}
         </Button>
         {item.message ? (
           <span className={"text-xs " + (item.saved ? "text-muted" : "text-danger")}>{item.message}</span>
