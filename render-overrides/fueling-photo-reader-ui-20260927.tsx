@@ -766,8 +766,38 @@ function parseLocalFuelingText(text: string): FuelingReading {
       alerts.push("Os valores reconhecidos não fecharam matematicamente. Confira litros, preço, desconto e total.");
     }
   } else if (liters && price) {
-    consistency = "partial";
-    confidence = 0.84;
+    const d = Number(discount || 0);
+    const calculatedTotal = Number(liters) * Number(price) - d;
+    if (calculatedTotal > 0 && calculatedTotal <= 100000) {
+      resolvedTotal = calculatedTotal.toFixed(2);
+      consistency = "calculated";
+      confidence = 0.88;
+      calculationBasis = discount
+        ? "Total calculado por litros × preço/L − desconto."
+        : "Total calculado por litros × preço/L.";
+      alerts.push("O total não foi lido com segurança e foi calculado pelos dois campos exatos.");
+    } else {
+      consistency = "partial";
+      confidence = 0.84;
+    }
+  } else if (liters && resolvedTotal && !price) {
+    const derived = (Number(resolvedTotal) + Number(discount || 0)) / Number(liters);
+    if (derived >= 2 && derived <= 20) {
+      price = derived.toFixed(3);
+      consistency = "calculated";
+      confidence = 0.86;
+      calculationBasis = "Preço/L calculado por (total + desconto) ÷ litros.";
+      alerts.push("O preço/L não foi lido com segurança e foi calculado pelos outros campos.");
+    }
+  } else if (price && resolvedTotal && !liters) {
+    const derived = (Number(resolvedTotal) + Number(discount || 0)) / Number(price);
+    if (derived >= 1 && derived <= 2500) {
+      liters = derived.toFixed(3);
+      consistency = "calculated";
+      confidence = 0.86;
+      calculationBasis = "Litros calculados por (total + desconto) ÷ preço/L.";
+      alerts.push("Os litros não foram lidos com segurança e foram calculados pelos outros campos.");
+    }
   }
 
   return applyFuelReceiptLine({

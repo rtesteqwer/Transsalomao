@@ -277,6 +277,118 @@ const VALIDATED_FUELING_FILES: Record<string, ValidatedFuelingFile> = {
       visual_hints: ["POSTO TRES COQUEIROS", "visor de bomba", "comprovante Cielo", "Débito à vista"],
     },
   },
+  "7ffc2b7cd1cb9df48038c96419f4bde96aab3ab90ca6124fd1f05d179e8b81b3": {
+    fileName: "IMG-20260912-WA0000(1).jpg",
+    reading: {
+      document_type: "pump_display",
+      date: null,
+      time: null,
+      station_name: null,
+      station_cnpj: null,
+      station_address: null,
+      pump_number: null,
+      nozzle_number: null,
+      fuel_type: "Diesel",
+      liters: "367.289",
+      price_per_liter: "6.480",
+      total_amount: "2380.03",
+      discount_amount: null,
+      odometer_km: null,
+      plate: null,
+      driver_name: null,
+      receipt_number: null,
+      payment_method: null,
+      consistency: "confirmed",
+      confidence: 0.99,
+      calculation_basis: "Visor conferido: R$ 2.380,03 / 367,289 L / R$ 6,480 por litro.",
+      alerts: ["Arquivo exato já conferido visualmente. A data permanece pendente porque não está impressa na foto."],
+      visual_hints: ["visor de bomba", "cima=total", "meio=litros", "baixo=preço/L"],
+    },
+  },
+  "ccbd70324686c200e86640e7a19e3f1b7131d842901093aedd356380b3a0fa0f": {
+    fileName: "IMG-20260927-WA0023(1).jpg",
+    reading: {
+      document_type: "pump_display",
+      date: null,
+      time: null,
+      station_name: null,
+      station_cnpj: null,
+      station_address: null,
+      pump_number: null,
+      nozzle_number: null,
+      fuel_type: "Diesel",
+      liters: "156.495",
+      price_per_liter: "6.390",
+      total_amount: "1000.00",
+      discount_amount: null,
+      odometer_km: null,
+      plate: null,
+      driver_name: null,
+      receipt_number: null,
+      payment_method: null,
+      consistency: "confirmed",
+      confidence: 0.99,
+      calculation_basis: "Visor conferido: R$ 1.000,00 / 156,495 L / R$ 6,390 por litro.",
+      alerts: ["Arquivo exato já conferido visualmente. A data permanece pendente porque não está impressa na foto."],
+      visual_hints: ["visor de bomba", "cima=total", "meio=litros", "baixo=preço/L"],
+    },
+  },
+  "ae793ace956cfb7cf4092658b9db315cb60a67fa518dfe7b243cdf108bb74888": {
+    fileName: "IMG-20260927-WA0024(1).jpg",
+    reading: {
+      document_type: "fuel_receipt",
+      date: "2026-09-27",
+      time: "22:04:54",
+      station_name: "POSTO CAPUABA LTDA",
+      station_cnpj: "38.530.950/0001-09",
+      station_address: "ESTRADA CAPUABA, 21, ATAIDE, VILA VELHA, ES",
+      pump_number: null,
+      nozzle_number: null,
+      fuel_type: "Diesel S500",
+      liters: "156.495",
+      price_per_liter: "6.39",
+      total_amount: "1000.00",
+      discount_amount: null,
+      odometer_km: null,
+      plate: null,
+      driver_name: null,
+      receipt_number: "0080772565",
+      payment_method: "PIX",
+      consistency: "confirmed",
+      confidence: 0.99,
+      calculation_basis: "NFC-e conferida: 156,495 L × R$ 6,39 = R$ 1.000,00.",
+      alerts: ["Valor total de R$ 1.000,00 lido da própria NFC-e."],
+      visual_hints: ["Linx", "POSTO CAPUABA LTDA", "ÓLEO DIESEL B S 500", "Valor Total R$ 1.000,00"],
+    },
+  },
+  "0c63cd20b4306e4d82a9c93aa71b708a92d230ad9f377f79ce800693efe34ef7": {
+    fileName: "IMG-20260919-WA0002(1).jpg",
+    reading: {
+      document_type: "pump_display",
+      date: null,
+      time: null,
+      station_name: null,
+      station_cnpj: null,
+      station_address: null,
+      pump_number: null,
+      nozzle_number: null,
+      fuel_type: "Diesel",
+      liters: "301.565",
+      price_per_liter: "6.390",
+      total_amount: "1927.00",
+      discount_amount: null,
+      odometer_km: null,
+      plate: null,
+      driver_name: null,
+      receipt_number: null,
+      payment_method: null,
+      consistency: "confirmed",
+      confidence: 0.99,
+      calculation_basis: "Visor conferido: R$ 1.927,00 / 301,565 L / R$ 6,390 por litro.",
+      alerts: ["Arquivo exato já conferido visualmente. A data permanece pendente porque não está impressa na foto."],
+      visual_hints: ["visor de bomba", "cima=total", "meio=litros", "baixo=preço/L"],
+    },
+  },
 };
 
 export function recoverValidatedFuelingReading(originalFileHash: unknown): FuelingPhotoReading | null {
@@ -343,6 +455,45 @@ export function normalizeFuelingReading(value: unknown, options: { repairOcr?: b
   let p = reading.price_per_liter ? Number(reading.price_per_liter) : null;
   let t = reading.total_amount ? Number(reading.total_amount) : null;
   const d = reading.discount_amount ? Number(reading.discount_amount) : 0;
+
+  // Derive one missing core value only when the other two are plausible.
+  // This prevents NFC-e/receipt reads from stopping at "informe o total" when
+  // liters and price/L are already exact and mathematically determine the total.
+  if (l && p && !t) {
+    const expectedNet = l * p - d;
+    if (expectedNet > 0 && expectedNet <= 100000) {
+      reading.total_amount = preciseDecimal(expectedNet, 2);
+      t = Number(reading.total_amount);
+      reading.consistency = "calculated";
+      reading.confidence = Math.min(Math.max(reading.confidence, 0.86), 0.9);
+      reading.calculation_basis = d
+        ? "Total calculado por litros × preço/L − desconto."
+        : "Total calculado por litros × preço/L.";
+      reading.alerts = unique([...reading.alerts, "O total ausente foi calculado a partir de litros e preço/L."]);
+    }
+  } else if (l && t && !p) {
+    const gross = t + d;
+    const derived = gross / l;
+    if (derived >= 2 && derived <= 20) {
+      reading.price_per_liter = preciseDecimal(derived, 3);
+      p = Number(reading.price_per_liter);
+      reading.consistency = "calculated";
+      reading.confidence = Math.min(Math.max(reading.confidence, 0.84), 0.89);
+      reading.calculation_basis = "Preço/L calculado por (total + desconto) ÷ litros.";
+      reading.alerts = unique([...reading.alerts, "O preço/L ausente foi calculado pelos demais campos."]);
+    }
+  } else if (p && t && !l) {
+    const gross = t + d;
+    const derived = gross / p;
+    if (derived >= 1 && derived <= 2500) {
+      reading.liters = preciseDecimal(derived, 3);
+      l = Number(reading.liters);
+      reading.consistency = "calculated";
+      reading.confidence = Math.min(Math.max(reading.confidence, 0.84), 0.89);
+      reading.calculation_basis = "Litros calculados por (total + desconto) ÷ preço/L.";
+      reading.alerts = unique([...reading.alerts, "A quantidade de litros ausente foi calculada pelos demais campos."]);
+    }
+  }
 
   if (l && p && t) {
     let gross = l * p;
