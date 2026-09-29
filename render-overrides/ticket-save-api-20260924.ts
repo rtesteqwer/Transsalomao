@@ -8,7 +8,7 @@ export const Route = createFileRoute("/api/salvar-ticket")({
   server: { handlers: {
     POST: async ({ request }) => {
       try {
-        const access = await ticketAccess(request);
+        const access = ticketAccess(request);
         const data = validateSave(await readBody(request));
         if (access.driverId && access.driverId !== data.driverId) throw new TicketError(403, "Use o motorista vinculado ao seu login.");
         const sql = await getSql();
