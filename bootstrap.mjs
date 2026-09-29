@@ -303,6 +303,16 @@ if (!original.includes("apply-data-integrity-20260929.mjs")) {
   );
 }
 
+// Compartilhamento manual de fotos/PDFs com o app ChatGPT via Android Web Share API.
+// Não usa API de IA e não salva o arquivo por este botão; o usuário escolhe o ChatGPT no compartilhamento.
+if (!original.includes("apply-share-to-chatgpt-20260929.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing ChatGPT share insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-share-to-chatgpt-20260929.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Fix the TanStack Start transport before Vite hashes the browser assets.
 // Using JSON avoids the framed-response retry loop observed in Edge, and doing
 // this before the build guarantees new immutable JS filenames for clients.
