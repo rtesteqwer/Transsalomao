@@ -16,7 +16,7 @@ export const Route = createFileRoute("/api/ler-ticket")({
   server: { handlers: {
     GET: async ({ request }) => {
       try {
-        const access = ticketAccess(request);
+        const access = await ticketAccess(request);
         return json({
           authenticated: true,
           ...access,
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/api/ler-ticket")({
 
     POST: async ({ request }) => {
       try {
-        const access = ticketAccess(request);
+        const access = await ticketAccess(request);
         const body = await readBody(request);
         const freightMode = normalizeFreightMode(body.freightMode);
         const autoDetectMode = body.autoDetectMode === true;
