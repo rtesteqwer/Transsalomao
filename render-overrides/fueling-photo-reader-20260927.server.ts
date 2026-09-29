@@ -134,7 +134,7 @@ export function normalizeFuelingReading(value: unknown, options: { repairOcr?: b
   const timeRaw = text(source.time, 20);
   const reading: FuelingPhotoReading = {
     document_type: documentType,
-    date: dateRaw && /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : null,
+    date: dateRaw && validIsoFuelingDate(dateRaw) ? dateRaw : null,
     time: timeRaw && /^\d{2}:\d{2}(?::\d{2})?$/.test(timeRaw) ? timeRaw : null,
     station_name: cleanStationText(text(source.station_name, 220)),
     station_cnpj: text(source.station_cnpj, 40),
@@ -243,6 +243,17 @@ export function normalizeFuelingReading(value: unknown, options: { repairOcr?: b
     }
   }
   return reading;
+}
+
+function validIsoFuelingDate(value: string) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
 function preciseDecimal(value: number, decimals: number) {
@@ -1098,7 +1109,8 @@ function serverFindDate(lines: string[]) {
     const m = line.match(/\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2}|\d{2})\b/);
     if (!m) continue;
     const y = m[3].length === 2 ? "20" + m[3] : m[3];
-    return y + "-" + String(Number(m[2])).padStart(2, "0") + "-" + String(Number(m[1])).padStart(2, "0");
+    const candidate = y + "-" + String(Number(m[2])).padStart(2, "0") + "-" + String(Number(m[1])).padStart(2, "0");
+    if (validIsoFuelingDate(candidate)) return candidate;
   }
 
   // COOSSUTRAN imprime a data em três colunas: DIA / MÊS / ANO.
