@@ -1,15 +1,17 @@
 // Shared by server OCR and the Android/browser fallback. Examples belong in
 // tests; transactional values must always come from the current photograph.
-export const FUELING_READER_VERSION = "2026-09-28-nfce-v1";
+export const FUELING_READER_VERSION = "2026-09-28-layouts-v2";
 export const FUELING_MONEY_TOLERANCE = 0.02;
 
 export const FUEL_RECEIPT_INSTRUCTIONS = [
-  "Em cupons NFC-e/Linx, leia a área de itens: Qtde = litros, UN = L, Vl Unit = preço/L, Total da linha do DIESEL = valor do combustível.",
-  "O produto pode estar numa linha e os números na linha seguinte. Qtde. total de itens é contagem de produtos, NUNCA litros.",
-  "Use a razão social do posto como emitente, não o logotipo Linx. Diesel B S 500 é Diesel S500.",
-  "Leia o total incluindo TODOS os separadores: 1.000,00 significa mil reais. Preserve 156,495 litros como 156.495 no JSON; nunca como 156495.",
-  "Em nota com outros produtos, não atribua o total geral, pagamento, troco ou desconto global ao diesel. Se não puder separar os itens, sinalize conflito para conferência.",
-  "Se os dígitos do total não fecharem com litros × preço/L, não mude litros ou preço para encaixá-los. Deixe o total duvidoso vazio e sinalize conflito.",
+  "Em cupons NFC-e/Linx, leia a área de itens: Qtde = litros, UN = L, Vl Unit = preço/L e o valor final pago vem de Valor Total/Valor Pago. O logotipo Linx NÃO é o nome do posto; use a razão social emitente.",
+  "Em DANFE/Xpert/Fred Rosalem, QTD da linha OLEO DIESEL = litros, VL.UNIT = preço/L, Valor Total dos Produtos = bruto, Valor Descontos = desconto e Valor Total = total final pago.",
+  "Em Nota Promissória do Posto Nevada, use a linha Produto/OLEO DIESEL: Qtd = litros, Unit = preço/L e Total = valor do abastecimento. A placa pode aparecer após Veículo:, mesmo sem a palavra Placa.",
+  "Em ordem COOSSUTRAN, DIESEL = litros, o R$ na mesma linha é preço/L, o último TOTAL R$ é o valor final, Veículo Placa é a placa e a data pode vir separada em DIA / MÊS / ANO.",
+  "O produto pode estar numa linha e os números na linha seguinte. Qtde. total de itens é contagem de produtos, NUNCA litros. Vencimento não é data do abastecimento.",
+  "Leia todos os separadores: 1.000,00 significa mil reais; 156,495 litros significa 156.495 no JSON. Nunca remova vírgula/ponto de modo a multiplicar o valor por 100 ou 1000.",
+  "Quando houver desconto, valide litros × preço/L − desconto ≈ total final. Diferença de arredondamento de centavos é aceitável; não altere litros/preço para forçar uma conta.",
+  "Em nota com vários produtos ou mais de uma linha de diesel, não atribua total geral, pagamento, troco ou desconto global ao diesel sem separação segura. Sinalize conflito.",
 ].join("\n");
 
 const folded = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -55,11 +57,19 @@ export function readFuelReceiptLine(text: string): FuelReceiptEvidence {
       if (/diesel|gasolina|etanol|arla|subtotal|total\s+de\s+itens|valor\s+total|pagamento|cnpj|chave|protocolo|tributo/.test(folded(next))) break;
       area.push(next);
     }
-    // Anchoring on the liter unit prevents product codes, S500, item counts,
-    // years and tax figures from ever becoming a quantity or unit price.
+    // Prefer the explicit liter unit. Some real layouts (Nevada/Xpert OCR)
+    // collapse the QTD/UN columns and omit the "L" from the recognized row;
+    // in that case require decimal-shaped quantity + decimal-shaped unit price
+    // immediately after DIESEL so S10/S500, dates and document numbers cannot
+    // become liters or price.
     const number = "(?:[0-9]{1,3}(?:\\.[0-9]{3})+,[0-9]{2,4}|[0-9]+(?:[.,][0-9]{1,4})?)";
-    const row = new RegExp("(" + number + ")\\s+(?:L|LT|LTS|LITRO|LITROS)\\.?\\s+(?:R\\$\\s*)?(" + number + ")(?:\\s+(?:R\\$\\s*)?(" + number + "))?", "i");
-    const match = area.join(" ").match(row);
+    const explicitRow = new RegExp("(" + number + ")\\s+(?:L|LT|LTS|LITRO|LITROS)\\.?\\s+(?:R\\$\\s*[:\\-]?\\s*)?(" + number + ")(?:\\s+(?:R\\$\\s*)?(" + number + "))?", "i");
+    const compactQuantity = "[0-9]{1,4}[.,][0-9]{2,3}";
+    const compactPrice = "[0-9]{1,2}[.,][0-9]{2,3}";
+    const compactMoney = "(?:[0-9]{1,3}(?:\\.[0-9]{3})*,[0-9]{2}|[0-9]+[.,][0-9]{2})";
+    const compactRow = new RegExp("(" + compactQuantity + ")\\s+(?:L|LT|LTS|LITRO|LITROS)?\\.?\\s*(?:R\\$\\s*[:\\-]?\\s*)?(" + compactPrice + ")(?:\\s+(?:R\\$\\s*)?(" + compactMoney + "))?", "i");
+    const joinedArea = area.join(" ");
+    const match = joinedArea.match(explicitRow) || joinedArea.match(compactRow);
     if (!match) continue;
     const liters = normalizeFuelDecimal(match[1]);
     const price = normalizeFuelDecimal(match[2]);
