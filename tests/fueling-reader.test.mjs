@@ -133,6 +133,143 @@ test('a pending fiscal receipt cannot be confirmed by amounts from another photo
 });
 
 
+
+const knownLayoutFixtures = [
+  {
+    name: 'Xpert DANFE with discount and labeled plate',
+    text: \`FRED ROSALEM HELIODORO
+CNPJ: 39.343.553/0001-82
+DANFE Simplificado
+EMISSAO NORMAL
+Numero: 000.005.300 - Serie: 001 Emissao 19/09/2026
+CODIGO DESCRICAO QTD UN VL.UNIT VL.TOTAL VL.DESC
+3 OLEO DIESEL B S10 COMUM
+430,843 L 6,73 2843,56 1,93
+Qtd. Total de Itens 1
+Valor Total dos Produtos R$ 2899,57
+Valor Descontos R$ 56,01
+Valor Total R$ 2843,56
+PLACA: QWS3E13 ODOMETRO:0
+Protocolo e Data de Autorizacao
+232260... 19/09/2026 14:19:21\`,
+    liters: '430.843', price: '6.73', total: '2843.56', plate: 'QWS3E13',
+    date: '2026-09-19', time: '14:19:21', station: /FRED ROSALEM HELIODORO/i,
+  },
+  {
+    name: 'Nevada promissory product row without explicit L unit',
+    text: \`POSTO DE COMBUSTIVEIS NEVADA LTDA
+CNPJ: 01.502.805/0001-04
+Nota Promissoria
+Data: 17/09/26 06:46:47
+Documento: NF.51159
+Veiculo: MQX-5F98 AXOR
+Produto Qtd Unit Total
+OLEO DIESEL B S500 449,614 6,450 2900,01
+QTDE SUBTOTAL ACR/DESC TOTAL
+449,614 2900,01 0,00 2900,01
+FORMA DE PAGAMENTO:
+PRAZO R$ 2900,01
+VENCIMENTO DE 05/10/2026\`,
+    liters: '449.614', price: '6.450', total: '2900.01', plate: 'MQX5F98',
+    date: '2026-09-17', time: '06:46:47', station: /POSTO DE COMBUSTIVEIS NEVADA LTDA/i,
+  },
+  {
+    name: 'Nevada second amount and vehicle plate',
+    text: \`POSTO DE COMBUSTIVEIS NEVADA LTDA
+CNPJ: 01.502.805/0001-04
+Nota Promissoria
+Data: 19/09/26 11:38:05
+Veiculo: MQX-5F98 AXOR
+Produto Qtd Unit Total
+OLEO DIESEL B S500 220,028 6,450 1419,18
+QTDE SUBTOTAL ACR/DESC TOTAL
+220,028 1419,18 0,00 1419,18
+PRAZO R$ 1419,18\`,
+    liters: '220.028', price: '6.450', total: '1419.18', plate: 'MQX5F98',
+    date: '2026-09-19', time: '11:38:05', station: /POSTO DE COMBUSTIVEIS NEVADA LTDA/i,
+  },
+  {
+    name: 'COOSSUTRAN order with separate DIA MES ANO',
+    text: \`COOSSUTRAN - COOPERATIVA UNIDOS DE TRANSPORTE
+CNPJ: 25.046.981/0001-39
+N Ordem Abast.: 43166
+DIESEL: 465,000 Lts. R$: 6,30
+Veiculo Placa: QWS-3E13
+KM: 0
+DIA MES ANO
+12 9 2026
+TOTAL: 465,000
+TOTAL: R$: 2929,50
+CLOVIS SALOMAO GARCIA\`,
+    liters: '465.000', price: '6.30', total: '2929.50', plate: 'QWS3E13',
+    date: '2026-09-12', time: null, station: /COOSSUTRAN/i,
+  },
+  {
+    name: 'COOSSUTRAN low unit price order',
+    text: \`COOSSUTRAN - COOPERATIVA UNIDOS DE TRANSPORTE
+CNPJ: 25.046.981/0001-39
+N Ordem Abast.: 43167
+DIESEL: 44,120 Lts. R$: 2,80
+Veiculo Placa: QWS-3E13
+DIA MES ANO
+12 9 2026
+TOTAL: 44,120
+TOTAL: R$: 123,54\`,
+    liters: '44.120', price: '2.80', total: '123.54', plate: 'QWS3E13',
+    date: '2026-09-12', time: null, station: /COOSSUTRAN/i,
+  },
+  {
+    name: 'Xpert final total after discount',
+    text: \`FRED ROSALEM HELIODORO
+CNPJ: 39.343.553/0001-82
+DANFE Simplificado
+Emissao: 27/09/2026
+OLEO DIESEL BS500 COMUM
+469,325 L 6,65 3060,00 1,95
+Qtd. Total de Itens 1
+Valor Total dos Produtos R$ 3121,01
+Valor Descontos R$ 61,01
+Valor Total R$ 3060,00
+PLACA: MQX5F98 ODOMETRO:0
+Protocolo de Autorizacao 27/09/2026 12:00:07\`,
+    liters: '469.325', price: '6.65', total: '3060.00', plate: 'MQX5F98',
+    date: '2026-09-27', time: '12:00:07', station: /FRED ROSALEM HELIODORO/i,
+  },
+  {
+    name: 'Xpert POS overlay keeps final fiscal amount',
+    text: \`POSTO ROSALEM
+15/09/26 17:09:18
+DEBITO R$ 757,71
+FRED ROSALEM HELIODORO
+CNPJ: 39.343.553/0001-82
+OLEO DIESEL BS500 COMUM
+119,325 L 6,48 757,71 2,01
+Qtd. Total de Itens 1
+Valor Total dos Produtos R$ 773,22
+Valor Descontos R$ 15,51
+Valor Total R$ 757,71
+PLACA: ODOMETRO:0\`,
+    liters: '119.325', price: '6.48', total: '757.71', plate: null,
+    date: '2026-09-15', time: '17:09:18', station: /POSTO ROSALEM|FRED ROSALEM/i,
+  },
+];
+
+for (const [parserName, parse] of [['server', server.parseServerFuelingOcr], ['browser', local.parseLocalFuelingText]]) {
+  for (const fixture of knownLayoutFixtures) {
+    test(parserName + ': known fueling layout - ' + fixture.name, () => {
+      const reading = parse(fixture.text);
+      assert.equal(reading.liters, fixture.liters);
+      assert.equal(reading.price_per_liter, fixture.price);
+      assert.equal(reading.total_amount, fixture.total);
+      assert.equal(reading.plate, fixture.plate);
+      assert.equal(reading.date, fixture.date);
+      assert.equal(reading.time, fixture.time);
+      assert.match(String(reading.station_name || ''), fixture.station);
+      assert.notEqual(reading.consistency, 'conflict');
+    });
+  }
+}
+
 const saveText = source('fueling-photo-save-api-20260927.ts')
   .replaceAll('@/lib/fueling-receipt-rules', './rules.mjs')
   .replaceAll('@/lib/fueling-photo-reader.server', './reader.mjs')
