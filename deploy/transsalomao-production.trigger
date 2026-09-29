@@ -1,1 +1,1 @@
-deploy pending pump photo fuelings for management completion 2026-09-28
+deploy universal operational readers photo pdf zip multi files 2026-09-29
