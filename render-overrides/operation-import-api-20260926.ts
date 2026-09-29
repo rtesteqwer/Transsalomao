@@ -24,8 +24,8 @@ export const Route = createFileRoute("/api/operation-import")({
 
       const sql=await getSql();
       await ensureTables(sql);
-      const drivers=await sql.unsafe("select id,name,status from drivers where status='ativo' order by name");
-      const fleets=await sql.unsafe("select id,name,tractor_plate,trailer_plate,status from fleets where status='ativo' order by name");
+      const drivers=await sql`select id,name,status from drivers where status='ativo' order by name`;
+      const fleets=await sql`select id,name,tractor_plate,trailer_plate,status from fleets where status='ativo' order by name`;
       const selectedDriver=drivers.find((x:any)=>String(x.id)===String(body?.driverId??""))??null;
       const selectedFleet=fleets.find((x:any)=>String(x.id)===String(body?.fleetId??""))??null;
 
@@ -52,7 +52,7 @@ export const Route = createFileRoute("/api/operation-import")({
       for (const operation of analysis.operations.slice(0,100)) {
         const identity=await resolveIdentity(sql,drivers,fleets,operation,selectedDriver,selectedFleet);
         const fingerprint=fingerprintFor(sourceHash,operation,identity.driver?.id,identity.fleet?.id);
-        const previous=await sql.unsafe("select id,status,entity_type,entity_id from operation_import_items where fingerprint=$1 limit 1",[fingerprint]);
+        const previous=await sql`select id,status,entity_type,entity_id from operation_import_items where fingerprint=${fingerprint} limit 1`;
         if(previous[0]) {
           duplicates.push({kind:operation.kind,status:"duplicate",id:previous[0].id});
           continue;
@@ -61,18 +61,22 @@ export const Route = createFileRoute("/api/operation-import")({
         try {
           const result=await applyOperation(sql,operation,identity,fileName,sourceHash);
           const itemId=id("imp");
-          await sql.unsafe(
-            "insert into operation_import_items(id,fingerprint,file_id,kind,status,entity_type,entity_id,result_json,created_at) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb,now())",
-            [itemId,fingerprint,fileId,operation.kind,result.saved?"saved":"review",result.entityType??null,result.entityId??null,JSON.stringify(result)],
-          );
+          await sql`
+            insert into operation_import_items(id,fingerprint,file_id,kind,status,entity_type,entity_id,result_json,created_at)
+            values(
+              ${itemId},${fingerprint},${fileId},${operation.kind},${result.saved?"saved":"review"},
+              ${result.entityType??null},${result.entityId??null},${JSON.stringify(result)}::jsonb,now()
+            )
+          `;
           (result.saved?saved:review).push(result);
         } catch (error:any) {
           const result={saved:false,kind:operation.kind,message:String(error?.message??error??"Não foi possível lançar."),operation};
           review.push(result);
-          await sql.unsafe(
-            "insert into operation_import_items(id,fingerprint,file_id,kind,status,result_json,created_at) values($1,$2,$3,$4,'review',$5::jsonb,now()) on conflict(fingerprint) do nothing",
-            [id("imp"),fingerprint,fileId,operation.kind,JSON.stringify(result)],
-          );
+          await sql`
+            insert into operation_import_items(id,fingerprint,file_id,kind,status,result_json,created_at)
+            values(${id("imp")},${fingerprint},${fileId},${operation.kind},'review',${JSON.stringify(result)}::jsonb,now())
+            on conflict(fingerprint) do nothing
+          `;
         }
       }
 
@@ -85,22 +89,22 @@ export const Route = createFileRoute("/api/operation-import")({
 });
 
 async function ensureTables(sql:any) {
-  await sql.unsafe("create table if not exists operation_import_files (id text primary key, source_hash text unique not null, file_name text not null, mime_type text, content_base64 text, text_content text, created_at timestamptz not null default now())");
-  await sql.unsafe("create table if not exists operation_import_items (id text primary key, fingerprint text unique not null, file_id text references operation_import_files(id), kind text not null, status text not null, entity_type text, entity_id text, result_json jsonb, created_at timestamptz not null default now())");
-  await sql.unsafe("create table if not exists fleet_odometer_history (id text primary key, fleet_id text not null, driver_id text, odometer_km integer not null, observed_date date not null, source_name text, source_hash text, notes text, created_at timestamptz not null default now())");
-  await sql.unsafe("create index if not exists fleet_odometer_history_fleet_date_idx on fleet_odometer_history(fleet_id,observed_date desc,created_at desc)");
-  await sql.unsafe("create table if not exists fleet_maintenance_history (id text primary key, fleet_id text not null, driver_id text, observed_date date not null, description text not null, amount numeric, odometer_km integer, source_name text, source_hash text, raw_data jsonb, created_at timestamptz not null default now())");
-  await sql.unsafe("create index if not exists fleet_maintenance_history_fleet_date_idx on fleet_maintenance_history(fleet_id,observed_date desc,created_at desc)");
+  await sql`create table if not exists operation_import_files (id text primary key, source_hash text unique not null, file_name text not null, mime_type text, content_base64 text, text_content text, created_at timestamptz not null default now())`;
+  await sql`create table if not exists operation_import_items (id text primary key, fingerprint text unique not null, file_id text references operation_import_files(id), kind text not null, status text not null, entity_type text, entity_id text, result_json jsonb, created_at timestamptz not null default now())`;
+  await sql`create table if not exists fleet_odometer_history (id text primary key, fleet_id text not null, driver_id text, odometer_km integer not null, observed_date date not null, source_name text, source_hash text, notes text, created_at timestamptz not null default now())`;
+  await sql`create index if not exists fleet_odometer_history_fleet_date_idx on fleet_odometer_history(fleet_id,observed_date desc,created_at desc)`;
+  await sql`create table if not exists fleet_maintenance_history (id text primary key, fleet_id text not null, driver_id text, observed_date date not null, description text not null, amount numeric, odometer_km integer, source_name text, source_hash text, raw_data jsonb, created_at timestamptz not null default now())`;
+  await sql`create index if not exists fleet_maintenance_history_fleet_date_idx on fleet_maintenance_history(fleet_id,observed_date desc,created_at desc)`;
 }
 
 async function saveSourceFile(sql:any,input:{fileName:string;mime:string;text:string;base64:string;sourceHash:string}) {
-  const found=await sql.unsafe("select id from operation_import_files where source_hash=$1 limit 1",[input.sourceHash]);
+  const found=await sql`select id from operation_import_files where source_hash=${input.sourceHash} limit 1`;
   if(found[0]) return String(found[0].id);
   const fileId=id("src");
-  await sql.unsafe(
-    "insert into operation_import_files(id,source_hash,file_name,mime_type,content_base64,text_content,created_at) values($1,$2,$3,$4,$5,$6,now())",
-    [fileId,input.sourceHash,input.fileName,input.mime,input.base64||null,input.text||null],
-  );
+  await sql`
+    insert into operation_import_files(id,source_hash,file_name,mime_type,content_base64,text_content,created_at)
+    values(${fileId},${input.sourceHash},${input.fileName},${input.mime},${input.base64||null},${input.text||null},now())
+  `;
   return fileId;
 }
 
@@ -123,20 +127,36 @@ async function resolveIdentity(sql:any,drivers:Row[],fleets:Row[],op:ImportOpera
   }
 
   if(driver&&!fleet) {
-    const rows=await sql.unsafe(
-      "select fleet_id,count(*)::int uses from (select fleet_id from trips where driver_id=$1 union all select fleet_id from reports where driver_id=$1 union all select fleet_id from fuelings where driver_id=$1) x where fleet_id is not null group by fleet_id order by uses desc limit 2",
-      [driver.id],
-    );
+    const rows=await sql`
+      select fleet_id,count(*)::int uses
+      from (
+        select fleet_id from trips where driver_id=${driver.id}
+        union all select fleet_id from reports where driver_id=${driver.id}
+        union all select fleet_id from fuelings where driver_id=${driver.id}
+      ) x
+      where fleet_id is not null
+      group by fleet_id
+      order by uses desc
+      limit 2
+    `;
     if(rows[0]&&(!rows[1]||Number(rows[0].uses)>Number(rows[1].uses))) {
       fleet=fleets.find((x:any)=>String(x.id)===String(rows[0].fleet_id))??null;
     }
   }
 
   if(fleet&&!driver) {
-    const rows=await sql.unsafe(
-      "select driver_id,count(*)::int uses from (select driver_id from trips where fleet_id=$1 union all select driver_id from reports where fleet_id=$1 union all select driver_id from fuelings where fleet_id=$1) x where driver_id is not null group by driver_id order by uses desc limit 2",
-      [fleet.id],
-    );
+    const rows=await sql`
+      select driver_id,count(*)::int uses
+      from (
+        select driver_id from trips where fleet_id=${fleet.id}
+        union all select driver_id from reports where fleet_id=${fleet.id}
+        union all select driver_id from fuelings where fleet_id=${fleet.id}
+      ) x
+      where driver_id is not null
+      group by driver_id
+      order by uses desc
+      limit 2
+    `;
     if(rows[0]&&(!rows[1]||Number(rows[0].uses)>Number(rows[1].uses))) {
       driver=drivers.find((x:any)=>String(x.id)===String(rows[0].driver_id))??null;
     }
@@ -146,7 +166,8 @@ async function resolveIdentity(sql:any,drivers:Row[],fleets:Row[],op:ImportOpera
 
 async function applyOperation(sql:any,op:ImportOperation,identity:{driver:Row|null;fleet:Row|null},sourceName:string,sourceHash:string) {
   const confidence=Number(op.confidence||0);
-  const date=validDate(op.date)||todayBR();
+  const documentDate=validDate(op.date);
+  const date=documentDate||todayBR();
   const driver=identity.driver;
   const fleet=identity.fleet;
 
@@ -154,25 +175,44 @@ async function applyOperation(sql:any,op:ImportOperation,identity:{driver:Row|nu
     const amount=positive(op.amount);
     if(confidence<0.88||!driver||!amount) return review(op,"Adiantamento precisa de motorista, valor e evidência clara.");
     const entityId=id("exp");
-    await sql.unsafe(
-      "insert into expenses(id,date,fleet_id,asset_type,driver_id,category,description,amount,notes) values($1,$2,null,null,$3,'Adiantamento',$4,$5,$6)",
-      [entityId,date,driver.id,op.description||"Adiantamento via PIX",amount,"Importado por Salomão IA · "+sourceName],
-    );
+    await sql`
+      insert into expenses(id,date,fleet_id,asset_type,driver_id,category,description,amount,notes)
+      values(${entityId},${date},null,null,${driver.id},'Adiantamento',${op.description||"Adiantamento via PIX"},${amount},${"Importado por Salomão IA · "+sourceName})
+    `;
     return {saved:true,kind:"advance",entityType:"expense",entityId,driver:driver.name,date,amount,message:"Adiantamento lançado para "+driver.name+"."};
   }
 
   if(op.kind==="fueling") {
     const liters=positive(op.liters);
     const price=positive(op.price_per_liter);
-    if(confidence<0.88||!fleet||!liters||!price) return review(op,"Abastecimento precisa de conjunto, litros e preço por litro.");
+    const paid=positive(op.amount);
+    const discount=nonNegative(op.discount_amount)??0;
+    if(!documentDate) return review(op,"Abastecimento sem data impressa no ticket. Não usei a data do envio do WhatsApp.");
+    if(confidence<0.88||!fleet||!liters||!price||!paid) return review(op,"Abastecimento precisa de data do ticket, conjunto, litros, preço por litro e total final pago.");
+    const expected=liters*price-discount;
+    if(Math.abs(expected-paid)>0.08) {
+      return review(op,"Litros × preço/L menos desconto não confere com o total final pago. Revise o ticket.");
+    }
     const entityId=id("fuel");
     const km=integer(op.odometer_km)||0;
-    await sql.unsafe(
-      "insert into fuelings(id,date,driver_id,fleet_id,station,km,liters,price_per_liter,notes) values($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-      [entityId,date,driver?.id??null,fleet.id,op.station||"",km,liters,price,"Importado por Salomão IA · "+sourceName],
-    );
+    const fuelingNotes=[
+      "Importado por Salomão IA",
+      sourceName,
+      op.time?"Hora "+op.time:"",
+      "Total final R$ "+moneyText(paid),
+      discount>0?"Desconto R$ "+moneyText(discount):"",
+      op.ticket_number?"Documento "+op.ticket_number:"",
+    ].filter(Boolean).join(" · ").slice(0,600);
+    await sql`
+      insert into fuelings(id,date,driver_id,fleet_id,station,km,liters,price_per_liter,notes)
+      values(${entityId},${date},${driver?.id??null},${fleet.id},${op.station||""},${km},${liters},${price},${fuelingNotes})
+    `;
     if(km>0) await saveOdometer(sql,fleet.id,driver?.id??null,km,date,sourceName,sourceHash,"Odômetro captado no abastecimento");
-    return {saved:true,kind:"fueling",entityType:"fueling",entityId,fleet:fleet.name,driver:driver?.name??null,date,liters,pricePerLiter:price,total:liters*price,message:"Abastecimento lançado."};
+    return {
+      saved:true,kind:"fueling",entityType:"fueling",entityId,fleet:fleet.name,driver:driver?.name??null,
+      date,time:op.time??null,liters,pricePerLiter:price,total:paid,discount,
+      message:"Abastecimento lançado com data do ticket e total final conferido."
+    };
   }
 
   if(op.kind==="odometer") {
@@ -188,23 +228,24 @@ async function applyOperation(sql:any,op:ImportOperation,identity:{driver:Row|nu
     const km=integer(op.odometer_km);
     const description=String(op.description||op.source_excerpt||"Registro de mecânica").slice(0,1000);
     const entityId=id("maint");
-    await sql.unsafe(
-      "insert into fleet_maintenance_history(id,fleet_id,driver_id,observed_date,description,amount,odometer_km,source_name,source_hash,raw_data) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)",
-      [entityId,fleet.id,driver?.id??null,date,description,amount,km,sourceName,sourceHash,JSON.stringify(op)],
-    );
+    await sql`
+      insert into fleet_maintenance_history(id,fleet_id,driver_id,observed_date,description,amount,odometer_km,source_name,source_hash,raw_data)
+      values(${entityId},${fleet.id},${driver?.id??null},${date},${description},${amount},${km},${sourceName},${sourceHash},${JSON.stringify(op)}::jsonb)
+    `;
     let expenseId:string|null=null;
     if(amount) {
       expenseId=id("exp");
-      await sql.unsafe(
-        "insert into expenses(id,date,fleet_id,asset_type,driver_id,category,description,amount,notes) values($1,$2,$3,'tractor',null,'Mecânica',$4,$5,$6)",
-        [expenseId,date,fleet.id,description,amount,"Importado por Salomão IA · "+sourceName],
-      );
+      await sql`
+        insert into expenses(id,date,fleet_id,asset_type,driver_id,category,description,amount,notes)
+        values(${expenseId},${date},${fleet.id},'tractor',null,'Mecânica',${description},${amount},${"Importado por Salomão IA · "+sourceName})
+      `;
     }
     if(km) await saveOdometer(sql,fleet.id,driver?.id??null,km,date,sourceName,sourceHash,"Odômetro captado em nota ou mensagem mecânica");
     return {saved:true,kind:"mechanic",entityType:"maintenance",entityId,expenseId,fleet:fleet.name,date,amount,odometerKm:km,message:amount?"Mecânica gravada no histórico e em Despesas.":"Mecânica gravada no histórico do conjunto."};
   }
 
   if(op.kind==="trip") {
+    if(!documentDate) return review(op,"Viagem sem data impressa no ticket. Não usei a data do envio do WhatsApp.");
     const mode=op.freight_mode;
     if(confidence<0.84||!driver||!fleet||!mode||!op.ticket_number) return review(op,"Viagem precisa de ticket, motorista, conjunto e modalidade.");
     if(mode==="ton"&&!integer(op.net_weight_kg)) return review(op,"Viagem por tonelada precisa do peso líquido.");
@@ -243,13 +284,13 @@ async function applyOperation(sql:any,op:ImportOperation,identity:{driver:Row|nu
 }
 
 async function saveOdometer(sql:any,fleetId:string,driverId:string|null,km:number,date:string,sourceName:string,sourceHash:string,notes:string) {
-  const found=await sql.unsafe("select id from fleet_odometer_history where fleet_id=$1 and odometer_km=$2 and observed_date=$3 limit 1",[fleetId,km,date]);
+  const found=await sql`select id from fleet_odometer_history where fleet_id=${fleetId} and odometer_km=${km} and observed_date=${date} limit 1`;
   if(found[0]) return String(found[0].id);
   const entityId=id("odo");
-  await sql.unsafe(
-    "insert into fleet_odometer_history(id,fleet_id,driver_id,odometer_km,observed_date,source_name,source_hash,notes) values($1,$2,$3,$4,$5,$6,$7,$8)",
-    [entityId,fleetId,driverId,km,date,sourceName,sourceHash,notes],
-  );
+  await sql`
+    insert into fleet_odometer_history(id,fleet_id,driver_id,odometer_km,observed_date,source_name,source_hash,notes)
+    values(${entityId},${fleetId},${driverId},${km},${date},${sourceName},${sourceHash},${notes})
+  `;
   return entityId;
 }
 
@@ -270,6 +311,13 @@ function positive(value:unknown) {
   const number=Number(value);
   return Number.isFinite(number)&&number>0&&number<=100000000?number:null;
 }
+function nonNegative(value:unknown) {
+  const number=Number(value);
+  return Number.isFinite(number)&&number>=0&&number<=100000000?number:null;
+}
+function moneyText(value:number) {
+  return value.toFixed(2).replace(".",",");
+}
 function integer(value:unknown) {
   const number=Number(value);
   const rounded=Math.round(number);
@@ -284,7 +332,7 @@ function plate(value:unknown) {
 }
 function fingerprintFor(sourceHash:string,op:ImportOperation,driverId?:string,fleetId?:string) {
   return createHash("sha256").update(JSON.stringify({
-    sourceHash,kind:op.kind,date:op.date,amount:op.amount,driverId,fleetId,
+    sourceHash,kind:op.kind,date:op.date,time:op.time,amount:op.amount,discount:op.discount_amount,driverId,fleetId,
     ticket:op.ticket_number,weight:op.net_weight_kg,liters:op.liters,
     price:op.price_per_liter,km:op.odometer_km,description:op.description,
   })).digest("hex");
