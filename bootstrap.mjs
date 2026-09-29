@@ -278,7 +278,10 @@ if (!original.includes("apply-security-hardening-20260928.mjs")) {
 // Leitura universal nos lançamentos: foto, PDF, vários arquivos e ZIP em fretes, abastecimentos, adiantamentos e despesas.
 if (!original.includes("apply-universal-file-readers-20260929.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing universal file reader insertion point");
-  execFileSync(process.execPath, [path.join(repo, "render-overrides", "apply-universal-file-readers-20260929.mjs"), work], { cwd: repo, stdio: "inherit", env: process.env });
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-universal-file-readers-20260929.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
 }
 
 // Fix the TanStack Start transport before Vite hashes the browser assets.
