@@ -1,1 +1,1 @@
-deploy universal Trans Salomao IA document intake PDF photos ZIP 2026-09-28
+deploy pending pump photo fuelings for management completion 2026-09-28
