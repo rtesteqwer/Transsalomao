@@ -304,13 +304,16 @@ if (!original.includes("apply-data-integrity-20260929.mjs")) {
 }
 
 // Compartilhamento manual de fotos/PDFs com o app ChatGPT via Android Web Share API.
-// Não usa API de IA e não salva o arquivo por este botão; o usuário escolhe o ChatGPT no compartilhamento.
-if (!original.includes("apply-share-to-chatgpt-20260929.mjs")) {
+// Este recurso pertence somente ao projeto Trans Salomão; o mesmo repositório também alimenta outro projeto Vercel.
+const installChatGptShare = process.env.VERCEL !== '1' || String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').toLowerCase().includes('transsalomao.vercel.app');
+if (installChatGptShare && !original.includes("apply-share-to-chatgpt-20260929.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing ChatGPT share insertion point");
   original = original.replace(
     dailyMarker,
     `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-share-to-chatgpt-20260929.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
+} else if (!installChatGptShare) {
+  console.log('[share-to-chatgpt] skipped: Vercel project is not Trans Salomao');
 }
 
 // Fix the TanStack Start transport before Vite hashes the browser assets.
