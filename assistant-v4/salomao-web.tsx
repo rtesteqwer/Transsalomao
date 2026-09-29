@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { UniversalDocumentUploader } from "@/components/document-uploader";
 
 export const Route = createFileRoute("/salomao-ia")({ component: SalomaoWeb });
 
@@ -372,6 +373,10 @@ function SalomaoWeb() {
 
           <div className="shrink-0 border-t border-white/10 bg-[#202c33] px-3 py-3 sm:px-6">
             <div className="mx-auto flex max-w-4xl items-end gap-2">
+              <UniversalDocumentUploader
+                disabled={sending}
+                onMessage={(role, content) => setHistory((current) => [...current, { role, content }])}
+              />
               <div className="min-w-0 flex-1 rounded-2xl bg-[#2a3942] px-4 py-2">
                 <textarea
                   ref={inputRef}
@@ -402,7 +407,7 @@ function SalomaoWeb() {
               </button>
             </div>
             <div className="mx-auto mt-1 max-w-4xl px-2 text-[10px] text-[#667781]">
-              Enter envia • Shift + Enter quebra a linha
+              📎 adiciona PDF, foto ou ZIP • Enter envia • Shift + Enter quebra a linha
             </div>
           </div>
         </section>
