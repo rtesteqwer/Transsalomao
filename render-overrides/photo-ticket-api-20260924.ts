@@ -138,14 +138,29 @@ export const Route = createFileRoute("/api/photo-intake")({
         const reportStatus = textValue(body?.reportStatus);
         const createdBy = textValue(access.username) || (access.role === "driver" ? "Motorista" : access.role === "service" ? "Integração" : "Gerência");
 
-        const existing = await sql<Record<string, any>>`select id, created_by from trip_ticket_photos where id=${id} limit 1`;
+        const existing = await sql<Record<string, any>>`
+          select
+            p.id,
+            p.created_by,
+            p.relation_type,
+            p.relation_id,
+            case
+              when p.relation_type='trip' then exists(select 1 from trips t where t.id=p.relation_id)
+              when p.relation_type='report' then exists(select 1 from reports r where r.id=p.relation_id)
+              else false
+            end as relation_exists
+          from trip_ticket_photos p
+          where p.id=${id}
+          limit 1
+        `;
         if (existing[0]) {
           const owner = String(existing[0].created_by || "").trim().toLocaleLowerCase("pt-BR");
           const currentUser = String(access.username || "").trim().toLocaleLowerCase("pt-BR");
           if (owner && owner !== currentUser && access.role !== "admin") return json({ ok: false, message: "Foto não autorizada." }, 403);
 
-          if (photoId && relationType !== "unlinked") {
-            await sql`
+          const staleRelation = existing[0].relation_type !== "unlinked" && !existing[0].relation_exists;
+          if ((photoId || staleRelation || existing[0].relation_type === "unlinked") && relationType !== "unlinked") {
+            const updated = await sql<Record<string, any>>`
               update trip_ticket_photos
               set relation_type=${relationType},
                   relation_id=${relationId},
@@ -159,11 +174,13 @@ export const Route = createFileRoute("/api/photo-intake")({
                   net_weight=${netWeight},
                   report_status=${reportStatus}
               where id=${id}
+              returning id
             `;
-            return json({ ok: true, id, linked: true, message: "Foto relacionada à viagem." });
+            if (!updated[0]) return json({ ok: false, message: "A foto não foi atualizada no banco." }, 409);
+            return json({ ok: true, id, linked: true, recoveredStaleLink: staleRelation, message: staleRelation ? "A foto existia, mas o vínculo antigo já tinha sido apagado. Ela foi relacionada novamente à viagem escolhida." : "Foto relacionada à viagem." });
           }
 
-          return json({ ok: true, alreadyExists: true, id, message: relationType === "unlinked" ? "Esta foto já estava enviada." : "Esta foto já estava salva nesta viagem." });
+          return json({ ok: true, alreadyExists: true, id, message: relationType === "unlinked" ? "Esta foto já estava enviada." : "Esta foto já está salva e ligada a um lançamento que existe no banco." });
         }
 
         await sql`
@@ -188,8 +205,9 @@ export const Route = createFileRoute("/api/photo-intake")({
 
         const sql = await getSql();
         await ensureTable(sql);
-        await sql`delete from trip_ticket_photos where id=${id}`;
-        return json({ ok: true });
+        const deleted = await sql<Record<string, any>>`delete from trip_ticket_photos where id=${id} returning id`;
+        if (!deleted[0]) return json({ ok: false, message: "A foto já não existe no banco." }, 404);
+        return json({ ok: true, id: String(deleted[0].id) });
       },
     },
   },

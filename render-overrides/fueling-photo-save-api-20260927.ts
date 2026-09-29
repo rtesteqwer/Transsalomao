@@ -125,13 +125,32 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           }
 
           const existingFile = await sql`
-            select f.id, r.fueling_id
+            select
+              f.id,
+              r.fueling_id,
+              case when fu.id is not null then true else false end as fueling_exists
             from fueling_photo_files f
             left join fueling_photo_reads r on r.file_id=f.id
+            left join fuelings fu on fu.id=r.fueling_id
             where f.source_hash=${image.sourceHash}
             limit 1
           `;
-          if (existingFile[0]?.fueling_id) {
+
+          // A foto pode continuar arquivada mesmo depois que o abastecimento foi
+          // apagado. Nesse caso NÃO é duplicata: solta o vínculo órfão e permite
+          // gravar novamente o ticket normalmente.
+          if (existingFile[0]?.fueling_id && !existingFile[0]?.fueling_exists) {
+            await sql`
+              update fueling_photo_reads
+              set fueling_id=null,
+                  status='pending_completion',
+                  confirmed_at=null
+              where file_id=${existingFile[0].id}
+            `;
+            existingFile[0].fueling_id = null;
+          }
+
+          if (existingFile[0]?.fueling_id && existingFile[0]?.fueling_exists) {
             const existingFuelingId = String(existingFile[0].fueling_id);
             await syncFuelingFiscalValues(sql, existingFuelingId, {
               date: reading.date,
@@ -150,7 +169,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               linkedExisting: true,
               duplicatePhoto: true,
               fuelingId: existingFuelingId,
-              message: "Esta foto já estava vinculada ao abastecimento; desconto e total final foram sincronizados com o ticket.",
+              message: "Esta foto já está vinculada a um abastecimento que existe no banco. Os valores foram sincronizados sem criar duplicata.",
             }, { headers: { "Cache-Control": "no-store" } });
           }
 
@@ -162,11 +181,12 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           // criar um segundo abastecimento.
           if (reading.receipt_number) {
             const receiptMatches = await sql`
-              select distinct fueling_id
-              from fueling_photo_reads
-              where fueling_id is not null
-                and nullif(trim(read_json->>'receipt_number'),'') = ${reading.receipt_number}
-              order by fueling_id
+              select distinct r.fueling_id
+              from fueling_photo_reads r
+              join fuelings fu on fu.id=r.fueling_id
+              where r.fueling_id is not null
+                and nullif(trim(r.read_json->>'receipt_number'),'') = ${reading.receipt_number}
+              order by r.fueling_id
               limit 2
             `;
             if (receiptMatches.length === 1 && receiptMatches[0]?.fueling_id) {
