@@ -1,0 +1,374 @@
+import { Archive, Camera, FileText, LoaderCircle, Upload } from "lucide-react";
+import { useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+
+type ExpectedKind = "trip" | "fueling" | "advance" | "expense";
+
+type ImportResult = {
+  fileName: string;
+  ok: boolean;
+  message?: string;
+  summary?: string;
+  counts?: { saved: number; review: number; duplicates: number };
+  saved?: Array<{ kind?: string; message?: string }>;
+  review?: Array<{ kind?: string; message?: string }>;
+};
+
+type PreparedFile = {
+  name: string;
+  mime: string;
+  text?: string;
+  base64?: string;
+};
+
+const MAX_FILES = 100;
+const MAX_ENTRY_BYTES = 10_000_000;
+
+export function OperationalFileReader({
+  expectedKind,
+  driverId,
+  fleetId,
+  title,
+  description,
+}: {
+  expectedKind: ExpectedKind;
+  driverId?: string | null;
+  fleetId?: string | null;
+  title?: string;
+  description?: string;
+}) {
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const pdfRef = useRef<HTMLInputElement | null>(null);
+  const multiRef = useRef<HTMLInputElement | null>(null);
+  const zipRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [results, setResults] = useState<ImportResult[]>([]);
+
+  async function handleSelection(files?: FileList | File[] | null) {
+    const selected = Array.from(files || []);
+    if (!selected.length || busy) return;
+    setBusy(true);
+    setResults([]);
+    setProgress("Preparando arquivos…");
+    let savedTotal = 0;
+
+    try {
+      const expanded: File[] = [];
+      for (const file of selected.slice(0, 30)) {
+        if (isZip(file)) expanded.push(...await expandZip(file));
+        else expanded.push(file);
+        if (expanded.length >= MAX_FILES) break;
+      }
+
+      const capped = expanded.slice(0, MAX_FILES);
+      const next: ImportResult[] = [];
+      for (let index = 0; index < capped.length; index += 1) {
+        const file = capped[index];
+        setProgress("Lendo " + (index + 1) + " de " + capped.length + ": " + (file.name || "arquivo"));
+        try {
+          const prepared = await prepareFile(file);
+          const response = await fetch("/api/operation-import", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fileName: prepared.name,
+              mime: prepared.mime,
+              text: prepared.text || "",
+              base64: prepared.base64 || "",
+              driverId: driverId || null,
+              fleetId: fleetId || null,
+              expectedKind,
+            }),
+          });
+          const payload: any = await response.json().catch(() => ({}));
+          const item: ImportResult = {
+            fileName: prepared.name,
+            ok: response.ok && payload?.ok !== false,
+            message: payload?.message,
+            summary: payload?.summary,
+            counts: payload?.counts,
+            saved: payload?.saved,
+            review: payload?.review,
+          };
+          savedTotal += item.counts?.saved ?? 0;
+          next.push(item);
+        } catch (error) {
+          next.push({
+            fileName: file.name || "arquivo",
+            ok: false,
+            message: error instanceof Error ? error.message : "Não foi possível ler este arquivo.",
+          });
+        }
+        setResults([...next]);
+      }
+
+      setProgress(capped.length ? "Leitura concluída." : "Nenhum arquivo foi encontrado.");
+      if (savedTotal > 0) {
+        window.setTimeout(() => window.location.reload(), 1400);
+      }
+    } catch (error) {
+      setProgress(error instanceof Error ? error.message : "Não foi possível abrir os arquivos.");
+    } finally {
+      setBusy(false);
+      for (const ref of [cameraRef, fileRef, pdfRef, multiRef, zipRef]) {
+        if (ref.current) ref.current.value = "";
+      }
+    }
+  }
+
+  const totals = results.reduce(
+    (acc, item) => {
+      acc.saved += item.counts?.saved ?? 0;
+      acc.review += item.counts?.review ?? 0;
+      acc.duplicates += item.counts?.duplicates ?? 0;
+      return acc;
+    },
+    { saved: 0, review: 0, duplicates: 0 },
+  );
+
+  return (
+    <section className="rounded-xl border border-border bg-surface-2 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <FileText className="size-4 text-accent" />
+            <p className="text-sm font-semibold">{title || "Leitor de arquivos"}</p>
+          </div>
+          <p className="mt-1 max-w-3xl text-xs text-muted">
+            {description || descriptionFor(expectedKind)}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => cameraRef.current?.click()}>
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Camera className="size-4" />} Foto
+          </Button>
+          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => fileRef.current?.click()}>
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />} Foto ou PDF(s)
+          </Button>
+          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => pdfRef.current?.click()}>
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <FileText className="size-4" />} PDF automático
+          </Button>
+          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => multiRef.current?.click()}>
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />} Selecionar vários arquivos
+          </Button>
+          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => zipRef.current?.click()}>
+            {busy ? <LoaderCircle className="size-4 animate-spin" /> : <Archive className="size-4" />} ZIP de arquivos
+          </Button>
+        </div>
+      </div>
+
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(event) => void handleSelection(event.target.files)}
+      />
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        accept="image/*,application/pdf,.pdf"
+        className="hidden"
+        onChange={(event) => void handleSelection(event.target.files)}
+      />
+      <input
+        ref={pdfRef}
+        type="file"
+        multiple
+        accept="application/pdf,.pdf"
+        className="hidden"
+        onChange={(event) => void handleSelection(event.target.files)}
+      />
+      <input
+        ref={multiRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(event) => void handleSelection(event.target.files)}
+      />
+      <input
+        ref={zipRef}
+        type="file"
+        multiple
+        accept="application/zip,application/x-zip-compressed,.zip"
+        className="hidden"
+        onChange={(event) => void handleSelection(event.target.files)}
+      />
+
+      <p className="mt-2 text-[11px] text-muted">
+        Você pode escolher uma foto, vários arquivos ao mesmo tempo, PDFs separados ou ZIP. A Trans Salomão IA abre os arquivos, extrai os dados e só lança automaticamente quando o conteúdo corresponde a {kindLabel(expectedKind)} e há dados suficientes; o restante fica indicado para revisão.
+      </p>
+
+      {progress ? <p className="mt-3 text-xs font-medium text-muted">{progress}</p> : null}
+
+      {results.length ? (
+        <div className="mt-3 space-y-2">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <Summary label="Lançados" value={totals.saved} />
+            <Summary label="Revisar" value={totals.review} />
+            <Summary label="Duplicados" value={totals.duplicates} />
+          </div>
+          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+            {results.map((item, index) => (
+              <div key={item.fileName + "-" + index} className="rounded-lg border border-border bg-surface px-3 py-3">
+                <p className="truncate text-xs font-semibold">{item.fileName}</p>
+                {item.summary ? <p className="mt-1 text-[11px] text-muted">{item.summary}</p> : null}
+                {item.message ? <p className="mt-1 text-[11px] text-danger">{item.message}</p> : null}
+                {item.counts ? (
+                  <p className="mt-2 text-[11px] text-muted">
+                    {item.counts.saved} lançados · {item.counts.review} revisar · {item.counts.duplicates} duplicados
+                  </p>
+                ) : null}
+                {(item.saved || []).map((row, pos) => row.message ? (
+                  <p key={"s" + pos} className="mt-1 text-[11px] text-fg">✓ {row.message}</p>
+                ) : null)}
+                {(item.review || []).map((row, pos) => row.message ? (
+                  <p key={"r" + pos} className="mt-1 text-[11px] text-muted">• Revisar: {row.message}</p>
+                ) : null)}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function Summary({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface px-3 py-2">
+      <strong className="block font-display text-lg">{value}</strong>
+      <span className="text-[10px] uppercase tracking-[0.12em] text-muted">{label}</span>
+    </div>
+  );
+}
+
+function descriptionFor(kind: ExpectedKind) {
+  if (kind === "trip") return "Lê tickets, romaneios, fotos e PDFs de frete. Quando a leitura estiver segura, envia a viagem para o Caixa.";
+  if (kind === "fueling") return "Lê tickets, notas, comprovantes e arquivos de abastecimento. Usa motorista/conjunto selecionados quando houver.";
+  if (kind === "advance") return "Lê comprovantes de adiantamento e vincula ao motorista quando houver correspondência segura.";
+  return "Lê comprovantes e documentos de despesas para conferência e lançamento.";
+}
+
+function kindLabel(kind: ExpectedKind) {
+  if (kind === "trip") return "frete/viagem";
+  if (kind === "fueling") return "abastecimento";
+  if (kind === "advance") return "adiantamento";
+  return "despesa";
+}
+
+function isZip(file: File) {
+  return file.type === "application/zip" || file.type === "application/x-zip-compressed" || /\.zip$/i.test(file.name);
+}
+
+async function expandZip(file: File) {
+  if (file.size > 60_000_000) throw new Error("O ZIP deve ter no máximo 60 MB.");
+  const JSZipModule: any = await import("jszip");
+  const JSZip = JSZipModule.default ?? JSZipModule;
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const out: File[] = [];
+
+  for (const entry of Object.values(zip.files) as any[]) {
+    if (out.length >= MAX_FILES) break;
+    if (entry.dir || String(entry.name || "").startsWith("__MACOSX/")) continue;
+    const bytes: Uint8Array = await entry.async("uint8array");
+    if (!bytes.byteLength || bytes.byteLength > MAX_ENTRY_BYTES) continue;
+    const cleanName = String(entry.name || "arquivo").replace(/^.*[\\/]/, "") || "arquivo";
+    const copy = new Uint8Array(bytes.length);
+    copy.set(bytes);
+    out.push(new File([copy.buffer], cleanName, { type: mimeFor(cleanName) }));
+  }
+
+  if (!out.length) throw new Error("Não encontrei arquivos utilizáveis dentro do ZIP.");
+  return out;
+}
+
+async function prepareFile(file: File): Promise<PreparedFile> {
+  if (file.size > MAX_ENTRY_BYTES) throw new Error((file.name || "Arquivo") + " é maior que 10 MB.");
+
+  const mime = String(file.type || mimeFor(file.name) || "application/octet-stream").toLowerCase();
+  if (mime.startsWith("image/")) return prepareImage(file);
+
+  if (isTextLike(file.name, mime)) {
+    return {
+      name: file.name || "arquivo.txt",
+      mime: mime || "text/plain",
+      text: (await file.text()).slice(0, 180000),
+    };
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return {
+    name: file.name || "arquivo",
+    mime: mime || "application/octet-stream",
+    base64: bytesToBase64(bytes),
+  };
+}
+
+async function prepareImage(file: File): Promise<PreparedFile> {
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("Não foi possível abrir a foto."));
+      element.src = url;
+    });
+
+    let maxSide = 2200;
+    let quality = 0.88;
+    let dataUrl = "";
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth || 1, image.naturalHeight || 1));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round((image.naturalWidth || 1) * scale));
+      canvas.height = Math.max(1, Math.round((image.naturalHeight || 1) * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Não foi possível preparar a foto.");
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      dataUrl = canvas.toDataURL("image/jpeg", quality);
+      if (dataUrl.length <= 3_500_000) break;
+      maxSide = Math.max(1100, Math.round(maxSide * 0.82));
+      quality = Math.max(0.6, quality - 0.07);
+    }
+
+    if (!dataUrl || dataUrl.length > 3_800_000) throw new Error("A foto continua grande demais.");
+    return {
+      name: (file.name || "foto").replace(/\.[^.]+$/, "") + ".jpg",
+      mime: "image/jpeg",
+      base64: dataUrl.split(",", 2)[1] || "",
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function isTextLike(name: string, mime: string) {
+  return mime.startsWith("text/") || /\.(?:txt|csv|json|xml|md|log)$/i.test(name);
+}
+
+function mimeFor(name: string) {
+  if (/\.pdf$/i.test(name)) return "application/pdf";
+  if (/\.png$/i.test(name)) return "image/png";
+  if (/\.webp$/i.test(name)) return "image/webp";
+  if (/\.(?:jpg|jpeg)$/i.test(name)) return "image/jpeg";
+  if (/\.txt$/i.test(name)) return "text/plain";
+  if (/\.csv$/i.test(name)) return "text/csv";
+  if (/\.json$/i.test(name)) return "application/json";
+  if (/\.xml$/i.test(name)) return "application/xml";
+  return "application/octet-stream";
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, Math.min(bytes.length, index + chunk)));
+  }
+  return btoa(binary);
+}
