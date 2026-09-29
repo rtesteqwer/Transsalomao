@@ -19,6 +19,10 @@ type PreparedFile = {
   mime: string;
   text?: string;
   base64?: string;
+  // SHA-256 dos bytes ORIGINAIS, antes de canvas/compressão.
+  // Permite reconhecer com segurança um ticket já conferido mesmo quando
+  // a foto enviada ao servidor foi recomprimida pelo navegador.
+  originalHash?: string;
 };
 
 const MAX_FILES = 100;
@@ -263,6 +267,8 @@ async function importFuelingImage(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       imagem: imageDataUrl,
+      fileName: prepared.name,
+      originalFileHash: prepared.originalHash || null,
       driverId,
       fleetId,
     }),
@@ -291,6 +297,7 @@ async function importFuelingImage(
       imagem: imageDataUrl,
       fileName: prepared.name,
       reading,
+      originalFileHash: prepared.originalHash || null,
       driverId: resolvedDriverId,
       fleetId: resolvedFleetId,
       confirmed: true,
@@ -609,6 +616,9 @@ async function prepareFile(file: File): Promise<PreparedFile> {
 }
 
 async function prepareImage(file: File): Promise<PreparedFile> {
+  // O hash é calculado antes da recompressão para que ZIP, galeria e câmera
+  // preservem a identidade do documento original.
+  const originalHash = await sha256File(file);
   const url = URL.createObjectURL(file);
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -640,6 +650,7 @@ async function prepareImage(file: File): Promise<PreparedFile> {
       name: (file.name || "foto").replace(/\.[^.]+$/, "") + ".jpg",
       mime: "image/jpeg",
       base64: dataUrl.split(",", 2)[1] || "",
+      originalHash,
     };
   } finally {
     URL.revokeObjectURL(url);
@@ -660,6 +671,16 @@ function mimeFor(name: string) {
   if (/\.json$/i.test(name)) return "application/json";
   if (/\.xml$/i.test(name)) return "application/xml";
   return "application/octet-stream";
+}
+
+async function sha256File(file: File) {
+  try {
+    if (!globalThis.crypto?.subtle) return undefined;
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return undefined;
+  }
 }
 
 function bytesToBase64(bytes: Uint8Array) {
