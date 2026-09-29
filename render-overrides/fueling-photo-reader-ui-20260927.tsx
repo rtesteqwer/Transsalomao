@@ -40,6 +40,7 @@ type ReadItem = {
   reading: FuelingReading;
   suggestedDriverId: string | null;
   suggestedFleetId: string | null;
+  originalFileHash?: string;
   saving?: boolean;
   saved?: boolean;
   message?: string;
@@ -139,8 +140,10 @@ export function FuelingPhotoReader() {
       for (let index = 0; index < selected.length; index += 1) {
         const file = selected[index];
         let image = "";
+        let originalFileHash: string | undefined;
         setProgress("Lendo " + (index + 1) + " de " + selected.length + ": " + file.name);
         try {
+          originalFileHash = await sha256File(file);
           image = await compressPhoto(file);
           const response = await fetch("/api/ler-abastecimento", {
             method: "POST",
@@ -148,6 +151,8 @@ export function FuelingPhotoReader() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               imagem: image,
+              fileName: file.name,
+              originalFileHash: originalFileHash || null,
               driverId: activeDriverId || null,
               fleetId: activeFleetId || null,
             }),
@@ -191,6 +196,7 @@ export function FuelingPhotoReader() {
             reading: nextReading,
             suggestedDriverId,
             suggestedFleetId,
+            originalFileHash,
           };
           setItems((current) => reconcileFuelingBatch([...current, item]));
         } catch (error) {
@@ -246,6 +252,7 @@ export function FuelingPhotoReader() {
           imagem: item.image,
           fileName: item.fileName,
           reading: item.reading,
+          originalFileHash: item.originalFileHash || null,
           driverId: driverId || item.suggestedDriverId || null,
           fleetId: fleetId || item.suggestedFleetId || null,
           confirmed: true,
@@ -1424,6 +1431,16 @@ function documentLabel(value: FuelingReading["document_type"]) {
 
 const inputClass =
   "h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none focus:border-accent";
+
+async function sha256File(file: File) {
+  try {
+    if (!globalThis.crypto?.subtle) return undefined;
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return undefined;
+  }
+}
 
 async function compressPhoto(file: File) {
   if (!file.type.startsWith("image/")) throw new Error("Selecione uma imagem.");
