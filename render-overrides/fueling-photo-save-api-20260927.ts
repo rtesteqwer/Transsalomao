@@ -18,6 +18,46 @@ import {
 export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
   server: {
     handlers: {
+      GET: async ({ request }) => {
+        if (!managementSession() && !(await authenticateAssistantRequest(request))) {
+          return Response.json({ ok: false, message: "Entre na Gerência ou na Trans Salomão IA novamente." }, { status: 401 });
+        }
+        try {
+          const sql = await getSql();
+          await ensureFuelingPhotoTables(sql);
+          const rows = await sql`
+            select
+              f.id as file_id,
+              f.file_name,
+              f.mime_type,
+              f.image_base64,
+              r.driver_id,
+              r.fleet_id,
+              r.read_json,
+              r.created_at
+            from fueling_photo_reads r
+            join fueling_photo_files f on f.id=r.file_id
+            where r.status='pending_completion'
+              and r.fueling_id is null
+            order by r.created_at desc
+            limit 25
+          `;
+          return Response.json({
+            ok: true,
+            items: rows.map((row: any) => ({
+              id: String(row.file_id),
+              fileName: String(row.file_name || "abastecimento.jpg"),
+              image: `data:${row.mime_type || "image/jpeg"};base64,${row.image_base64}`,
+              reading: row.read_json || {},
+              driverId: row.driver_id ? String(row.driver_id) : null,
+              fleetId: row.fleet_id ? String(row.fleet_id) : null,
+              createdAt: row.created_at,
+            })),
+          }, { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+        } catch (error) {
+          return fuelingPhotoErrorResponse(error);
+        }
+      },
       POST: async ({ request }) => {
         if (!managementSession() && !(await authenticateAssistantRequest(request))) {
           return Response.json({ ok: false, message: "Entre na Gerência ou na Trans Salomão IA novamente." }, { status: 401 });
