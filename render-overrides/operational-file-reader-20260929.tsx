@@ -23,6 +23,7 @@ type PreparedFile = {
   // Permite reconhecer com segurança um ticket já conferido mesmo quando
   // a foto enviada ao servidor foi recomprimida pelo navegador.
   originalHash?: string;
+  visualFingerprint?: string;
 };
 
 const MAX_FILES = 100;
@@ -269,6 +270,7 @@ async function importFuelingImage(
       imagem: imageDataUrl,
       fileName: prepared.name,
       originalFileHash: prepared.originalHash || null,
+      visualFingerprint: prepared.visualFingerprint || null,
       driverId,
       fleetId,
     }),
@@ -618,7 +620,10 @@ async function prepareFile(file: File): Promise<PreparedFile> {
 async function prepareImage(file: File): Promise<PreparedFile> {
   // O hash é calculado antes da recompressão para que ZIP, galeria e câmera
   // preservem a identidade do documento original.
-  const originalHash = await sha256File(file);
+  const [originalHash, visualFingerprint] = await Promise.all([
+    sha256File(file),
+    visualFingerprintFile(file),
+  ]);
   const url = URL.createObjectURL(file);
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -651,6 +656,7 @@ async function prepareImage(file: File): Promise<PreparedFile> {
       mime: "image/jpeg",
       base64: dataUrl.split(",", 2)[1] || "",
       originalHash,
+      visualFingerprint,
     };
   } finally {
     URL.revokeObjectURL(url);
@@ -671,6 +677,43 @@ function mimeFor(name: string) {
   if (/\.json$/i.test(name)) return "application/json";
   if (/\.xml$/i.test(name)) return "application/xml";
   return "application/octet-stream";
+}
+
+async function visualFingerprintFile(file: File) {
+  if (!file.type.startsWith("image/")) return undefined;
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("Não foi possível gerar a impressão visual."));
+      element.src = url;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = 9;
+    canvas.height = 8;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return undefined;
+    context.drawImage(image, 0, 0, 9, 8);
+    const pixels = context.getImageData(0, 0, 9, 8).data;
+    let bits = "";
+    for (let y = 0; y < 8; y += 1) {
+      for (let x = 0; x < 8; x += 1) {
+        const a = (y * 9 + x) * 4;
+        const b = (y * 9 + x + 1) * 4;
+        const ga = pixels[a] * 0.299 + pixels[a + 1] * 0.587 + pixels[a + 2] * 0.114;
+        const gb = pixels[b] * 0.299 + pixels[b + 1] * 0.587 + pixels[b + 2] * 0.114;
+        bits += ga > gb ? "1" : "0";
+      }
+    }
+    let hex = "";
+    for (let i = 0; i < 64; i += 4) hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+    return hex;
+  } catch {
+    return undefined;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 async function sha256File(file: File) {

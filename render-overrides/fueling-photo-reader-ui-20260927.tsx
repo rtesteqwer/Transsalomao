@@ -41,6 +41,7 @@ type ReadItem = {
   suggestedDriverId: string | null;
   suggestedFleetId: string | null;
   originalFileHash?: string;
+  visualFingerprint?: string;
   saving?: boolean;
   saved?: boolean;
   message?: string;
@@ -142,9 +143,13 @@ export function FuelingPhotoReader() {
         const file = selected[index];
         let image = "";
         let originalFileHash: string | undefined;
+        let visualFingerprint: string | undefined;
         setProgress("Lendo " + (index + 1) + " de " + selected.length + ": " + file.name);
         try {
-          originalFileHash = await sha256File(file);
+          [originalFileHash, visualFingerprint] = await Promise.all([
+            sha256File(file),
+            visualFingerprintFile(file),
+          ]);
           image = await compressPhoto(file);
           const response = await fetch("/api/ler-abastecimento", {
             method: "POST",
@@ -154,6 +159,7 @@ export function FuelingPhotoReader() {
               imagem: image,
               fileName: file.name,
               originalFileHash: originalFileHash || null,
+              visualFingerprint: visualFingerprint || null,
               driverId: activeDriverId || null,
               fleetId: activeFleetId || null,
             }),
@@ -165,9 +171,29 @@ export function FuelingPhotoReader() {
           let suggestedFleetId = payload?.suggestedFleetId ? String(payload.suggestedFleetId) : null;
 
           if (response.ok && payload?.reading) {
-            // O servidor já executa a segunda passagem de OCR quando necessário.
-            // Não bloquear a interface com uma segunda leitura local após sucesso.
             nextReading = payload.reading as FuelingReading;
+
+            // Um HTTP 200 não significa que a leitura ficou boa. Se o servidor
+            // voltar "partial" com menos de dois campos centrais, tente OCR local
+            // e fique com o resultado que realmente extraiu mais dados.
+            const serverCore = [nextReading.liters, nextReading.price_per_liter, nextReading.total_amount].filter(Boolean).length;
+            if (serverCore < 2 || (nextReading.consistency === "partial" && Number(nextReading.confidence || 0) < 0.85)) {
+              try {
+                setProgress("Complementando leitura local: " + file.name);
+                const local = await readFuelingWithLocalOcr(image);
+                const localCore = [local.reading.liters, local.reading.price_per_liter, local.reading.total_amount].filter(Boolean).length;
+                if (
+                  localCore > serverCore ||
+                  (localCore === serverCore && Number(local.reading.confidence || 0) > Number(nextReading.confidence || 0))
+                ) {
+                  nextReading = local.reading;
+                  const localDriver = matchLocalDriver(nextReading.driver_name, data?.drivers ?? []);
+                  const localFleet = matchLocalFleet(nextReading.plate, data?.fleets ?? []);
+                  suggestedDriverId = localDriver?.id ? String(localDriver.id) : suggestedDriverId;
+                  suggestedFleetId = localFleet?.id ? String(localFleet.id) : suggestedFleetId;
+                }
+              } catch {}
+            }
           } else if ([429, 502, 503, 504].includes(response.status)) {
             setProgress("Leitura no servidor não concluiu. Última tentativa local: " + file.name);
             const local = await readFuelingWithLocalOcr(image);
@@ -198,6 +224,7 @@ export function FuelingPhotoReader() {
             suggestedDriverId,
             suggestedFleetId,
             originalFileHash,
+            visualFingerprint,
           };
           setItems((current) => reconcileFuelingBatch([...current, item]));
         } catch (error) {
@@ -1474,6 +1501,43 @@ function documentLabel(value: FuelingReading["document_type"]) {
 
 const inputClass =
   "h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none focus:border-accent";
+
+async function visualFingerprintFile(file: File) {
+  if (!file.type.startsWith("image/")) return undefined;
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("Não foi possível gerar a impressão visual."));
+      element.src = url;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = 9;
+    canvas.height = 8;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return undefined;
+    context.drawImage(image, 0, 0, 9, 8);
+    const pixels = context.getImageData(0, 0, 9, 8).data;
+    let bits = "";
+    for (let y = 0; y < 8; y += 1) {
+      for (let x = 0; x < 8; x += 1) {
+        const i1 = (y * 9 + x) * 4;
+        const i2 = (y * 9 + x + 1) * 4;
+        const g1 = pixels[i1] * 0.299 + pixels[i1 + 1] * 0.587 + pixels[i1 + 2] * 0.114;
+        const g2 = pixels[i2] * 0.299 + pixels[i2 + 1] * 0.587 + pixels[i2 + 2] * 0.114;
+        bits += g1 > g2 ? "1" : "0";
+      }
+    }
+    let hex = "";
+    for (let i = 0; i < 64; i += 4) hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+    return hex;
+  } catch {
+    return undefined;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 async function sha256File(file: File) {
   try {
