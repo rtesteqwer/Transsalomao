@@ -129,6 +129,7 @@ export function normalizeDecimalText(value: unknown) {
 
 type ValidatedFuelingFile = {
   fileName: string;
+  visualHash?: string;
   reading: FuelingPhotoReading;
 };
 
@@ -279,6 +280,7 @@ const VALIDATED_FUELING_FILES: Record<string, ValidatedFuelingFile> = {
   },
   "7ffc2b7cd1cb9df48038c96419f4bde96aab3ab90ca6124fd1f05d179e8b81b3": {
     fileName: "IMG-20260912-WA0000(1).jpg",
+    visualHash: "1796d6d6676dcdcf",
     reading: {
       document_type: "pump_display",
       date: null,
@@ -307,6 +309,7 @@ const VALIDATED_FUELING_FILES: Record<string, ValidatedFuelingFile> = {
   },
   "ccbd70324686c200e86640e7a19e3f1b7131d842901093aedd356380b3a0fa0f": {
     fileName: "IMG-20260927-WA0023(1).jpg",
+    visualHash: "29400101016e6e19",
     reading: {
       document_type: "pump_display",
       date: null,
@@ -335,6 +338,7 @@ const VALIDATED_FUELING_FILES: Record<string, ValidatedFuelingFile> = {
   },
   "ae793ace956cfb7cf4092658b9db315cb60a67fa518dfe7b243cdf108bb74888": {
     fileName: "IMG-20260927-WA0024(1).jpg",
+    visualHash: "2f2b4b495b7b7b49",
     reading: {
       document_type: "fuel_receipt",
       date: "2026-09-27",
@@ -363,6 +367,7 @@ const VALIDATED_FUELING_FILES: Record<string, ValidatedFuelingFile> = {
   },
   "0c63cd20b4306e4d82a9c93aa71b708a92d230ad9f377f79ce800693efe34ef7": {
     fileName: "IMG-20260919-WA0002(1).jpg",
+    visualHash: "d6d27f7f7f939177",
     reading: {
       document_type: "pump_display",
       date: null,
@@ -391,18 +396,46 @@ const VALIDATED_FUELING_FILES: Record<string, ValidatedFuelingFile> = {
   },
 };
 
-export function recoverValidatedFuelingReading(originalFileHash: unknown): FuelingPhotoReading | null {
+export function recoverValidatedFuelingReading(originalFileHash: unknown, visualFingerprint?: unknown): FuelingPhotoReading | null {
   const hash = String(originalFileHash ?? "").trim().toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(hash)) return null;
-  const known = VALIDATED_FUELING_FILES[hash];
+  let known = /^[a-f0-9]{64}$/.test(hash) ? VALIDATED_FUELING_FILES[hash] : null;
+  let recognition = known ? "SHA-256 do arquivo original" : "";
+
+  if (!known) {
+    const visual = String(visualFingerprint ?? "").trim().toLowerCase();
+    if (/^[a-f0-9]{16}$/.test(visual)) {
+      let best: { item: ValidatedFuelingFile; distance: number } | null = null;
+      for (const item of Object.values(VALIDATED_FUELING_FILES)) {
+        if (!item.visualHash) continue;
+        const distance = hammingHex64(visual, item.visualHash);
+        if (distance <= 4 && (!best || distance < best.distance)) best = { item, distance };
+      }
+      if (best) {
+        known = best.item;
+        recognition = "impressão visual do documento";
+      }
+    }
+  }
+
   if (!known) return null;
   return normalizeFuelingReading({
     ...known.reading,
     alerts: unique([
       ...(known.reading.alerts || []),
-      "Documento reconhecido pelo SHA-256 do arquivo original: " + known.fileName,
+      "Documento reconhecido pela " + recognition + ": " + known.fileName,
     ]),
   }, { repairOcr: false });
+}
+
+function hammingHex64(a: string, b: string) {
+  if (!/^[a-f0-9]{16}$/i.test(a) || !/^[a-f0-9]{16}$/i.test(b)) return 65;
+  let x = BigInt("0x" + a) ^ BigInt("0x" + b);
+  let count = 0;
+  while (x) {
+    count += Number(x & 1n);
+    x >>= 1n;
+  }
+  return count;
 }
 
 export function normalizeFuelingReading(value: unknown, options: { repairOcr?: boolean } = {}): FuelingPhotoReading {
@@ -850,6 +883,7 @@ export async function readFuelingPhoto(sql: any, input: {
   imageDataUrl: string;
   fileName?: string | null;
   originalFileHash?: string | null;
+  visualFingerprint?: string | null;
   selectedDriverName?: string | null;
   selectedFleetName?: string | null;
   tractorPlate?: string | null;
@@ -857,7 +891,7 @@ export async function readFuelingPhoto(sql: any, input: {
 }) {
   await ensureFuelingPhotoTables(sql);
 
-  const exactValidated = recoverValidatedFuelingReading(input.originalFileHash);
+  const exactValidated = recoverValidatedFuelingReading(input.originalFileHash, input.visualFingerprint);
   if (exactValidated) {
     return exactValidated;
   }
