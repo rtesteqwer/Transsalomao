@@ -1092,11 +1092,23 @@ function serverFindFuelProductNumbers(text: string) {
 }
 
 function serverFindDate(lines: string[]) {
-  for (const line of lines) {
+  const preferred = lines.filter((line) => /emiss[aã]o|autoriza[cç][aã]o|abastecimento|\bdata\b/i.test(line) && !/vencimento/i.test(line));
+  const eligible = lines.filter((line) => !/vencimento/i.test(line));
+  for (const line of [...preferred, ...eligible]) {
     const m = line.match(/\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2}|\d{2})\b/);
     if (!m) continue;
     const y = m[3].length === 2 ? "20" + m[3] : m[3];
     return y + "-" + String(Number(m[2])).padStart(2, "0") + "-" + String(Number(m[1])).padStart(2, "0");
+  }
+
+  // COOSSUTRAN imprime a data em três colunas: DIA / MÊS / ANO.
+  const folded = lines.map((line) => normalizeServerOcr(line));
+  for (let i = 0; i < folded.length; i += 1) {
+    const area = folded.slice(i, i + 7).join(" ");
+    if (!/\bdia\b[\s\S]{0,35}\bmes\b[\s\S]{0,35}\bano\b/.test(area)) continue;
+    const afterHeader = area.slice(area.search(/\bano\b/) + 3);
+    const m = afterHeader.match(/\b([0-3]?\d)\s+([01]?\d)\s+(20\d{2})\b/);
+    if (m) return m[3] + "-" + String(Number(m[2])).padStart(2, "0") + "-" + String(Number(m[1])).padStart(2, "0");
   }
   return null;
 }
@@ -1110,8 +1122,16 @@ function serverFindTime(lines: string[]) {
 }
 
 function serverFindPlate(text: string) {
-  const m = text.toUpperCase().match(/\bPLACA\s*[:\-]?\s*([A-Z]{3})[\s.-]*([0-9][A-Z0-9][0-9]{2})\b/);
-  return m ? m[1] + m[2] : null;
+  const upper = text.toUpperCase();
+  const patterns = [
+    /\bPLACA\s*[:\-]?\s*([A-Z]{3})[\s.-]*([0-9][A-Z0-9][0-9]{2})\b/,
+    /\bVE[IÍ]CULO(?:\s+PLACA)?\s*[:\-]?\s*([A-Z]{3})[\s.-]*([0-9][A-Z0-9][0-9]{2})\b/,
+  ];
+  for (const pattern of patterns) {
+    const m = upper.match(pattern);
+    if (m) return m[1] + m[2];
+  }
+  return null;
 }
 
 function serverLooksLikePerson(value: string) {
