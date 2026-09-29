@@ -53,3 +53,16 @@ automaticamente um cupom fiscal em conflito.
 
 Teste: `TRANS_TEST_APP=/caminho/do/app-reconstruido node --test tests/fueling-reader.test.mjs`.
 Os exemplos são casos de regressão; seus valores nunca são copiados para outra foto.
+
+
+## Abastecimentos: layouts persistentes
+
+O leitor de abastecimentos mantém regras específicas, mas sem valores fixos, para os layouts reais usados pela Trans Salomão:
+
+- **Linx / NFC-e:** razão social do posto no cabeçalho; na linha de ÓLEO DIESEL, `Qtde` = litros e `Vl Unit` = preço/L. `Valor Total` ou `Valor Pago` é o total final.
+- **DANFE / Xpert / Fred Rosalem:** `QTD` da linha do diesel = litros, `VL.UNIT` = preço/L, `Valor Total dos Produtos` = bruto, `Valor Descontos` = desconto e `Valor Total` = valor final pago. A placa vem de `PLACA:` quando presente.
+- **Posto Nevada / Nota Promissória:** a linha `Produto / OLEO DIESEL` contém `Qtd`, `Unit` e `Total`; `Veículo:` também pode conter a placa mesmo sem a palavra “Placa”. A data de vencimento nunca substitui a data do abastecimento.
+- **COOSSUTRAN:** `DIESEL` = litros, o `R$` da mesma linha = preço/L, o último `TOTAL R$` = total final, `Veículo Placa` = placa e a data pode vir separada em `DIA / MÊS / ANO`.
+- **Visor de bomba:** ordem confirmada continua sendo valor total em cima, litros no meio e preço/L embaixo.
+
+Regra de segurança: nunca copiar números de exemplos antigos para uma foto nova. Os exemplos ficam apenas em testes de regressão. O lançamento usa exclusivamente os dados reconhecidos na foto atual e só confirma automaticamente quando os campos batem matematicamente dentro da tolerância de centavos.
