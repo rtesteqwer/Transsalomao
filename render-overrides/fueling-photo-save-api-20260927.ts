@@ -12,6 +12,7 @@ import {
   normalizeFuelingReading,
   normalizeName,
   normalizePlate,
+  recoverValidatedFuelingReading,
   validateFuelingImage,
 } from "@/lib/fueling-photo-reader.server";
 
@@ -73,6 +74,8 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           const sourceHash = /^[a-f0-9]{64}$/.test(claimedOriginalHash)
             ? claimedOriginalHash
             : image.sourceHash;
+          const knownValidatedSource = !!recoverValidatedFuelingReading(sourceHash);
+          const fileName = String(body?.fileName ?? "abastecimento.jpg").slice(0, 180);
           const reading = normalizeFuelingReading(body?.reading, { repairOcr: false });
           const liters = normalizeDecimalText(reading.liters);
           const price = normalizeDecimalText(reading.price_per_liter);
@@ -130,7 +133,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             if (matches.length === 1) driver = matches[0];
           }
 
-          const existingFile = await sql`
+          let existingFile = await sql`
             select
               f.id,
               r.fueling_id,
@@ -141,6 +144,33 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             where f.source_hash=${sourceHash}
             limit 1
           `;
+
+          // Versões anteriores comprimiam a imagem antes de calcular o hash.
+          // Quando um dos arquivos exatos já conferidos é reenviado, reaproveite
+          // um único pendente antigo com o mesmo nome em vez de deixar o OCR
+          // incorreto ("1 L / R$ 12") como um segundo cartão órfão.
+          if (!existingFile[0] && knownValidatedSource) {
+            const stalePending = await sql`
+              select f.id,r.fueling_id,false as fueling_exists
+              from fueling_photo_files f
+              join fueling_photo_reads r on r.file_id=f.id
+              where f.file_name=${fileName}
+                and r.status='pending_completion'
+                and r.fueling_id is null
+              order by r.created_at desc
+              limit 2
+            `;
+            if (stalePending.length === 1 && stalePending[0]?.id) {
+              await sql`
+                update fueling_photo_files
+                set source_hash=${sourceHash},
+                    mime_type=${image.mime},
+                    image_base64=${image.base64}
+                where id=${stalePending[0].id}
+              `;
+              existingFile = [stalePending[0]];
+            }
+          }
 
           // A foto pode continuar arquivada mesmo depois que o abastecimento foi
           // apagado. Nesse caso NÃO é duplicata: solta o vínculo órfão e permite
@@ -300,7 +330,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               values(
                 ${fileId},
                 ${sourceHash},
-                ${String(body?.fileName ?? "abastecimento.jpg").slice(0,180)},
+                ${fileName},
                 ${image.mime},
                 ${image.base64},
                 now()
