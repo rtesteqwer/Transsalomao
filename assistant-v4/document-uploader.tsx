@@ -348,107 +348,38 @@ async function processAdvance(prepared: PreparedFile, intake: IntakePayload) {
   return pendingSummary(prepared.fileName, intake, "O comprovante foi lido, mas ficou pendente.");
 }
 
-function genericTicket(intake: IntakePayload) {
-  const r = intake.result || {};
-  return {
-    numero_ticket: r.ticket_number || r.document_number || null,
-    placa_veiculo: r.tractor_plate || null,
-    placa_carreta: r.trailer_plate || null,
-    produto: null,
-    pesagem_inicial_data: null,
-    pesagem_final_data: r.date || null,
-    data_ticket: r.date || null,
-    hora_ticket: r.time || null,
-    transportadora: r.supplier || null,
-    motorista: r.driver_name || null,
-    cliente: r.client || null,
-    destinatario: r.destination || r.recipient_name || null,
-    anotacoes_manuscritas: r.handwritten_notes || null,
-    route_group: r.route_key || null,
-    route_origin: r.origin || null,
-    route_destination: r.destination || null,
-    route_price_per_ton: r.price_per_ton || null,
-    route_confidence: r.route_confidence || null,
-    inferred_freight_mode: r.freight_mode || null,
-    inferred_price: r.freight_mode === "ton" ? r.price_per_ton : r.price_per_trip,
-    inferred_price_basis: r.price_basis || null,
-    inference_confidence: r.confidence || null,
-    peso_liquido_kg: r.net_weight_kg == null ? null : Number(r.net_weight_kg),
-    alertas: Array.isArray(r.warnings) ? r.warnings : [],
-  };
-}
-
 async function processTrip(prepared: PreparedFile, intake: IntakePayload) {
   const r = intake.result || {};
   const links = intake.links || {};
-  if (Number(r.confidence || 0) < 0.82) return pendingSummary(prepared.fileName, intake, "Confiança insuficiente para lançar a viagem.");
-
-  let ticket: any = genericTicket(intake);
-  if (prepared.dataUrl) {
-    const read = await assistantFetch("/api/ler-ticket", {
-      method: "POST",
-      headers: { "X-Salomao-App": "1" },
-      body: JSON.stringify({
-        imagem: prepared.dataUrl,
-        tipo: prepared.mime,
-        autoDetectMode: true,
-        freightMode: ["ton", "trip", "cegonha", "caixinha"].includes(String(r.freight_mode)) ? r.freight_mode : "ton",
-        selectedFleet: {
-          tractorPlate: r.tractor_plate || undefined,
-          trailerPlate: r.trailer_plate || undefined,
-        },
-      }),
-    });
-    const payload: any = await read.json().catch(() => ({}));
-    if (read.ok && !payload?.erro) ticket = payload;
-    else return pendingSummary(prepared.fileName, intake, payload?.erro || payload?.message || "O leitor especializado de viagem não confirmou o ticket.");
+  if (Number(r.confidence || 0) < 0.82) {
+    return pendingSummary(prepared.fileName, intake, "Confiança insuficiente para lançar a viagem.");
   }
 
-  const mode = ["ton", "trip", "cegonha", "caixinha"].includes(String(ticket.inferred_freight_mode))
-    ? String(ticket.inferred_freight_mode)
-    : (["ton", "trip", "cegonha", "caixinha"].includes(String(r.freight_mode)) ? String(r.freight_mode) : "ton");
-  const driverId = ticket.memory_driver_id || links.suggestedDriverId || null;
-  const fleetId = ticket.memory_fleet_id || links.suggestedFleetId || null;
-  const ticketNumber = String(ticket.numero_ticket || r.ticket_number || r.document_number || "").trim();
-  const kg = ticket.peso_liquido_kg == null ? null : Number(ticket.peso_liquido_kg);
-
-  const missing = [
-    !driverId ? "motorista cadastrado" : "",
-    !fleetId ? "conjunto cadastrado" : "",
-    !ticketNumber ? "número do ticket" : "",
-    mode === "ton" && (!Number.isSafeInteger(kg) || Number(kg) <= 0) ? "peso líquido" : "",
-  ].filter(Boolean);
-  if (missing.length) return pendingSummary(prepared.fileName, intake, "A viagem ficou pendente: " + missing.join(", ") + ".");
-
-  const saveBody: any = {
-    ...ticket,
-    numero_ticket: ticketNumber,
-    conferido: true,
-    driverId,
-    fleetId,
-    freightMode: mode,
-    km_carreta: 0,
-    peso_liquido_kg: mode === "ton" ? kg : null,
-    dailyValue: mode === "trip" ? Number(r.price_per_trip || ticket.inferred_price || 0) : 0,
-    fileName: prepared.fileName,
-  };
-  if (prepared.dataUrl) {
-    saveBody.imagem = prepared.dataUrl;
-    saveBody.tipo = prepared.mime;
-  }
-
-  const save = await assistantFetch("/api/salvar-ticket", {
+  const response = await assistantFetch("/api/assistant/document-launch-trip", {
     method: "POST",
     headers: { "X-Salomao-App": "1" },
-    body: JSON.stringify(saveBody),
+    body: JSON.stringify({
+      fileName: prepared.fileName,
+      mime: prepared.mime,
+      imageDataUrl: prepared.dataUrl,
+      result: r,
+      links,
+    }),
   });
-  const saved: any = await save.json().catch(() => ({}));
-  if (!save.ok || saved?.erro) return pendingSummary(prepared.fileName, intake, saved?.erro || saved?.message || "O lançamento da viagem foi bloqueado.");
+  const saved: any = await response.json().catch(() => ({}));
+  if (!response.ok || !saved?.ok) {
+    return pendingSummary(
+      prepared.fileName,
+      intake,
+      saved?.erro || saved?.message || "O lançamento da viagem foi bloqueado."
+    );
+  }
 
+  const mode = String(saved.freightMode || r.freight_mode || "—");
   return [
     "✅ " + prepared.fileName + " — viagem " + (saved.linkedExisting ? "já existente; foto vinculada sem duplicar." : "enviada automaticamente para o Caixa."),
-    "Ticket: " + String(saved.ticket || ticketNumber) + " • Modalidade: " + mode,
-    mode === "ton" ? "Peso líquido: " + numberText(kg, " kg") : "",
+    "Ticket: " + String(saved.ticket || r.ticket_number || r.document_number || "—") + " • Modalidade: " + mode,
+    mode === "ton" && r.net_weight_kg ? "Peso líquido: " + numberText(r.net_weight_kg, " kg") : "",
     links.suggestedDriverName ? "Motorista: " + links.suggestedDriverName : "",
     links.suggestedFleetName ? "Conjunto: " + links.suggestedFleetName : "",
   ].filter(Boolean).join("\n");
