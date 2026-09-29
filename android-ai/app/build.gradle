@@ -1,0 +1,32 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'br.com.transsalomao.ai'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "br.com.transsalomao.ai"
+        minSdk 24
+        targetSdk 35
+        versionCode 2026092801
+        versionName "2026.09.28.1"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.15.0'
+}
