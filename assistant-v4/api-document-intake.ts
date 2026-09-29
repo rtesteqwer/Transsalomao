@@ -52,14 +52,17 @@ export const Route = createFileRoute("/api/assistant/document-intake")({
           return json({ ok: false, code: "INVALID_JSON", message: "Arquivo inválido." }, 400);
         }
 
-        const fileName = String(body?.fileName ?? "imagem").slice(0, 180);
+        const fileName = String(body?.fileName ?? "documento").slice(0, 180);
         const mime = String(body?.mime ?? "").toLowerCase();
-        const imageBase64 = String(body?.imageBase64 ?? "");
-        if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
-          return json({ ok: false, code: "UNSUPPORTED_IMAGE", message: "Formato de imagem não suportado." }, 415);
+        const base64 = String(body?.base64 ?? body?.imageBase64 ?? "").replace(/\s+/g, "");
+        if (!["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(mime)) {
+          return json({ ok: false, code: "UNSUPPORTED_FILE", message: "Use foto JPG/PNG/WebP ou PDF." }, 415);
         }
-        if (!imageBase64 || imageBase64.length > 8_000_000) {
-          return json({ ok: false, code: "IMAGE_SIZE", message: "Imagem vazia ou grande demais." }, 413);
+        if (!base64 || base64.length > 4_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+          return json({ ok: false, code: "FILE_SIZE", message: "Arquivo vazio, inválido ou grande demais." }, 413);
+        }
+        if (!validDocumentBytes(mime, base64)) {
+          return json({ ok: false, code: "INVALID_FILE", message: "O conteúdo do arquivo não corresponde ao formato informado." }, 415);
         }
 
         const keys = await getSalomaoOpenAIKeys();
@@ -69,13 +72,15 @@ export const Route = createFileRoute("/api/assistant/document-intake")({
         let last = "";
         for (const key of keys.slice(0, 2)) {
           try {
-            const result = await analyzeDocument(key, mime, imageBase64, routeMemories);
+            const result = await analyzeDocument(key, fileName, mime, base64, routeMemories);
+            const links = await resolveOperationalLinks(result);
             return json({
               ok: true,
               fileName,
               actor: auth.username,
               result,
-              routing: buildRouting(result),
+              links,
+              routing: buildRouting(result, links),
             });
           } catch (error: any) {
             last = String(error?.message ?? error ?? "");
@@ -152,7 +157,7 @@ function enrichWithRouteMemory(result: DocResult, routes: RouteMemory[]) {
   if (!result.destination && route.destination) result.destination = route.destination;
   return result;
 }
-async function analyzeDocument(key: string, mime: string, base64: string, routeMemories: RouteMemory[]): Promise<DocResult> {
+async function analyzeDocument(key: string, fileName: string, mime: string, base64: string, routeMemories: RouteMemory[]): Promise<DocResult> {
   const nullableString = { type: ["string", "null"] };
   const nullableNumber = { type: ["number", "null"] };
   const schema = {
@@ -201,12 +206,22 @@ async function analyzeDocument(key: string, mime: string, base64: string, routeM
   };
 
   const instructions = `Você é o classificador visual de documentos operacionais da transportadora Trans Salomão.
-Analise somente o que está VISÍVEL na imagem. O nome do arquivo não é evidência e não deve influenciar a classificação.
+Analise somente o que está VISÍVEL no documento (foto ou PDF). O nome do arquivo não é evidência e não deve influenciar a classificação.
 Nunca invente motorista, placa, valor, peso, data, litros, fornecedor, origem ou destino.
+Nunca copie números de exemplos anteriores. Memórias de layout servem somente para localizar o papel de cada campo no documento atual.
 
 CLASSIFICAÇÃO:
 - "viagem": ticket de pesagem/balança, comprovante de carga/frete ou documento claramente ligado a uma viagem. Ticket de balança com peso líquido normalmente é viagem por tonelada ("ton").
 - "abastecimento": cupom, nota ou comprovante de posto/combustível/diesel, com evidências como litros, preço por litro, bomba, combustível ou posto.
+
+MEMÓRIA DE LAYOUTS DE ABASTECIMENTO CONFIRMADA PELA TRANSPORTADORA:
+- Linx / NFC-e: o posto/razão social fica no cabeçalho. Na linha do produto ÓLEO DIESEL, "Qtde" = litros e "Vl Unit" = preço por litro. "Valor Total" ou "Valor Pago" é o total final. "Qtde. total de itens", tributos, códigos fiscais e pagamentos NÃO são litros.
+- DANFE / Xpert / Fred Rosalem: na linha do diesel, "QTD" = litros e "VL.UNIT" = preço/L. "Valor Total dos Produtos" é bruto, "Valor Descontos" é desconto e "Valor Total" é o valor final efetivamente pago. A placa pode vir em "PLACA:".
+- Posto Nevada / Nota Promissória: na linha "Produto / OLEO DIESEL", "Qtd" = litros, "Unit" = preço/L e "Total" = total. "Veículo:" pode conter a placa mesmo sem a palavra Placa. Data de vencimento nunca substitui a data do abastecimento.
+- COOSSUTRAN: "DIESEL" identifica litros, o "R$" da mesma linha identifica preço/L, o último "TOTAL R$" é o total final, "Veículo Placa" contém a placa e a data pode vir separada em DIA / MÊS / ANO.
+- Visor de bomba: valor de cima = total em R$, valor do meio = litros e valor de baixo = preço por litro.
+- Preserve decimais exatamente como aparecem. Ex.: uma vírgula decimal em litros não pode virar milhar. Use amount_total como o total FINAL efetivamente pago.
+- Sempre confira se litros × preço/L é compatível com o total (considerando desconto explícito quando houver). Se não fechar, mantenha os campos visíveis, reduza confidence e descreva o conflito em warnings.
 - "adiantamento": comprovante de PIX/transferência/entrega de dinheiro claramente identificado como adiantamento a motorista/colaborador. Se for apenas uma transferência bancária sem contexto suficiente, não assuma adiantamento; use desconhecido ou despesa conforme a evidência.
 - "mecanica": oficina, manutenção, peça, pneu, óleo, motor, elétrica, funilaria, serviço mecânico ou nota de reparo.
 - "despesa": pedágio, estacionamento, hospedagem, alimentação, taxa e outras despesas operacionais que não sejam abastecimento/mecânica/adiantamento.
@@ -247,7 +262,9 @@ ${routeMemoryPrompt(routeMemories)}`;
         role: "user",
         content: [
           { type: "input_text", text: "Classifique este documento e extraia os dados operacionais visíveis." },
-          { type: "input_image", image_url: `data:${mime};base64,${base64}`, detail: "high" },
+          ...(mime === "application/pdf"
+            ? [{ type: "input_file", filename: fileName || "documento.pdf", file_data: `data:application/pdf;base64,${base64}` }]
+            : [{ type: "input_image", image_url: `data:${mime};base64,${base64}`, detail: "high" }]),
         ],
       }],
       text: { format: { type: "json_schema", name: "salomao_document", strict: true, schema } },
@@ -274,7 +291,114 @@ function outputText(r: any) {
   return parts.join("").trim();
 }
 
-function buildRouting(r: DocResult) {
+type OperationalLinks = {
+  suggestedDriverId: string | null;
+  suggestedDriverName: string | null;
+  suggestedFleetId: string | null;
+  suggestedFleetName: string | null;
+  resolutionWarnings: string[];
+};
+
+function validDocumentBytes(mime: string, base64: string) {
+  try {
+    const bytes = Buffer.from(base64, "base64");
+    if (bytes.length < 12) return false;
+    return (
+      (mime === "application/pdf" && bytes.toString("ascii", 0, 4) === "%PDF") ||
+      (mime === "image/jpeg" && bytes.subarray(0, 3).equals(Buffer.from([255, 216, 255]))) ||
+      (mime === "image/png" && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
+      (mime === "image/webp" && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeEntity(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function normalizePlate(value: unknown) {
+  const plate = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(plate) ? plate : "";
+}
+
+function uniqueDriver(hints: Array<string | null>, rows: any[]) {
+  const wanted = hints.map(normalizeEntity).filter((value) => value.length >= 3);
+  if (!wanted.length) return null;
+  const scored = rows.map((row) => {
+    const current = normalizeEntity(row?.name);
+    let score = 0;
+    for (const hint of wanted) {
+      if (hint === current) score = Math.max(score, 1);
+      else if (hint.length >= 5 && current.length >= 5 && (hint.includes(current) || current.includes(hint))) score = Math.max(score, 0.94);
+      else {
+        const a = new Set(hint.split(" ").filter((x) => x.length >= 3));
+        const b = current.split(" ").filter((x) => x.length >= 3);
+        const shared = b.filter((x) => a.has(x)).length;
+        if (b.length && shared >= 2) score = Math.max(score, shared / b.length);
+      }
+    }
+    return { row, score };
+  }).filter((item) => item.score >= 0.78).sort((a, b) => b.score - a.score);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[0].score - scored[1].score < 0.12) return null;
+  return scored[0].row;
+}
+
+async function resolveOperationalLinks(r: DocResult): Promise<OperationalLinks> {
+  const links: OperationalLinks = {
+    suggestedDriverId: null,
+    suggestedDriverName: null,
+    suggestedFleetId: null,
+    suggestedFleetName: null,
+    resolutionWarnings: [],
+  };
+  try {
+    const sql = await getSql();
+    const [drivers, fleets] = await Promise.all([
+      sql`select id,name from drivers where status='ativo' order by name`,
+      sql`select id,name,tractor_plate,trailer_plate from fleets where status='ativo' order by name`,
+    ]);
+    const driver = uniqueDriver([r.driver_name, r.recipient_name], drivers as any[]);
+    if (driver) {
+      links.suggestedDriverId = String((driver as any).id);
+      links.suggestedDriverName = String((driver as any).name);
+    }
+
+    const plates = [normalizePlate(r.tractor_plate), normalizePlate(r.trailer_plate)].filter(Boolean);
+    if (plates.length) {
+      const matches = (fleets as any[]).filter((row) => {
+        const tractor = normalizePlate(row?.tractor_plate);
+        const trailer = normalizePlate(row?.trailer_plate);
+        return plates.some((plate) => plate === tractor || plate === trailer);
+      });
+      if (matches.length === 1) {
+        links.suggestedFleetId = String(matches[0].id);
+        links.suggestedFleetName = String(matches[0].name || "");
+      } else if (matches.length > 1) {
+        links.resolutionWarnings.push("A placa aparece em mais de um conjunto cadastrado; o vínculo exige conferência.");
+      }
+    }
+
+    if ((r.driver_name || r.recipient_name) && !links.suggestedDriverId) {
+      links.resolutionWarnings.push("O nome lido não pôde ser vinculado com segurança a um único motorista ativo.");
+    }
+    if ((r.tractor_plate || r.trailer_plate) && !links.suggestedFleetId) {
+      links.resolutionWarnings.push("A placa lida não pôde ser vinculada com segurança a um único conjunto ativo.");
+    }
+  } catch {
+    links.resolutionWarnings.push("Não foi possível consultar os cadastros para vincular motorista/conjunto.");
+  }
+  return links;
+}
+
+function buildRouting(r: DocResult, links: OperationalLinks) {
   const missing: string[] = [];
   let target = "Revisar";
   let readyToLaunch = false;
@@ -282,26 +406,25 @@ function buildRouting(r: DocResult) {
   if (r.category === "viagem") {
     target = "Viagens / Caixa";
     if (!r.freight_mode) missing.push("modalidade");
-    if (r.freight_mode === "ton") {
-      // Regra operacional Trans Salomão: por tonelada, somente peso líquido bloqueia o lançamento.
-      if (!r.net_weight_kg) missing.push("peso líquido");
-    } else {
-      // Nos demais modos, motorista/conjunto continuam sendo dados de vínculo quando disponíveis.
-      if (!r.driver_name) missing.push("motorista");
-      if (!r.tractor_plate && !r.trailer_plate) missing.push("conjunto/placa");
-    }
+    if (!links.suggestedDriverId) missing.push("motorista cadastrado");
+    if (!links.suggestedFleetId) missing.push("conjunto cadastrado");
+    if (r.freight_mode === "ton" && !r.net_weight_kg) missing.push("peso líquido");
+    if (!r.ticket_number && !r.document_number) missing.push("número do ticket");
   } else if (r.category === "abastecimento") {
     target = "Abastecimentos";
-    if (!r.tractor_plate && !r.trailer_plate) missing.push("conjunto/placa");
+    if (!links.suggestedFleetId) missing.push("conjunto cadastrado");
     if (!r.liters) missing.push("litros");
     if (!r.price_per_liter) missing.push("preço por litro");
+    if (!r.amount_total) missing.push("total pago");
   } else if (r.category === "adiantamento") {
     target = "Despesas > Adiantamentos";
-    if (!r.driver_name && !r.recipient_name) missing.push("motorista");
+    if (!links.suggestedDriverId) missing.push("motorista cadastrado");
     if (!r.amount_total) missing.push("valor");
+    if (!r.date) missing.push("data");
+    if (!r.time) missing.push("hora");
   } else if (r.category === "mecanica") {
     target = "Despesas > Mecânica";
-    if (!r.tractor_plate && !r.trailer_plate) missing.push("conjunto/placa");
+    if (!links.suggestedFleetId) missing.push("conjunto cadastrado");
     if (!r.amount_total) missing.push("valor");
     if (!r.description) missing.push("descrição");
   } else if (r.category === "despesa") {
