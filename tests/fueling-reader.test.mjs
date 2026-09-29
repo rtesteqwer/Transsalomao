@@ -96,6 +96,20 @@ for (const [name, parse] of [['server', server.parseServerFuelingOcr], ['browser
   });
 }
 
+test('normalizer derives total when exact liters and price are present', () => {
+  const reading = server.normalizeFuelingReading({
+    document_type:'fuel_receipt',
+    liters:'156.495',
+    price_per_liter:'6.39',
+    total_amount:null,
+    discount_amount:null,
+    consistency:'partial',
+    confidence:0.8,
+  }, { repairOcr:false });
+  assert.equal(reading.total_amount, '1000');
+  assert.equal(reading.consistency, 'calculated');
+});
+
 test('a wrong total cannot be silently rescaled at save time', () => {
   const reading = server.normalizeFuelingReading({ liters:'156.495',price_per_liter:'6.39',total_amount:'100000',document_type:'invoice' }, { repairOcr:false });
   assert.equal(reading.total_amount, '100000');
@@ -131,6 +145,10 @@ test('validated Klebersom source hashes recover the exact confirmed fueling valu
     ['9db932ba71af7a0d8f20704a814581f11fe749fac5569131e8348310827bf696', '2026-09-12', null, '44.120', '2.80', '123.54', null],
     ['a292b8d0311535458d6ba6b5652ea1605a83e51104b2fc07e86623d11a019fb3', '2026-09-19', '14:39:24', '430.843', '6.73', '2843.56', '56.01'],
     ['98d0e18a0c236bc99b4ab1dacfb2b808b472b7da177f532fc3b1c852c7853e1c', '2026-09-25', '17:42', '519.03', '6.590', '3420.41', null],
+    ['7ffc2b7cd1cb9df48038c96419f4bde96aab3ab90ca6124fd1f05d179e8b81b3', null, null, '367.289', '6.480', '2380.03', null],
+    ['ccbd70324686c200e86640e7a19e3f1b7131d842901093aedd356380b3a0fa0f', null, null, '156.495', '6.390', '1000.00', null],
+    ['ae793ace956cfb7cf4092658b9db315cb60a67fa518dfe7b243cdf108bb74888', '2026-09-27', '22:04:54', '156.495', '6.39', '1000.00', null],
+    ['0c63cd20b4306e4d82a9c93aa71b708a92d230ad9f377f79ce800693efe34ef7', null, null, '301.565', '6.390', '1927.00', null],
   ];
   for (const [hash, date, time, liters, price, total, discount] of fixtures) {
     const reading = server.recoverValidatedFuelingReading(hash);
