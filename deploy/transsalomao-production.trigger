@@ -1,1 +1,1 @@
-deploy fueling reader OCR fallback without OpenAI credits 2026-09-29
+deploy corrected Luiz fueling ZIP extraction 2026-09-29
