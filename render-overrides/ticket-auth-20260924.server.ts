@@ -1,11 +1,10 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { managementSession } from "@/lib/management-auth.server";
-import { authenticateAssistantRequest } from "@/lib/assistant-auth.server";
 import { klebersomSession } from "@/lib/klebersom-access.server";
 import { TicketError } from "@/lib/ticket-core";
 import type { Sql } from "@/lib/db";
 
-export async function ticketAccess(request: Request) {
+export function ticketAccess(request: Request) {
   const expected = process.env.TICKET_TOKEN?.trim();
   const supplied = request.headers.get("x-app-token") || "";
   if (expected && expected.length >= 32 && Buffer.byteLength(supplied) === Buffer.byteLength(expected) && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
@@ -20,8 +19,6 @@ export async function ticketAccess(request: Request) {
     const manager = managementSession();
     if (manager) return { role: "admin" as const, username: manager.username, driverId: null };
   }
-  const assistant = await authenticateAssistantRequest(request);
-  if (assistant) return { role: "admin" as const, username: assistant.username, driverId: null };
   throw new TicketError(401, "Entre com seu login para ler e lançar o ticket pela foto.");
 }
 
