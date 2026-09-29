@@ -74,6 +74,11 @@ export async function ensureFuelingPhotoTables(sql: any) {
       last_seen_at timestamptz not null default now()
     )
   `;
+  // Persist the fiscal values from the SAME fueling ticket. Legacy fuelings keep
+  // working because both columns are nullable and old rows can still derive cost
+  // from liters × price_per_liter.
+  await sql`alter table fuelings add column if not exists discount_amount numeric`;
+  await sql`alter table fuelings add column if not exists total_amount numeric`;
 }
 
 export function validateFuelingImage(value: unknown) {
