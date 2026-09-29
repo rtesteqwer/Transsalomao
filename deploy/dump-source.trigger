@@ -1,1 +1,1 @@
-dump current source for fueling discount total fix 2026-09-29
+dump source after persistence fix 2026-09-29 02:36 BRT
