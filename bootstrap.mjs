@@ -293,6 +293,16 @@ if (!original.includes("apply-fueling-net-fields-20260929.mjs")) {
   );
 }
 
+// Integridade operacional: elimina falsos duplicados por vínculos órfãos,
+// exige confirmação para deduplicar e confirma exclusões no banco.
+if (!original.includes("apply-data-integrity-20260929.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing data integrity insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-data-integrity-20260929.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Fix the TanStack Start transport before Vite hashes the browser assets.
 // Using JSON avoids the framed-response retry loop observed in Edge, and doing
 // this before the build guarantees new immutable JS filenames for clients.
