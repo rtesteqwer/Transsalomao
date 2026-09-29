@@ -40,6 +40,7 @@ type ReadItem = {
   reading: FuelingReading;
   suggestedDriverId: string | null;
   suggestedFleetId: string | null;
+  originalFileHash?: string;
   saving?: boolean;
   saved?: boolean;
   message?: string;
@@ -103,6 +104,7 @@ export function FuelingPhotoReader() {
           reading: row.reading as FuelingReading,
           suggestedDriverId: row.driverId ? String(row.driverId) : null,
           suggestedFleetId: row.fleetId ? String(row.fleetId) : null,
+          originalFileHash: row.originalFileHash ? String(row.originalFileHash) : undefined,
           pending: true,
           saved: false,
           message: "Lançamento pendente: complete os dados que faltam e grave novamente.",
@@ -139,8 +141,10 @@ export function FuelingPhotoReader() {
       for (let index = 0; index < selected.length; index += 1) {
         const file = selected[index];
         let image = "";
+        let originalFileHash: string | undefined;
         setProgress("Lendo " + (index + 1) + " de " + selected.length + ": " + file.name);
         try {
+          originalFileHash = await sha256File(file);
           image = await compressPhoto(file);
           const response = await fetch("/api/ler-abastecimento", {
             method: "POST",
@@ -148,6 +152,8 @@ export function FuelingPhotoReader() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               imagem: image,
+              fileName: file.name,
+              originalFileHash: originalFileHash || null,
               driverId: activeDriverId || null,
               fleetId: activeFleetId || null,
             }),
@@ -191,6 +197,7 @@ export function FuelingPhotoReader() {
             reading: nextReading,
             suggestedDriverId,
             suggestedFleetId,
+            originalFileHash,
           };
           setItems((current) => reconcileFuelingBatch([...current, item]));
         } catch (error) {
@@ -246,6 +253,7 @@ export function FuelingPhotoReader() {
           imagem: item.image,
           fileName: item.fileName,
           reading: item.reading,
+          originalFileHash: item.originalFileHash || null,
           driverId: driverId || item.suggestedDriverId || null,
           fleetId: fleetId || item.suggestedFleetId || null,
           confirmed: true,
@@ -695,10 +703,10 @@ function parseLocalFuelingText(text: string): FuelingReading {
   const productNumbers = findFuelProductNumbers(raw);
 
   const pumpNumbers = findPumpDisplayNumbers(lines);
-  let liters = coossutran.liters ?? mathPair?.liters ?? productNumbers.liters ?? pumpNumbers.liters;
-  let price = coossutran.price ?? mathPair?.price ?? productNumbers.price ?? pumpNumbers.price;
-  const gross = grossTotal ?? productNumbers.gross ?? pumpNumbers.total;
-  let resolvedTotal = coossutran.total ?? total ?? pumpNumbers.total;
+  let liters = coossutran.detected ? coossutran.liters : (mathPair?.liters ?? productNumbers.liters ?? pumpNumbers.liters);
+  let price = coossutran.detected ? coossutran.price : (mathPair?.price ?? productNumbers.price ?? pumpNumbers.price);
+  const gross = coossutran.detected ? coossutran.total : (grossTotal ?? productNumbers.gross ?? pumpNumbers.total);
+  let resolvedTotal = coossutran.detected ? coossutran.total : (total ?? pumpNumbers.total);
 
   // Close de visor: muitas fotos reais mostram somente um campo grande.
   // Não gravamos automaticamente; classificamos o papel provável e depois
@@ -914,6 +922,18 @@ function findCoossutranLocal(text: string) {
   let total: string | null = null;
   const totals = [...flat.matchAll(/TOTAL\s*:?[^R]{0,45}?R\$\s*[:\-]?\s*([0-9][0-9.,]{2,})/ig)];
   if (totals.length) total = localRoleNumber(totals[totals.length - 1][1], "money");
+  // Não aceite uma leitura COOSSUTRAN "matematicamente fechada" formada
+  // por números do cabeçalho/data (ex.: 1 L, R$ 12/L, total R$ 12).
+  if (liters && Number(liters) < 5) {
+    return { detected: true, liters: null, price: null, total: null };
+  }
+  if (liters && price && total) {
+    const expected = Number(liters) * Number(price);
+    if (Math.abs(expected - Number(total)) > Math.max(FUELING_MONEY_TOLERANCE, expected * 0.001)) {
+      return { detected: true, liters: null, price: null, total: null };
+    }
+  }
+
   if (!total && liters && price) total = (Number(liters) * Number(price)).toFixed(2);
 
   return { detected: true, liters, price, total };
@@ -1424,6 +1444,16 @@ function documentLabel(value: FuelingReading["document_type"]) {
 
 const inputClass =
   "h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none focus:border-accent";
+
+async function sha256File(file: File) {
+  try {
+    if (!globalThis.crypto?.subtle) return undefined;
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return undefined;
+  }
+}
 
 async function compressPhoto(file: File) {
   if (!file.type.startsWith("image/")) throw new Error("Selecione uma imagem.");

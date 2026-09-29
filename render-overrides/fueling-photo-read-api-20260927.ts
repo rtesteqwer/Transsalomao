@@ -30,6 +30,8 @@ export const Route = createFileRoute("/api/ler-abastecimento")({
 
           const reading = await readFuelingPhoto(sql, {
             imageDataUrl: image.dataUrl,
+            fileName: typeof body?.fileName === "string" ? body.fileName.slice(0, 180) : null,
+            originalFileHash: typeof body?.originalFileHash === "string" ? body.originalFileHash : null,
             selectedDriverName: selectedDriver?.name ?? null,
             selectedFleetName: selectedFleet?.name ?? null,
             tractorPlate: selectedFleet?.tractor_plate ?? null,

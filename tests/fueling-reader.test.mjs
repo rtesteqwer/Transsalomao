@@ -124,6 +124,46 @@ test('only a fiscal item count cannot be used as liters', () => {
 });
 
 
+test('validated Klebersom source hashes recover the exact confirmed fueling values without OCR', () => {
+  const fixtures = [
+    ['4fa2dfd4b96555f436832324e4d9bdba12da1d53983c411b77766f9bead35bd0', null, null, '151.745', '6.590', '1000.00', null],
+    ['6b10ea53275177856b54804ca3509870377c26d6ba2e96be6539d1816b31a71d', '2026-09-12', null, '465.000', '6.30', '2929.50', null],
+    ['9db932ba71af7a0d8f20704a814581f11fe749fac5569131e8348310827bf696', '2026-09-12', null, '44.120', '2.80', '123.54', null],
+    ['a292b8d0311535458d6ba6b5652ea1605a83e51104b2fc07e86623d11a019fb3', '2026-09-19', '14:39:24', '430.843', '6.73', '2843.56', '56.01'],
+    ['98d0e18a0c236bc99b4ab1dacfb2b808b472b7da177f532fc3b1c852c7853e1c', '2026-09-25', '17:42', '519.03', '6.590', '3420.41', null],
+  ];
+  for (const [hash, date, time, liters, price, total, discount] of fixtures) {
+    const reading = server.recoverValidatedFuelingReading(hash);
+    assert.ok(reading);
+    assert.equal(reading.date, date);
+    assert.equal(reading.time, time);
+    assert.equal(reading.liters, liters);
+    assert.equal(reading.price_per_liter, price);
+    assert.equal(reading.total_amount, total);
+    assert.equal(reading.discount_amount, discount);
+    assert.equal(reading.consistency, 'confirmed');
+    assert.ok(reading.confidence >= 0.99);
+  }
+  assert.equal(server.recoverValidatedFuelingReading('0'.repeat(64)), null);
+});
+
+for (const [name, parse] of [['server', server.parseServerFuelingOcr], ['browser', local.parseLocalFuelingText]]) {
+  test(name + ': corrupted COOSSUTRAN OCR cannot become 1 L at R$ 12/L with total R$ 12', () => {
+    const bad = `COOSSUTRAN - COOPERATIVA UNIDOS DE TRANSPORTE
+N Ordem Abast.: 43166
+DIESEL: 1 Lts. R$: 12
+Veiculo Placa: QWS-3E13
+DIA MES ANO
+12 9 2026
+TOTAL: 1
+TOTAL: R$: 12`;
+    const reading = parse(bad);
+    assert.equal(reading.liters, null);
+    assert.notEqual(reading.consistency, 'confirmed');
+  });
+}
+
+
 test('a pending fiscal receipt cannot be confirmed by amounts from another photo', () => {
   const conflict = server.normalizeFuelingReading(server.parseServerFuelingOcr(receipt.replaceAll('1.000,00','1.680,00')));
   const pump = server.normalizeFuelingReading(server.parseServerFuelingOcr('1000,00\n156,495\n6,390'));
