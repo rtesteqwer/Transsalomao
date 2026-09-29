@@ -284,6 +284,15 @@ if (!original.includes("apply-universal-file-readers-20260929.mjs")) {
   );
 }
 
+// Abastecimentos: persistir e exibir desconto + total final pago do MESMO ticket.
+if (!original.includes("apply-fueling-net-fields-20260929.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing fueling net fields insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-fueling-net-fields-20260929.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Fix the TanStack Start transport before Vite hashes the browser assets.
 // Using JSON avoids the framed-response retry loop observed in Edge, and doing
 // this before the build guarantees new immutable JS filenames for clients.
