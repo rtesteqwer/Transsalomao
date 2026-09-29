@@ -1,1 +1,1 @@
-deploy NFC-e fueling decimal preservation and safe item validation 2026-09-28
+deploy fueling capture layouts Linx Xpert Nevada COOSSUTRAN 2026-09-28
