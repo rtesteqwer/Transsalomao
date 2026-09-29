@@ -32,6 +32,9 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           const price = normalizeDecimalText(reading.price_per_liter);
           const total = normalizeDecimalText(reading.total_amount);
           const discount = normalizeDecimalText(reading.discount_amount);
+          const isPumpDisplay =
+            reading.document_type === "pump_display" ||
+            (Array.isArray(reading.visual_hints) && reading.visual_hints.some((hint: string) => /visor.*bomba|bomba.*visor/i.test(String(hint))));
           if (!liters) throw new FuelingPhotoError(400, "Informe a quantidade exata de litros.");
           if (!price) throw new FuelingPhotoError(400, "Informe o preço exato por litro.");
           if (!total) throw new FuelingPhotoError(400, "Confira e informe o total do abastecimento antes de gravar.");
@@ -67,7 +70,9 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             );
             if (matches.length === 1) fleet = matches[0];
           }
-          if (!fleet) throw new FuelingPhotoError(400, "Selecione o conjunto deste abastecimento.");
+          if (!fleet && !isPumpDisplay) {
+            throw new FuelingPhotoError(400, "Selecione o conjunto deste abastecimento.");
+          }
 
           let driver = drivers.find((row: any) => String(row.id) === String(body?.driverId ?? "")) ?? null;
           if (!driver && reading.driver_name) {
@@ -117,7 +122,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           }
 
           // 2) Com data visível, litros + preço/L + conjunto identificam a compra.
-          if (!fuelingId && reading.date) {
+          if (!fuelingId && reading.date && fleet) {
             const candidate = await sql`
               select id,date
               from fuelings
@@ -138,7 +143,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           // exatamente um abastecimento do mesmo conjunto com os MESMOS litros e
           // preço/L, vincula a foto automaticamente. Se houver ambiguidade, exige
           // a data em vez de arriscar uma associação errada.
-          if (!fuelingId && !reading.date) {
+          if (!fuelingId && !reading.date && fleet) {
             const candidates = await sql`
               select id,date
               from fuelings
@@ -160,12 +165,17 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           }
 
           const linkedExisting = !!fuelingId;
-          if (!fuelingId) {
+          const needsCompletion = !fuelingId && isPumpDisplay && (!resolvedDate || !fleet);
+
+          if (!fuelingId && !needsCompletion) {
             if (!resolvedDate) {
               throw new FuelingPhotoError(
                 400,
-                "A foto da bomba não mostra a data e ainda não existe abastecimento compatível. Informe a data ou envie também o ticket/comprovante.",
+                "Informe a data deste abastecimento antes de gravar.",
               );
+            }
+            if (!fleet) {
+              throw new FuelingPhotoError(400, "Selecione o conjunto deste abastecimento.");
             }
             fuelingId = id("fuel");
             const notes = [
@@ -209,6 +219,59 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             fileId = String(actual[0]?.id ?? fileId);
           }
 
+          if (needsCompletion) {
+            const pendingReading = {
+              ...reading,
+              pending_completion: true,
+              missing_fields: [
+                !resolvedDate ? "date" : "",
+                !fleet ? "fleet" : "",
+                !driver ? "driver" : "",
+                !reading.station_name ? "station_name" : "",
+                !reading.pump_number ? "pump_number" : "",
+                reading.odometer_km == null ? "odometer_km" : "",
+              ].filter(Boolean),
+            };
+
+            await sql`
+              insert into fueling_photo_reads(
+                id,file_id,fueling_id,driver_id,fleet_id,document_type,confidence,status,read_json,created_at,confirmed_at
+              )
+              values(
+                ${id("fuelread")},
+                ${fileId},
+                null,
+                ${driver?.id ?? null},
+                ${fleet?.id ?? null},
+                ${reading.document_type},
+                ${reading.confidence},
+                'pending_completion',
+                ${JSON.stringify(pendingReading)}::jsonb,
+                now(),
+                null
+              )
+              on conflict(file_id) do update set
+                fueling_id=null,
+                driver_id=excluded.driver_id,
+                fleet_id=excluded.fleet_id,
+                document_type=excluded.document_type,
+                confidence=excluded.confidence,
+                status='pending_completion',
+                read_json=excluded.read_json,
+                confirmed_at=null
+            `;
+
+            return Response.json({
+              ok: true,
+              pending: true,
+              linkedExisting: false,
+              fuelingId: null,
+              driverId: driver?.id ?? null,
+              fleetId: fleet?.id ?? null,
+              message: "Foto da bomba salva como lançamento pendente. A Gerência pode completar data, motorista, conjunto, posto, bomba e odômetro depois.",
+            }, { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+          }
+
           await sql`
             insert into fueling_photo_reads(
               id,file_id,fueling_id,driver_id,fleet_id,document_type,confidence,status,read_json,created_at,confirmed_at
@@ -218,7 +281,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               ${fileId},
               ${fuelingId},
               ${driver?.id ?? null},
-              ${fleet.id},
+              ${fleet?.id ?? null},
               ${reading.document_type},
               ${reading.confidence},
               'confirmed',
@@ -276,7 +339,7 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             linkedExisting,
             fuelingId,
             driverId: driver?.id ?? null,
-            fleetId: fleet.id,
+            fleetId: fleet?.id ?? null,
             message: linkedExisting
               ? "Foto vinculada a um abastecimento já existente, sem duplicar."
               : "Abastecimento gravado com a foto vinculada.",
