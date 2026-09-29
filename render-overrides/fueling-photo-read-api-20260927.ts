@@ -2,6 +2,7 @@ import { FUELING_READER_VERSION } from "@/lib/fueling-receipt-rules";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { managementSession } from "@/lib/management-auth.server";
+import { authenticateAssistantRequest } from "@/lib/assistant-auth.server";
 import {
   fuelingPhotoErrorResponse,
   normalizeName,
@@ -14,8 +15,8 @@ export const Route = createFileRoute("/api/ler-abastecimento")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!managementSession()) {
-          return Response.json({ ok: false, message: "Entre na Gerência novamente." }, { status: 401, headers: { "X-Fueling-Reader-Version": FUELING_READER_VERSION } });
+        if (!managementSession() && !(await authenticateAssistantRequest(request))) {
+          return Response.json({ ok: false, message: "Entre na Gerência ou na Trans Salomão IA novamente." }, { status: 401, headers: { "X-Fueling-Reader-Version": FUELING_READER_VERSION } });
         }
         try {
           const body: any = await request.json();
