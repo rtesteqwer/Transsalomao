@@ -358,15 +358,33 @@ function repairFuelingReadingFromStructuredName(fileName: string, input: any) {
     !station ||
     /icms|tribut|monofas|valor|produto|cliente|destinat|chave|protocolo|\bbc\b/i.test(station)
   ) {
-    reading.station_name = hint.station;
+    reading.station_name = canonicalStructuredStation(hint.station);
+  }
+  if (reading.document_type === "pump_display" || reading.document_type === "unknown") {
+    reading.document_type = /fred rosalem/i.test(hint.station) ? "invoice" : "fuel_receipt";
   }
 
   const liters = Number(hint.litersText);
   const total = Number(hint.totalText);
+  const rawPrice = String(reading.price_per_liter ?? "");
   let price = numericBetween(reading.price_per_liter, 2, 20);
   let discount = numericBetween(reading.discount_amount, 0, Math.max(total, 1));
+  const priceHasFraction = !!price && (/[.,]\d{1,3}/.test(rawPrice) || Math.abs(price - Math.round(price)) > 0.0001);
 
-  if (discount && liters > 0) {
+  if (price && priceHasFraction && liters > 0) {
+    const gross = liters * price;
+    const impliedDiscount = gross - total;
+    if (
+      impliedDiscount >= 0.01 &&
+      impliedDiscount <= Math.max(0.1, gross * 0.15) &&
+      (!discount || Math.abs(discount - impliedDiscount) > 0.08)
+    ) {
+      discount = impliedDiscount;
+      reading.discount_amount = decimalString(impliedDiscount, 2);
+    }
+  }
+
+  if (discount && liters > 0 && (!price || !priceHasFraction)) {
     const candidate = (total + discount) / liters;
     if (
       candidate >= 2 &&
@@ -378,7 +396,7 @@ function repairFuelingReadingFromStructuredName(fileName: string, input: any) {
     }
   }
 
-  if (price && liters > 0) {
+  if (price && liters > 0 && !priceHasFraction) {
     const gross = liters * price;
     const impliedDiscount = gross - total;
     if (
@@ -447,6 +465,19 @@ function parseStructuredFuelingFileName(fileName: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   return { date, time, station, litersText, totalText };
+}
+
+function canonicalStructuredStation(value: string) {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (normalized.includes("fred rosalem")) return "FRED ROSALEM HELIODORO";
+  if (normalized.includes("posto nevada")) return "POSTO DE COMBUSTIVEIS NEVADA LTDA";
+  if (normalized.includes("posto rosalem")) return "POSTO ROSALEM";
+  return value;
 }
 
 function normalizedStructuredNumber(value: string, maxDecimals: number) {
