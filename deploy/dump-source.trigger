@@ -1,1 +1,1 @@
-dump source for vite OCR externalization 2026-09-28
+dump current source for fueling discount total fix 2026-09-29
