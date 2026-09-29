@@ -1,1 +1,1 @@
-deploy fueling ZIP HTTPError fix and ticket extraction variables 2026-09-29
+deploy fueling reader OCR fallback without OpenAI credits 2026-09-29
