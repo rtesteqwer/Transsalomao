@@ -1,6 +1,6 @@
 // Shared by server OCR and the Android/browser fallback. Examples belong in
 // tests; transactional values must always come from the current photograph.
-export const FUELING_READER_VERSION = "2026-09-28-layouts-v2";
+export const FUELING_READER_VERSION = "2026-09-29-klebersom-zip-v3";
 export const FUELING_MONEY_TOLERANCE = 0.02;
 
 export const FUEL_RECEIPT_INSTRUCTIONS = [
