@@ -245,7 +245,6 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               throw new FuelingPhotoError(400, "Selecione o conjunto deste abastecimento.");
             }
             fuelingId = id("fuel");
-            const notes = fuelingNotes(reading, liters, price, discount || "0", total);
             await sql`
               insert into fuelings(
                 id,date,driver_id,fleet_id,station,km,liters,price_per_liter,
