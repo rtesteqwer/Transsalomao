@@ -1,1 +1,1 @@
-deploy fueling capture layouts Linx Xpert Nevada COOSSUTRAN 2026-09-28
+deploy universal Trans Salomao IA document intake PDF photos ZIP 2026-09-28
