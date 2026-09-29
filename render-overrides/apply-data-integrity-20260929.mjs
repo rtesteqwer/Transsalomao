@@ -120,15 +120,22 @@ edit("src/lib/use-fleet.ts", (source) => {
   let s = source;
   if (s.includes('refetchQueries({ queryKey: fleetKey, type: "active" })')) return s;
   const variants = [
-    "const invalidate = () => queryClient.invalidateQueries({ queryKey: fleetKey });",
-    "const invalidate = () => queryClient.invalidateQueries({ queryKey: fleetKey, exact: true });",
+    {
+      before: "const invalidate = () => qc.invalidateQueries({ queryKey: fleetKey });",
+      after: 'const invalidate = async () => {\n    await qc.invalidateQueries({ queryKey: fleetKey });\n    await qc.refetchQueries({ queryKey: fleetKey, type: "active" });\n  };'
+    },
+    {
+      before: "const invalidate = () => queryClient.invalidateQueries({ queryKey: fleetKey });",
+      after: 'const invalidate = async () => {\n    await queryClient.invalidateQueries({ queryKey: fleetKey });\n    await queryClient.refetchQueries({ queryKey: fleetKey, type: "active" });\n  };'
+    },
+    {
+      before: "const invalidate = () => queryClient.invalidateQueries({ queryKey: fleetKey, exact: true });",
+      after: 'const invalidate = async () => {\n    await queryClient.invalidateQueries({ queryKey: fleetKey, exact: true });\n    await queryClient.refetchQueries({ queryKey: fleetKey, type: "active" });\n  };'
+    },
   ];
-  const found = variants.find((value) => s.includes(value));
+  const found = variants.find((value) => s.includes(value.before));
   if (found) {
-    s = s.replace(
-      found,
-      'const invalidate = async () => {\n    await queryClient.invalidateQueries({ queryKey: fleetKey });\n    await queryClient.refetchQueries({ queryKey: fleetKey, type: "active" });\n  };'
-    );
+    s = s.replace(found.before, found.after);
   } else {
     console.log("[data-integrity] immediate refetch marker not found; existing polling remains active");
   }
