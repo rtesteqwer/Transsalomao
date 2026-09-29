@@ -6,13 +6,6 @@ if (!target || !fs.existsSync(target)) throw new Error("batch-photo-driver: targ
 const p = path.join(target, "src/routes/motorista.tsx");
 let s = fs.readFileSync(p, "utf8");
 
-// ZIP support needs JSZip in the reconstructed app.
-{
-  const packagePath = path.join(target, "package.json");
-  const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
-  pkg.dependencies = { ...(pkg.dependencies || {}), jszip: pkg.dependencies?.jszip || "^3.10.1" };
-  fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
-}
 
 // The driver page already imports the ticket icons; add Archive for the ZIP launcher.
 s = s.replace(
