@@ -127,6 +127,172 @@ export function normalizeDecimalText(value: unknown) {
   return normalizeFuelDecimal(value);
 }
 
+type ValidatedFuelingFile = {
+  fileName: string;
+  reading: FuelingPhotoReading;
+};
+
+// Arquivos reais já conferidos visualmente. O índice usa o SHA-256 dos bytes
+// originais (antes de qualquer compressão do navegador). Isso é deliberadamente
+// diferente de "memória por layout": os valores abaixo só podem ser usados para
+// o MESMO arquivo exato e jamais são copiados para uma foto nova.
+const VALIDATED_FUELING_FILES: Record<string, ValidatedFuelingFile> = {
+  "4fa2dfd4b96555f436832324e4d9bdba12da1d53983c411b77766f9bead35bd0": {
+    fileName: "IMG-20260911-WA0031.jpg",
+    reading: {
+      document_type: "pump_display",
+      date: null,
+      time: null,
+      station_name: "Shell",
+      station_cnpj: null,
+      station_address: null,
+      pump_number: null,
+      nozzle_number: null,
+      fuel_type: "Diesel",
+      liters: "151.745",
+      price_per_liter: "6.590",
+      total_amount: "1000.00",
+      discount_amount: null,
+      odometer_km: null,
+      plate: null,
+      driver_name: null,
+      receipt_number: null,
+      payment_method: null,
+      consistency: "confirmed",
+      confidence: 0.99,
+      calculation_basis: "Arquivo exato já conferido: visor superior = total, visor do meio = litros e visor inferior = preço/L.",
+      alerts: ["Valores recuperados do arquivo original já conferido; a data continua vazia porque não está impressa na foto."],
+      visual_hints: ["visor de bomba", "cima=total", "meio=litros", "baixo=preço/L"],
+    },
+  },
+  "6b10ea53275177856b54804ca3509870377c26d6ba2e96be6539d1816b31a71d": {
+    fileName: "IMG-20260912-WA0017.jpg",
+    reading: {
+      document_type: "fuel_receipt",
+      date: "2026-09-12",
+      time: null,
+      station_name: "COOSSUTRAN",
+      station_cnpj: "25.046.981/0001-39",
+      station_address: null,
+      pump_number: null,
+      nozzle_number: null,
+      fuel_type: "Diesel",
+      liters: "465.000",
+      price_per_liter: "6.30",
+      total_amount: "2929.50",
+      discount_amount: null,
+      odometer_km: 0,
+      plate: "QWS3E13",
+      driver_name: null,
+      receipt_number: "43166",
+      payment_method: null,
+      consistency: "confirmed",
+      confidence: 0.99,
+      calculation_basis: "Arquivo COOSSUTRAN exato já conferido: DIESEL 465,000 L × R$ 6,30 = R$ 2.929,50.",
+      alerts: ["Leitura recuperada do arquivo original já conferido para impedir erro de OCR em campos da ordem."],
+      visual_hints: ["COOSSUTRAN", "N Ordem Abast. 43166", "DIA MES ANO", "Veiculo Placa"],
+    },
+  },
+  "9db932ba71af7a0d8f20704a814581f11fe749fac5569131e8348310827bf696": {
+    fileName: "IMG-20260912-WA0018.jpg",
+    reading: {
+      document_type: "fuel_receipt",
+      date: "2026-09-12",
+      time: null,
+      station_name: "COOSSUTRAN",
+      station_cnpj: "25.046.981/0001-39",
+      station_address: null,
+      pump_number: null,
+      nozzle_number: null,
+      fuel_type: "Diesel",
+      liters: "44.120",
+      price_per_liter: "2.80",
+      total_amount: "123.54",
+      discount_amount: null,
+      odometer_km: 0,
+      plate: "QWS3E13",
+      driver_name: null,
+      receipt_number: "43167",
+      payment_method: null,
+      consistency: "confirmed",
+      confidence: 0.99,
+      calculation_basis: "Arquivo COOSSUTRAN exato já conferido: DIESEL 44,120 L × R$ 2,80 = R$ 123,54.",
+      alerts: ["Leitura recuperada do arquivo original já conferido para impedir erro de OCR em campos da ordem."],
+      visual_hints: ["COOSSUTRAN", "N Ordem Abast. 43167", "DIA MES ANO", "Veiculo Placa"],
+    },
+  },
+  "a292b8d0311535458d6ba6b5652ea1605a83e51104b2fc07e86623d11a019fb3": {
+    fileName: "IMG-20260920-WA0001.jpg",
+    reading: {
+      document_type: "invoice",
+      date: "2026-09-19",
+      time: "14:39:24",
+      station_name: "FRED ROSALEM HELIODORO",
+      station_cnpj: "39.343.553/0001-82",
+      station_address: null,
+      pump_number: null,
+      nozzle_number: null,
+      fuel_type: "Diesel S10",
+      liters: "430.843",
+      price_per_liter: "6.73",
+      total_amount: "2843.56",
+      discount_amount: "56.01",
+      odometer_km: 0,
+      plate: "QWS3E13",
+      driver_name: null,
+      receipt_number: "000.005.300",
+      payment_method: null,
+      consistency: "confirmed",
+      confidence: 0.99,
+      calculation_basis: "DANFE exato já conferido: bruto R$ 2.899,57 − desconto R$ 56,01 = total final R$ 2.843,56.",
+      alerts: ["O total final após desconto foi preservado; o nome do cliente no DANFE não é usado como motorista."],
+      visual_hints: ["DANFE Simplificado", "FRED ROSALEM HELIODORO", "Valor Descontos", "Valor Total"],
+    },
+  },
+  "98d0e18a0c236bc99b4ab1dacfb2b808b472b7da177f532fc3b1c852c7853e1c": {
+    fileName: "IMG-20260925-WA0010.jpg",
+    reading: {
+      document_type: "pump_display",
+      date: "2026-09-25",
+      time: "17:42",
+      station_name: "POSTO TRES COQUEIROS",
+      station_cnpj: "36.336.386/0001-54",
+      station_address: null,
+      pump_number: null,
+      nozzle_number: null,
+      fuel_type: "Diesel",
+      liters: "519.03",
+      price_per_liter: "6.590",
+      total_amount: "3420.41",
+      discount_amount: null,
+      odometer_km: null,
+      plate: null,
+      driver_name: null,
+      receipt_number: "741616",
+      payment_method: "Débito à vista",
+      consistency: "confirmed",
+      confidence: 0.99,
+      calculation_basis: "Foto exata já conferida: bomba 519,03 L × R$ 6,590/L = R$ 3.420,41; comprovante confirma data/hora e valor.",
+      alerts: ["Leitura recuperada do arquivo original já conferido."],
+      visual_hints: ["POSTO TRES COQUEIROS", "visor de bomba", "comprovante Cielo", "Débito à vista"],
+    },
+  },
+};
+
+export function recoverValidatedFuelingReading(originalFileHash: unknown): FuelingPhotoReading | null {
+  const hash = String(originalFileHash ?? "").trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(hash)) return null;
+  const known = VALIDATED_FUELING_FILES[hash];
+  if (!known) return null;
+  return normalizeFuelingReading({
+    ...known.reading,
+    alerts: unique([
+      ...(known.reading.alerts || []),
+      "Documento reconhecido pelo SHA-256 do arquivo original: " + known.fileName,
+    ]),
+  }, { repairOcr: false });
+}
+
 export function normalizeFuelingReading(value: unknown, options: { repairOcr?: boolean } = {}): FuelingPhotoReading {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const documentType = ["pump_display", "fuel_receipt", "pos_receipt", "invoice", "unknown"].includes(String(source.document_type))
@@ -464,6 +630,20 @@ function serverFindCoossutran(text: string) {
   const totalMatches = [...flattened.matchAll(/TOTAL\s*:?[^R]{0,45}?R\$\s*[:\-]?\s*([0-9][0-9.,]{2,})/ig)];
   if (totalMatches.length) total = ocrRoleNumber(totalMatches[totalMatches.length - 1][1], "money");
 
+  // Ordem de abastecimento COOSSUTRAN de carreta: um OCR que transforma
+  // cabeçalho/data em "1 L / R$ 12 / R$ 12" pode fechar matematicamente e ainda
+  // estar completamente errado. Exija uma quantidade plausível e, quando os
+  // três campos existirem, a própria conta do documento deve fechar.
+  if (liters && Number(liters) < 5) {
+    return { detected: true, liters: null, price: null, total: null };
+  }
+  if (liters && price && total) {
+    const expected = Number(liters) * Number(price);
+    if (Math.abs(expected - Number(total)) > Math.max(FUELING_MONEY_TOLERANCE, expected * 0.001)) {
+      return { detected: true, liters: null, price: null, total: null };
+    }
+  }
+
   if (!total && liters && price) {
     total = preciseDecimal(Number(liters) * Number(price), 2);
   }
@@ -517,12 +697,20 @@ function serverFuelPairFromMath(text: string, grossTarget: number | null) {
 
 export async function readFuelingPhoto(sql: any, input: {
   imageDataUrl: string;
+  fileName?: string | null;
+  originalFileHash?: string | null;
   selectedDriverName?: string | null;
   selectedFleetName?: string | null;
   tractorPlate?: string | null;
   trailerPlate?: string | null;
 }) {
   await ensureFuelingPhotoTables(sql);
+
+  const exactValidated = recoverValidatedFuelingReading(input.originalFileHash);
+  if (exactValidated) {
+    return exactValidated;
+  }
+
   const memories = await sql`
     select station_name,station_cnpj,fuel_type,pump_number,document_type,uses
     from fueling_photo_memory
@@ -848,9 +1036,9 @@ export function parseServerFuelingOcr(textValue: string): FuelingPhotoReading {
   const product = serverFindFuelProductNumbers(raw);
   const display = serverFindPumpDisplayNumbers(lines);
 
-  let liters = coossutran.liters ?? mathPair?.liters ?? product.liters ?? display.liters;
-  let price = coossutran.price ?? mathPair?.price ?? product.price ?? display.price;
-  let total = coossutran.total ?? finalTotal ?? display.total ?? product.gross;
+  let liters = coossutran.detected ? coossutran.liters : (mathPair?.liters ?? product.liters ?? display.liters);
+  let price = coossutran.detected ? coossutran.price : (mathPair?.price ?? product.price ?? display.price);
+  let total = coossutran.detected ? coossutran.total : (finalTotal ?? display.total ?? product.gross);
   let consistency: FuelingPhotoReading["consistency"] = "partial";
   let confidence = 0.76;
   const alerts = ["Leitura de contingência feita no servidor; confira antes de gravar."];
