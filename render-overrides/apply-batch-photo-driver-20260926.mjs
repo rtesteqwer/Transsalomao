@@ -329,11 +329,11 @@ s = s.replace(
 );
 s = s.replace(
   'O OCR lê número do ticket, peso líquido, placas, transportadora, operadora, destinatário, data e horário quando estiverem no ticket.',
-  'Selecione uma ou várias fotos, ou um ZIP com até 100 imagens. O ChatGPT lê cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência.',
+  'Selecione uma ou várias fotos. O ChatGPT lê cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência.',
 );
 s = s.replace(
   'Neste modo o OCR lê número do ticket, placas, transportadora, destinatário, data e horário; pesos e pesagens são ignorados.',
-  'Selecione uma ou várias fotos, ou um ZIP com até 100 imagens. O ChatGPT lê os dados de cada documento; pesos são ignorados neste modo.',
+  'Selecione uma ou várias fotos. O ChatGPT lê os dados de cada documento; pesos são ignorados neste modo.',
 );
 
 fs.writeFileSync(p, s);
