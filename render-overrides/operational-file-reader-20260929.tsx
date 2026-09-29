@@ -531,7 +531,8 @@ function fuelingSummary(reading: any) {
   if (reading?.date) parts.push(String(reading.date) + (reading?.time ? " " + String(reading.time) : ""));
   if (reading?.liters) parts.push(String(reading.liters).replace(".", ",") + " L");
   if (reading?.price_per_liter) parts.push("R$/L " + String(reading.price_per_liter).replace(".", ","));
-  if (reading?.total_amount) parts.push("Total R$ " + String(reading.total_amount).replace(".", ","));
+  if (Number(reading?.discount_amount || 0) > 0) parts.push("Desconto R$ " + String(reading.discount_amount).replace(".", ","));
+  if (reading?.total_amount) parts.push("Total após desconto R$ " + String(reading.total_amount).replace(".", ","));
   if (reading?.plate) parts.push("Placa " + String(reading.plate));
   return parts.join(" · ");
 }

@@ -34,3 +34,7 @@ create table if not exists fueling_photo_memory (
   uses integer not null default 1,
   last_seen_at timestamptz not null default now()
 );
+
+
+alter table fuelings add column if not exists discount_amount numeric;
+alter table fuelings add column if not exists total_amount numeric;
