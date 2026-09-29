@@ -6,6 +6,20 @@ if (!target || !fs.existsSync(target)) throw new Error("batch-photo-driver: targ
 const p = path.join(target, "src/routes/motorista.tsx");
 let s = fs.readFileSync(p, "utf8");
 
+// ZIP support needs JSZip in the reconstructed app.
+{
+  const packagePath = path.join(target, "package.json");
+  const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+  pkg.dependencies = { ...(pkg.dependencies || {}), jszip: pkg.dependencies?.jszip || "^3.10.1" };
+  fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
+}
+
+// The driver page already imports the ticket icons; add Archive for the ZIP launcher.
+s = s.replace(
+  'import { AlertTriangle, Camera, CheckCircle2, ChevronLeft, LoaderCircle } from "lucide-react";',
+  'import { Archive, AlertTriangle, Camera, CheckCircle2, ChevronLeft, LoaderCircle } from "lucide-react";',
+);
+
 function must(before, after, label) {
   if (!s.includes(before)) throw new Error("batch-photo-driver: pattern not found (" + label + ")");
   s = s.replace(before, after);
@@ -151,6 +165,38 @@ const fn = [
 '      setTicketReading(false);',
 '    }',
 '  }',
+'  async function onDriverZipFile(file: File) {',
+'    if (ticketBusy.current) return;',
+'    if (!freightMode) return toast.error("Escolha primeiro o modo da viagem.");',
+'    if (!ticketAccess?.authenticated) return toast.error("Entre com seu login para enviar o ZIP.");',
+'    if (!ticketAccess.available) return toast.error("O envio de documentos não está disponível para este login.");',
+'    if (file.size > 80_000_000) return toast.error("O ZIP deve ter no máximo 80 MB.");',
+'    try {',
+'      const JSZipModule: any = await import("jszip");',
+'      const JSZip = JSZipModule.default ?? JSZipModule;',
+'      const zip = await JSZip.loadAsync(await file.arrayBuffer());',
+'      const images: File[] = [];',
+'      let ignored = 0;',
+'      for (const entry of Object.values(zip.files) as any[]) {',
+'        if (images.length >= 100) break;',
+'        const entryName = String(entry?.name || "");',
+'        if (!entryName || entry.dir || entryName.startsWith("__MACOSX/") || /(?:^|\\/)\./.test(entryName)) continue;',
+'        if (!/\.(?:jpe?g|png|webp)$/i.test(entryName)) { ignored += 1; continue; }',
+'        const bytes: Uint8Array = await entry.async("uint8array");',
+'        if (!bytes.byteLength || bytes.byteLength > 10_000_000) { ignored += 1; continue; }',
+'        const cleanName = entryName.replace(/^.*[\\\\/]/, "") || ("ticket-" + (images.length + 1) + ".jpg");',
+'        const copy = new Uint8Array(bytes.length); copy.set(bytes);',
+'        const mime = /\.png$/i.test(cleanName) ? "image/png" : /\.webp$/i.test(cleanName) ? "image/webp" : "image/jpeg";',
+'        images.push(new File([copy.buffer], cleanName, { type: mime }));',
+'      }',
+'      if (!images.length) throw new Error("Não encontrei fotos JPG, JPEG, PNG ou WebP dentro do ZIP.");',
+'      if (ignored > 0) toast.info(ignored + " arquivo(s) não compatível(is) do ZIP foram ignorados.");',
+'      await onBatchTicketFiles(images);',
+'    } catch (error) {',
+'      toast.error(error instanceof Error ? error.message : "Não foi possível abrir o ZIP.");',
+'    }',
+'  }',
+'',
 ].join("\n");
 s = s.slice(0, fnStart) + fn + s.slice(fnEnd);
 
@@ -262,17 +308,32 @@ const batchUi = [
 ].join("\n");
 s = s.slice(0, statusStart) + batchUi + s.slice(statusEnd);
 
+must(
+  '              </div>\n              {batchPhotos.length > 0 ? (',
+  '                <label className="relative flex min-h-28 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-bg px-3 py-4 text-center">\n' +
+    '                  {ticketReading ? <LoaderCircle className="size-6 animate-spin text-accent" /> : <Archive className="size-6 text-accent" />}\n' +
+    '                  <strong className="mt-2 text-sm">{ticketReading ? "Processando…" : "Enviar ZIP"}</strong>\n' +
+    '                  <span className="mt-1 text-[11px] text-muted">Até 100 fotos de tickets</span>\n' +
+    '                  <input className="absolute inset-0 h-full w-full cursor-pointer opacity-0" type="file" aria-label="Enviar ZIP de tickets" accept="application/zip,application/x-zip-compressed,.zip"\n' +
+    '                    disabled={ticketReading || ticketSending || !freightMode || !ticketAccess?.authenticated || !ticketAccess.available}\n' +
+    '                    onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void onDriverZipFile(file); }} />\n' +
+    '                </label>\n' +
+    '              </div>\n' +
+    '              {batchPhotos.length > 0 ? (',
+  "zip launcher",
+);
+
 s = s.replace(
   'Selecione uma ou várias fotos. Cada foto será um lançamento novo. Nenhum número de ticket nem dado da foto é exigido.',
   'Selecione uma ou várias fotos. Cada foto é processada em fila e enviada automaticamente como um lançamento novo no Caixa.',
 );
 s = s.replace(
   'O OCR lê número do ticket, peso líquido, placas, transportadora, operadora, destinatário, data e horário quando estiverem no ticket.',
-  'Selecione uma ou várias fotos. O ChatGPT lê cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência.',
+  'Selecione uma ou várias fotos, ou um ZIP com até 100 imagens. O ChatGPT lê cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência.',
 );
 s = s.replace(
   'Neste modo o OCR lê número do ticket, placas, transportadora, destinatário, data e horário; pesos e pesagens são ignorados.',
-  'Selecione uma ou várias fotos. O ChatGPT lê os dados de cada documento; pesos são ignorados neste modo.',
+  'Selecione uma ou várias fotos, ou um ZIP com até 100 imagens. O ChatGPT lê os dados de cada documento; pesos são ignorados neste modo.',
 );
 
 fs.writeFileSync(p, s);
