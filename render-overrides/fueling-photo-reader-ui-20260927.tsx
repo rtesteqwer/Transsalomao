@@ -104,6 +104,7 @@ export function FuelingPhotoReader() {
           reading: row.reading as FuelingReading,
           suggestedDriverId: row.driverId ? String(row.driverId) : null,
           suggestedFleetId: row.fleetId ? String(row.fleetId) : null,
+          originalFileHash: row.originalFileHash ? String(row.originalFileHash) : undefined,
           pending: true,
           saved: false,
           message: "Lançamento pendente: complete os dados que faltam e grave novamente.",
