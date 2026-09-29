@@ -132,12 +132,25 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
             limit 1
           `;
           if (existingFile[0]?.fueling_id) {
+            const existingFuelingId = String(existingFile[0].fueling_id);
+            await syncFuelingFiscalValues(sql, existingFuelingId, {
+              date: reading.date,
+              driverId: driver?.id ?? null,
+              fleetId: fleet?.id ?? null,
+              station: reading.station_name || "",
+              odometerKm: reading.odometer_km,
+              liters,
+              price,
+              discount: discount || "0",
+              total,
+              reading,
+            });
             return Response.json({
               ok: true,
               linkedExisting: true,
               duplicatePhoto: true,
-              fuelingId: existingFile[0].fueling_id,
-              message: "Esta foto já estava vinculada ao abastecimento.",
+              fuelingId: existingFuelingId,
+              message: "Esta foto já estava vinculada ao abastecimento; desconto e total final foram sincronizados com o ticket.",
             }, { headers: { "Cache-Control": "no-store" } });
           }
 
@@ -205,6 +218,20 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
           }
 
           const linkedExisting = !!fuelingId;
+          if (linkedExisting && fuelingId) {
+            await syncFuelingFiscalValues(sql, fuelingId, {
+              date: resolvedDate,
+              driverId: driver?.id ?? null,
+              fleetId: fleet?.id ?? null,
+              station: reading.station_name || "",
+              odometerKm: reading.odometer_km,
+              liters,
+              price,
+              discount: discount || "0",
+              total,
+              reading,
+            });
+          }
           const needsCompletion = !fuelingId && isPumpDisplay && (!resolvedDate || !fleet);
 
           if (!fuelingId && !needsCompletion) {
@@ -218,14 +245,12 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
               throw new FuelingPhotoError(400, "Selecione o conjunto deste abastecimento.");
             }
             fuelingId = id("fuel");
-            const notes = [
-              "Leitor de abastecimento",
-              reading.document_type !== "unknown" ? reading.document_type : "",
-              reading.receipt_number ? "documento " + reading.receipt_number : "",
-              reading.fuel_type || "",
-            ].filter(Boolean).join(" · ").slice(0, 600);
+            const notes = fuelingNotes(reading, liters, price, discount || "0", total);
             await sql`
-              insert into fuelings(id,date,driver_id,fleet_id,station,km,liters,price_per_liter,notes)
+              insert into fuelings(
+                id,date,driver_id,fleet_id,station,km,liters,price_per_liter,
+                discount_amount,total_amount,notes
+              )
               values(
                 ${fuelingId},
                 ${resolvedDate},
@@ -235,7 +260,9 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
                 ${reading.odometer_km ?? 0},
                 ${liters},
                 ${price},
-                ${notes}
+                ${discount || "0"},
+                ${total},
+                ${fuelingNotes(reading, liters, price, discount || "0", total)}
               )
             `;
           }
@@ -391,6 +418,53 @@ export const Route = createFileRoute("/api/salvar-abastecimento-foto")({
     },
   },
 });
+
+async function syncFuelingFiscalValues(sql: any, fuelingId: string, input: {
+  date: string | null;
+  driverId: string | null;
+  fleetId: string | null;
+  station: string;
+  odometerKm: number | null;
+  liters: string;
+  price: string;
+  discount: string;
+  total: string;
+  reading: any;
+}) {
+  const notes = fuelingNotes(input.reading, input.liters, input.price, input.discount, input.total);
+  await sql`
+    update fuelings
+    set
+      date=coalesce(${input.date}::date,date),
+      driver_id=coalesce(${input.driverId},driver_id),
+      fleet_id=coalesce(${input.fleetId},fleet_id),
+      station=case when nullif(trim(${input.station}), '') is not null then ${input.station} else station end,
+      km=case when coalesce(${input.odometerKm}::integer,0)>0 then ${input.odometerKm}::integer else km end,
+      liters=${input.liters},
+      price_per_liter=${input.price},
+      discount_amount=${input.discount},
+      total_amount=${input.total},
+      notes=${notes}
+    where id=${fuelingId}
+  `;
+}
+
+function fuelingNotes(reading: any, liters: string, price: string, discount: string, total: string) {
+  return [
+    "Leitor de abastecimento",
+    reading.document_type && reading.document_type !== "unknown" ? reading.document_type : "",
+    reading.receipt_number ? "documento " + reading.receipt_number : "",
+    reading.fuel_type || "",
+    "Litros " + decimalPtBr(liters),
+    "Preço/L R$ " + decimalPtBr(price),
+    "Desconto R$ " + decimalPtBr(discount || "0"),
+    "Total após desconto R$ " + decimalPtBr(total),
+  ].filter(Boolean).join(" · ").slice(0, 900);
+}
+
+function decimalPtBr(value: string) {
+  return String(value ?? "").replace(".", ",");
+}
 
 function id(prefix: string) {
   return prefix + "_" + randomUUID().replace(/-/g, "");
