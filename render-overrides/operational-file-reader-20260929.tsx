@@ -69,30 +69,10 @@ export function OperationalFileReader({
         setProgress("Lendo " + (index + 1) + " de " + capped.length + ": " + (file.name || "arquivo"));
         try {
           const prepared = await prepareFile(file);
-          const response = await fetch("/api/operation-import", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fileName: prepared.name,
-              mime: prepared.mime,
-              text: prepared.text || "",
-              base64: prepared.base64 || "",
-              driverId: driverId || null,
-              fleetId: fleetId || null,
-              expectedKind,
-            }),
-          });
-          const payload: any = await response.json().catch(() => ({}));
-          const item: ImportResult = {
-            fileName: prepared.name,
-            ok: response.ok && payload?.ok !== false,
-            message: payload?.message,
-            summary: payload?.summary,
-            counts: payload?.counts,
-            saved: payload?.saved,
-            review: payload?.review,
-          };
+          const item: ImportResult =
+            expectedKind === "fueling" && prepared.mime.startsWith("image/")
+              ? await importFuelingImage(prepared, driverId || null, fleetId || null)
+              : await importGenericOperation(prepared, expectedKind, driverId || null, fleetId || null);
           savedTotal += item.counts?.saved ?? 0;
           next.push(item);
         } catch (error) {
@@ -237,6 +217,140 @@ export function OperationalFileReader({
       ) : null}
     </section>
   );
+}
+
+async function importGenericOperation(
+  prepared: PreparedFile,
+  expectedKind: ExpectedKind,
+  driverId: string | null,
+  fleetId: string | null,
+): Promise<ImportResult> {
+  const response = await fetch("/api/operation-import", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fileName: prepared.name,
+      mime: prepared.mime,
+      text: prepared.text || "",
+      base64: prepared.base64 || "",
+      driverId,
+      fleetId,
+      expectedKind,
+    }),
+  });
+  const payload: any = await response.json().catch(() => ({}));
+  return {
+    fileName: prepared.name,
+    ok: response.ok && payload?.ok !== false,
+    message: payload?.message,
+    summary: payload?.summary,
+    counts: payload?.counts,
+    saved: payload?.saved,
+    review: payload?.review,
+  };
+}
+
+async function importFuelingImage(
+  prepared: PreparedFile,
+  driverId: string | null,
+  fleetId: string | null,
+): Promise<ImportResult> {
+  const imageDataUrl = "data:" + prepared.mime + ";base64," + String(prepared.base64 || "");
+  const readResponse = await fetch("/api/ler-abastecimento", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      imagem: imageDataUrl,
+      driverId,
+      fleetId,
+    }),
+  });
+  const readPayload: any = await readResponse.json().catch(() => ({}));
+
+  if (!readResponse.ok || !readPayload?.ok || !readPayload?.reading) {
+    return {
+      fileName: prepared.name,
+      ok: false,
+      message: readPayload?.message || "Não foi possível ler este abastecimento.",
+      counts: { saved: 0, review: 1, duplicates: 0 },
+      review: [{ kind: "fueling", message: readPayload?.message || "Leitura pendente para conferência." }],
+    };
+  }
+
+  const reading = readPayload.reading;
+  const resolvedDriverId = readPayload.suggestedDriverId || driverId || null;
+  const resolvedFleetId = readPayload.suggestedFleetId || fleetId || null;
+
+  const saveResponse = await fetch("/api/salvar-abastecimento-foto", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      imagem: imageDataUrl,
+      fileName: prepared.name,
+      reading,
+      driverId: resolvedDriverId,
+      fleetId: resolvedFleetId,
+      confirmed: true,
+    }),
+  });
+  const savedPayload: any = await saveResponse.json().catch(() => ({}));
+  const summary = fuelingSummary(reading);
+
+  if (!saveResponse.ok || !savedPayload?.ok) {
+    return {
+      fileName: prepared.name,
+      ok: false,
+      message: savedPayload?.message || "Leitura concluída, mas o abastecimento precisa de conferência.",
+      summary,
+      counts: { saved: 0, review: 1, duplicates: 0 },
+      review: [{ kind: "fueling", message: savedPayload?.message || "Confira os dados antes de lançar." }],
+    };
+  }
+
+  if (savedPayload?.pending) {
+    return {
+      fileName: prepared.name,
+      ok: true,
+      message: savedPayload?.message,
+      summary,
+      counts: { saved: 0, review: 1, duplicates: 0 },
+      review: [{ kind: "fueling", message: savedPayload?.message || "Abastecimento salvo para completar na Gerência." }],
+    };
+  }
+
+  if (savedPayload?.linkedExisting || savedPayload?.duplicatePhoto) {
+    return {
+      fileName: prepared.name,
+      ok: true,
+      message: savedPayload?.message || "Este abastecimento já estava cadastrado e foi vinculado sem duplicar.",
+      summary,
+      counts: { saved: 0, review: 0, duplicates: 1 },
+      saved: [{ kind: "fueling", message: savedPayload?.message || "Documento vinculado sem criar outro abastecimento." }],
+    };
+  }
+
+  return {
+    fileName: prepared.name,
+    ok: true,
+    message: savedPayload?.message || "Abastecimento lançado.",
+    summary,
+    counts: { saved: 1, review: 0, duplicates: 0 },
+    saved: [{ kind: "fueling", message: savedPayload?.message || "Abastecimento lançado." }],
+  };
+}
+
+function fuelingSummary(reading: any) {
+  const parts: string[] = [];
+  if (reading?.station_name) parts.push(String(reading.station_name));
+  if (reading?.date) parts.push(String(reading.date) + (reading?.time ? " " + String(reading.time) : ""));
+  if (reading?.liters) parts.push(String(reading.liters).replace(".", ",") + " L");
+  if (reading?.price_per_liter) parts.push("R$/L " + String(reading.price_per_liter).replace(".", ","));
+  if (reading?.total_amount) parts.push("Total R$ " + String(reading.total_amount).replace(".", ","));
+  if (reading?.plate) parts.push("Placa " + String(reading.plate));
+  return parts.join(" · ");
 }
 
 function Summary({ label, value }: { label: string; value: number }) {
