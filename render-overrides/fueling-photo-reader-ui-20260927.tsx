@@ -702,10 +702,10 @@ function parseLocalFuelingText(text: string): FuelingReading {
   const productNumbers = findFuelProductNumbers(raw);
 
   const pumpNumbers = findPumpDisplayNumbers(lines);
-  let liters = coossutran.liters ?? mathPair?.liters ?? productNumbers.liters ?? pumpNumbers.liters;
-  let price = coossutran.price ?? mathPair?.price ?? productNumbers.price ?? pumpNumbers.price;
-  const gross = grossTotal ?? productNumbers.gross ?? pumpNumbers.total;
-  let resolvedTotal = coossutran.total ?? total ?? pumpNumbers.total;
+  let liters = coossutran.detected ? coossutran.liters : (mathPair?.liters ?? productNumbers.liters ?? pumpNumbers.liters);
+  let price = coossutran.detected ? coossutran.price : (mathPair?.price ?? productNumbers.price ?? pumpNumbers.price);
+  const gross = coossutran.detected ? coossutran.total : (grossTotal ?? productNumbers.gross ?? pumpNumbers.total);
+  let resolvedTotal = coossutran.detected ? coossutran.total : (total ?? pumpNumbers.total);
 
   // Close de visor: muitas fotos reais mostram somente um campo grande.
   // Não gravamos automaticamente; classificamos o papel provável e depois
@@ -921,6 +921,18 @@ function findCoossutranLocal(text: string) {
   let total: string | null = null;
   const totals = [...flat.matchAll(/TOTAL\s*:?[^R]{0,45}?R\$\s*[:\-]?\s*([0-9][0-9.,]{2,})/ig)];
   if (totals.length) total = localRoleNumber(totals[totals.length - 1][1], "money");
+  // Não aceite uma leitura COOSSUTRAN "matematicamente fechada" formada
+  // por números do cabeçalho/data (ex.: 1 L, R$ 12/L, total R$ 12).
+  if (liters && Number(liters) < 5) {
+    return { detected: true, liters: null, price: null, total: null };
+  }
+  if (liters && price && total) {
+    const expected = Number(liters) * Number(price);
+    if (Math.abs(expected - Number(total)) > Math.max(FUELING_MONEY_TOLERANCE, expected * 0.001)) {
+      return { detected: true, liters: null, price: null, total: null };
+    }
+  }
+
   if (!total && liters && price) total = (Number(liters) * Number(price)).toFixed(2);
 
   return { detected: true, liters, price, total };
