@@ -987,12 +987,23 @@ function mergeFuelingReadings(server: FuelingReading, local: FuelingReading): Fu
 }
 
 function findDate(lines: string[]) {
-  const preferred = lines.filter((line) => /emiss[aã]o|autoriza[cç][aã]o|abastecimento|data/i.test(line));
-  for (const line of [...preferred, ...lines]) {
+  const preferred = lines.filter((line) => /emiss[aã]o|autoriza[cç][aã]o|abastecimento|\bdata\b/i.test(line) && !/vencimento/i.test(line));
+  const eligible = lines.filter((line) => !/vencimento/i.test(line));
+  for (const line of [...preferred, ...eligible]) {
     const match = line.match(/\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2}|\d{2})\b/);
     if (!match) continue;
     const year = match[3].length === 2 ? "20" + match[3] : match[3];
     return year + "-" + String(Number(match[2])).padStart(2, "0") + "-" + String(Number(match[1])).padStart(2, "0");
+  }
+
+  // COOSSUTRAN: data impressa em colunas separadas DIA / MÊS / ANO.
+  const folded = lines.map((line) => normalizeLocal(line));
+  for (let i = 0; i < folded.length; i += 1) {
+    const area = folded.slice(i, i + 7).join(" ");
+    if (!/\bdia\b[\s\S]{0,35}\bmes\b[\s\S]{0,35}\bano\b/.test(area)) continue;
+    const afterHeader = area.slice(area.search(/\bano\b/) + 3);
+    const match = afterHeader.match(/\b([0-3]?\d)\s+([01]?\d)\s+(20\d{2})\b/);
+    if (match) return match[3] + "-" + String(Number(match[2])).padStart(2, "0") + "-" + String(Number(match[1])).padStart(2, "0");
   }
   return null;
 }
@@ -1007,9 +1018,16 @@ function findTime(lines: string[]) {
 }
 
 function findPlate(text: string) {
-  const match = text.toUpperCase().match(/\bPLACA\s*[:\-]?\s*([A-Z]{3})[\s.-]*([0-9][A-Z0-9][0-9]{2})\b/);
-  if (!match) return null;
-  return match[1] + match[2];
+  const upper = text.toUpperCase();
+  const patterns = [
+    /\bPLACA\s*[:\-]?\s*([A-Z]{3})[\s.-]*([0-9][A-Z0-9][0-9]{2})\b/,
+    /\bVE[IÍ]CULO(?:\s+PLACA)?\s*[:\-]?\s*([A-Z]{3})[\s.-]*([0-9][A-Z0-9][0-9]{2})\b/,
+  ];
+  for (const pattern of patterns) {
+    const match = upper.match(pattern);
+    if (match) return match[1] + match[2];
+  }
+  return null;
 }
 
 function looksLikePersonName(value: string) {
