@@ -265,6 +265,7 @@ export function FuelingPhotoReader() {
           : row
       ));
       await queryClient.invalidateQueries({ queryKey: fleetKey });
+      await queryClient.refetchQueries({ queryKey: fleetKey, type: "active" });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível gravar.";
