@@ -275,6 +275,12 @@ if (!original.includes("apply-security-hardening-20260928.mjs")) {
   original = original.replace(dailyMarker, `const securityHardening = path.join(repo, 'render-overrides', 'apply-security-hardening-20260928.mjs');\nif (!fs.existsSync(securityHardening)) throw new Error('Missing security hardening patch');\nexecFileSync(process.execPath, [securityHardening, work], { cwd: repo, stdio: 'inherit', env: process.env });\nconst securityFrontendGate = path.join(repo, 'render-overrides', 'apply-security-frontend-gate-20260928.mjs');\nif (!fs.existsSync(securityFrontendGate)) throw new Error('Missing security frontend gate patch');\nexecFileSync(process.execPath, [securityFrontendGate, work], { cwd: repo, stdio: 'inherit', env: process.env });\nconst persistentLogin = path.join(repo, 'render-overrides', 'apply-persistent-login-20260928.mjs');\nif (!fs.existsSync(persistentLogin)) throw new Error('Missing persistent login patch');\nexecFileSync(process.execPath, [persistentLogin, work], { cwd: repo, stdio: 'inherit', env: process.env });\nconst managementPasswordFix = path.join(repo, 'render-overrides', 'apply-management-password-fix-20260928.mjs');\nif (!fs.existsSync(managementPasswordFix)) throw new Error('Missing management password fix');\nexecFileSync(process.execPath, [managementPasswordFix, work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
 }
 
+// Leitura universal nos lançamentos: foto, PDF, vários arquivos e ZIP em fretes, abastecimentos, adiantamentos e despesas.
+if (!original.includes("apply-universal-file-readers-20260929.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing universal file reader insertion point");
+  execFileSync(process.execPath, [path.join(repo, "render-overrides", "apply-universal-file-readers-20260929.mjs"), work], { cwd: repo, stdio: "inherit", env: process.env });
+}
+
 // Fix the TanStack Start transport before Vite hashes the browser assets.
 // Using JSON avoids the framed-response retry loop observed in Edge, and doing
 // this before the build guarantees new immutable JS filenames for clients.
