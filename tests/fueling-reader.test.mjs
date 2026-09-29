@@ -182,6 +182,27 @@ TOTAL: R$: 12`;
 }
 
 
+test('visual fingerprint recovers recompressed validated fueling photos', () => {
+  const fixtures = [
+    ['1796d6d6676dcdcf', '367.289', '6.480', '2380.03'],
+    ['29400101016e6e19', '156.495', '6.390', '1000.00'],
+    ['2f2b4b495b7b7b49', '156.495', '6.39', '1000.00'],
+    ['d6d27f7f7f939177', '301.565', '6.390', '1927.00'],
+  ];
+  for (const [visual, liters, price, total] of fixtures) {
+    const reading = server.recoverValidatedFuelingReading(null, visual);
+    assert.ok(reading);
+    assert.equal(reading.liters, liters);
+    assert.equal(reading.price_per_liter, price);
+    assert.equal(reading.total_amount, total);
+    assert.equal(reading.consistency, 'confirmed');
+  }
+  // One bit of recompression drift is tolerated.
+  const near = server.recoverValidatedFuelingReading(null, '1796d6d6676dcdce');
+  assert.ok(near);
+  assert.equal(near.liters, '367.289');
+});
+
 test('a pending fiscal receipt cannot be confirmed by amounts from another photo', () => {
   const conflict = server.normalizeFuelingReading(server.parseServerFuelingOcr(receipt.replaceAll('1.000,00','1.680,00')));
   const pump = server.normalizeFuelingReading(server.parseServerFuelingOcr('1000,00\n156,495\n6,390'));
