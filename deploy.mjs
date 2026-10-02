@@ -11,13 +11,15 @@ let project;
 try {project=await api('/v9/projects/transisrael');} catch(e){if(e.status!==404)throw e;project=await api('/v10/projects','POST',{name:'transisrael'});}
 const envs=await api('/v9/projects/prj_jB9N2LQ3grttSuBALVVGp5X5gVdH/env?decrypt=true');
 const oldDb=envs.envs.find(e=>e.key==='DATABASE_URL'&&e.target.includes('production'));
-if(!oldDb?.value?.startsWith('postgres'))throw new Error('Source database variable unavailable');
-const db=new URL(oldDb.value);
+if(!oldDb)throw new Error('Source database key unavailable');
+const dbValue=await api('/v1/projects/prj_jB9N2LQ3grttSuBALVVGp5X5gVdH/env/'+oldDb.id+'?decrypt=true');
+if(!dbValue.value?.startsWith('postgres'))throw new Error('Source database secret unavailable');
+const db=new URL(dbValue.value);
 if(!db.hostname.startsWith('ep-wispy-paper-acji6z3e'))throw new Error('Source database endpoint differs from verified Neon project');
 db.pathname='/transisrael';
 const desired={DATABASE_URL:db.toString(),MANAGEMENT_SESSION_SECRET:crypto.randomBytes(48).toString('base64url'),DRIVER_SESSION_SECRET:crypto.randomBytes(48).toString('base64url'),BETTER_AUTH_SECRET:crypto.randomBytes(48).toString('base64url'),VITE_AUTH_ENABLED:'false',ADMIN_FELIPE_EMAIL:'pastorisrael'};
 const ai=envs.envs.find(e=>e.key==='OPENAI_API_KEY'&&e.target.includes('production'));
-if(ai?.value)desired.OPENAI_API_KEY=ai.value;
+if(ai){const aiValue=await api('/v1/projects/prj_jB9N2LQ3grttSuBALVVGp5X5gVdH/env/'+ai.id+'?decrypt=true');if(aiValue.value)desired.OPENAI_API_KEY=aiValue.value;}
 const existing=await api('/v9/projects/'+project.id+'/env');
 for(const [key,value] of Object.entries(desired)){
  const present=existing.envs.find(e=>e.key===key&&e.target.includes('production'));
