@@ -1,1 +1,0 @@
-Trans Salomão — pacote temporário de deploy sem credenciais.
