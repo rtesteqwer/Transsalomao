@@ -8,5 +8,5 @@ r=await fetch(origin+'/api/assistant/auth',{method:'POST',headers:{'Content-Type
 const headers={Authorization:'Bearer '+auth.token};r=await fetch(origin+'/api/assistant/auth',{headers});const me=await r.json();if(!me.authenticated||me.username!=='pastorisrael')throw new Error('Authenticated session verification failed');
 await fetch(origin+'/api/assistant/auth',{method:'DELETE',headers});
 }
-for(const path of ['/','/dono','/motorista','/ocr/worker.min.js']){const response=await fetch(origin+path);if(!response.ok)throw new Error('Page check failed: '+path+' ('+response.status+')');console.log('Verified '+path);}
+for(const path of ['/','/dono','/motorista','/ocr/worker.min.js','/ocr/core/tesseract-core-lstm.wasm.js','/ocr/core/tesseract-core-lstm.wasm','/ocr/core/tesseract-core-simd-lstm.wasm.js','/ocr/core/tesseract-core-simd-lstm.wasm','/ocr/lang/por.traineddata.gz']){const response=await fetch(origin+path);if(!response.ok)throw new Error('Page check failed: '+path+' ('+response.status+')');console.log('Verified '+path);}
 if(credentials){fs.unlinkSync(testFile);console.log('Verified independent management login: pastorisrael');}
