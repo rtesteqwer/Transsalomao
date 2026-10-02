@@ -17,7 +17,7 @@ const aesKey=crypto.privateDecrypt({key:privateKey,padding:crypto.constants.RSA_
 const decipher=crypto.createDecipheriv('aes-256-gcm',aesKey,Buffer.from(envelope.iv,'base64'));decipher.setAuthTag(Buffer.from(envelope.tag,'base64'));
 const payload=JSON.parse(Buffer.concat([decipher.update(Buffer.from(envelope.data,'base64')),decipher.final()]).toString('utf8'));
 const db=new URL(payload.DATABASE_URL);
-if(db.pathname!=='/transisrael'||db.username!=='transisrael_app')throw new Error('Independent database required');
+if(db.pathname!=='/transisrael'||db.username!=='transisrael_runtime')throw new Error('Independent database required');
 const desired={DATABASE_URL:payload.DATABASE_URL,MANAGEMENT_SESSION_SECRET:crypto.randomBytes(48).toString('base64url'),DRIVER_SESSION_SECRET:crypto.randomBytes(48).toString('base64url'),BETTER_AUTH_SECRET:crypto.randomBytes(48).toString('base64url'),VITE_AUTH_ENABLED:'false',ADMIN_FELIPE_EMAIL:'pastorisrael'};
 for(const [key,value] of Object.entries(desired)){const present=envs.envs.find(e=>e.key===key&&e.target.includes('production'));if(present){if(key.endsWith('_SECRET'))continue;await api('/v9/projects/'+project.id+'/env/'+present.id,'PATCH',{value,type:'encrypted',target:['production']});}else await api('/v10/projects/'+project.id+'/env','POST',{key,value,type:'encrypted',target:['production']});}
 fs.mkdirSync('site/.vercel',{recursive:true});fs.writeFileSync('site/.vercel/project.json',JSON.stringify({orgId:team,projectId:project.id}));fs.writeFileSync('ready','yes');console.log('Independent project configured: '+project.id);
