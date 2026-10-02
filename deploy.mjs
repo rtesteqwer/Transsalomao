@@ -13,7 +13,7 @@ const envs=await api('/v9/projects/prj_jB9N2LQ3grttSuBALVVGp5X5gVdH/env?decrypt=
 const oldDb=envs.envs.find(e=>e.key==='DATABASE_URL'&&e.target.includes('production'));
 if(!oldDb)throw new Error('Source database key unavailable');
 const dbValue=await api('/v1/projects/prj_jB9N2LQ3grttSuBALVVGp5X5gVdH/env/'+oldDb.id+'?decrypt=true');
-if(!dbValue.value?.startsWith('postgres'))throw new Error('Source database secret unavailable');
+if(!dbValue.value?.startsWith('postgres')){console.log('DB response keys: '+Object.keys(dbValue).join(', '));console.log('DB value type: '+typeof dbValue.value+' length: '+String(dbValue.value||'').length);console.log('Project configured id: '+project.id);throw new Error('Source database secret unavailable');}
 const db=new URL(dbValue.value);
 if(!db.hostname.startsWith('ep-wispy-paper-acji6z3e'))throw new Error('Source database endpoint differs from verified Neon project');
 db.pathname='/transisrael';
