@@ -5,10 +5,10 @@ const token=process.env.VERCEL_TOKEN;
 if(!token) throw new Error('Missing VERCEL_TOKEN');
 async function api(path,method='GET',body){
  const r=await fetch('https://api.vercel.com'+path+(path.includes('?')?'&':'?')+'teamId='+team,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
- const v=await r.json();if(!r.ok) {const e=new Error('Vercel API failed: '+r.status+' '+(v.error?.code||''));e.status=r.status;throw e;}return v;
+ const v=await r.json();if(!r.ok) {const e=new Error('Vercel API failed: '+r.status+' '+(v.error?.code||'')+' '+(v.error?.message||''));e.status=r.status;throw e;}return v;
 }
 let project;
-try {project=await api('/v9/projects/transisrael');} catch(e){if(e.status!==404)throw e;project=await api('/v10/projects','POST',{name:'transisrael',framework:null,buildCommand:'npm run build',installCommand:'npm install --ignore-scripts --no-audit --no-fund',nodeVersion:'24.x'});}
+try {project=await api('/v9/projects/transisrael');} catch(e){if(e.status!==404)throw e;project=await api('/v10/projects','POST',{name:'transisrael'});}
 const envs=await api('/v9/projects/prj_jB9N2LQ3grttSuBALVVGp5X5gVdH/env?decrypt=true');
 const oldDb=envs.envs.find(e=>e.key==='DATABASE_URL'&&e.target.includes('production'));
 if(!oldDb?.value?.startsWith('postgres'))throw new Error('Source database variable unavailable');
