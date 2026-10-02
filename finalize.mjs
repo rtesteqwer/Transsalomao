@@ -1,0 +1,5 @@
+const team='team_CmpJdXo3MzDAX3TZXFp9am5F',project='prj_shn9m1QZ20AsFOQvQk0Mn9buPbok';const token=process.env.VERCEL_TOKEN;
+async function api(path,method='GET',body){const r=await fetch('https://api.vercel.com'+path+(path.includes('?')?'&':'?')+'teamId='+team,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error('Final configuration failed: '+r.status);return r.status===204?null:r.json();}
+const envs=await api('/v9/projects/'+project+'/env');
+for(const e of envs.envs){if(e.key==='TRANSISRAEL_PROVISION_KEY'){await api('/v9/projects/'+project+'/env/'+e.id,'DELETE');continue;}if(e.key==='DATABASE_URL'||e.key.endsWith('_SECRET')){if(e.type==='sensitive')continue;const secret=await api('/v1/projects/'+project+'/env/'+e.id+'?decrypt=true');if(!secret.value)throw new Error('Runtime secret unavailable for protection');await api('/v9/projects/'+project+'/env/'+e.id,'PATCH',{value:secret.value,type:'sensitive',target:['production']});}}
+console.log('Temporary provisioning key removed; runtime secrets protected');

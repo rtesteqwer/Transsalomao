@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   deploy:
+    if: ${{ !contains(github.event.head_commit.message, '[cleanup-only]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -31,3 +32,15 @@ jobs:
       - name: Verify independent login
         if: ${{ hashFiles('ready') != '' }}
         run: node verify.mjs
+  finalize:
+    if: ${{ contains(github.event.head_commit.message, '[cleanup-only]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Protect runtime configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: node finalize.mjs
