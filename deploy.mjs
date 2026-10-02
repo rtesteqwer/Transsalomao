@@ -9,17 +9,15 @@ async function api(path,method='GET',body){
 }
 let project;
 try {project=await api('/v9/projects/transisrael');} catch(e){if(e.status!==404)throw e;project=await api('/v10/projects','POST',{name:'transisrael'});}
-const envs=await api('/v9/projects/prj_jB9N2LQ3grttSuBALVVGp5X5gVdH/env?decrypt=true');
-const oldDb=envs.envs.find(e=>e.key==='DATABASE_URL'&&e.target.includes('production'));
-if(!oldDb)throw new Error('Source database key unavailable');
-const dbValue=await api('/v1/projects/prj_jB9N2LQ3grttSuBALVVGp5X5gVdH/env/'+oldDb.id+'?decrypt=true');
-if(!dbValue.value?.startsWith('postgres')){console.log('DB response keys: '+Object.keys(dbValue).join(', '));console.log('DB value type: '+typeof dbValue.value+' length: '+String(dbValue.value||'').length);console.log('Project configured id: '+project.id);throw new Error('Source database secret unavailable');}
-const db=new URL(dbValue.value);
+const raw=fs.readFileSync('source-env/.vercel/.env.production.local','utf8');
+function readEnv(key){const line=raw.split('\n').find(s=>s.startsWith(key+'='));if(!line)return '';let v=line.slice(key.length+1).trim();if(v.startsWith('"'))return JSON.parse(v);return v;}
+const originalDb=readEnv('DATABASE_URL');
+if(!originalDb.startsWith('postgres'))throw new Error('Source database variable unavailable through CLI');
+const db=new URL(originalDb);
 if(!db.hostname.startsWith('ep-wispy-paper-acji6z3e'))throw new Error('Source database endpoint differs from verified Neon project');
 db.pathname='/transisrael';
 const desired={DATABASE_URL:db.toString(),MANAGEMENT_SESSION_SECRET:crypto.randomBytes(48).toString('base64url'),DRIVER_SESSION_SECRET:crypto.randomBytes(48).toString('base64url'),BETTER_AUTH_SECRET:crypto.randomBytes(48).toString('base64url'),VITE_AUTH_ENABLED:'false',ADMIN_FELIPE_EMAIL:'pastorisrael'};
-const ai=envs.envs.find(e=>e.key==='OPENAI_API_KEY'&&e.target.includes('production'));
-if(ai){const aiValue=await api('/v1/projects/prj_jB9N2LQ3grttSuBALVVGp5X5gVdH/env/'+ai.id+'?decrypt=true');if(aiValue.value)desired.OPENAI_API_KEY=aiValue.value;}
+const ai=readEnv('OPENAI_API_KEY');if(ai)desired.OPENAI_API_KEY=ai;
 const existing=await api('/v9/projects/'+project.id+'/env');
 for(const [key,value] of Object.entries(desired)){
  const present=existing.envs.find(e=>e.key===key&&e.target.includes('production'));
