@@ -18,19 +18,12 @@ jobs:
         run: |
           mkdir site
           tar -xJf transisrael-source.tar.xz -C site
-      - name: Load deployment configuration securely
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          mkdir -p source-env/.vercel
-          printf '%s' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > source-env/.vercel/project.json
-          cd source-env
-          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
       - name: Configure independent project
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: node deploy.mjs
       - name: Publish Trans Israel
+        if: ${{ hashFiles('ready') != '' }}
         working-directory: site
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
