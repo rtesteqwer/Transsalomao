@@ -316,6 +316,16 @@ if (installChatGptShare && !original.includes("apply-share-to-chatgpt-20260929.m
   console.log('[share-to-chatgpt] skipped: Vercel project is not Trans Salomao');
 }
 
+// Ponte segura: Trans Salomão IA -> Felipe IA local no Ubuntu.
+// Instalada por último sobre as rotas finais da IA, preservando o fallback atual.
+if (!original.includes("apply-felipe-ia-bridge-20261003.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing Felipe IA bridge insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-felipe-ia-bridge-20261003.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n${dailyMarker}`
+  );
+}
+
 // Fix the TanStack Start transport before Vite hashes the browser assets.
 // Using JSON avoids the framed-response retry loop observed in Edge, and doing
 // this before the build guarantees new immutable JS filenames for clients.
