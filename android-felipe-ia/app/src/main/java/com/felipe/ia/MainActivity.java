@@ -444,7 +444,7 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    protected void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         if (requestCode == WEB_PERMISSION_REQUEST && pendingWebPermissionRequest != null) {
             ArrayList<String> allowed = new ArrayList<>();
             for (String resource : pendingWebResources == null ? new String[0] : pendingWebResources) {
