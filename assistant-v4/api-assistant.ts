@@ -10,14 +10,14 @@ export const Route = createFileRoute("/api/assistant")({
       GET: async ({ request }) => {
         const auth = await authenticateAssistantRequest(request);
         if (!auth) return out({ ok: false, authenticated: false }, 401);
-        const aiKeys = await getSalomaoOpenAIKeys();
         return out({
           ok: true,
           authenticated: true,
           username: auth.username,
           via: auth.via,
-          aiConfigured: aiKeys.length > 0,
-          model: modelName(),
+          aiConfigured: true,
+          model: "Felipe IA local",
+          provider: "felipe-ia",
           capabilities: ["consultar", "criar", "editar", "lançar", "aprovar", "configurar acesso"],
         });
       },
@@ -39,55 +39,30 @@ export const Route = createFileRoute("/api/assistant")({
             })).filter((x: Turn) => x.content.trim())
           : [];
 
-        // Toda ação operacional passa primeiro pelo GPT com ferramentas estritas.
-        // O modo local permanece somente para consultas; ele nunca grava dados.
-        const apiKeys = await getSalomaoOpenAIKeys();
-        let lastAiError = "";
-        for (const apiKey of apiKeys) {
-          try {
-            return out({ ok: true, mode: "gpt", answer: await gptAnswer(message, history, apiKey, auth.username) });
-          } catch (error: any) {
-            lastAiError = String(error?.message ?? error ?? "");
-            console.error("[salomao-ai-v5] GPT unavailable", error);
-          }
-        }
+        // OpenAI saiu do caminho normal. Consultas operacionais usam diretamente
+        // os dados reais do Neon; ações suportadas usam as funções locais seguras.
+        // A interface encaminha perguntas gerais para a Felipe IA do Ubuntu.
+        const text = norm(message);
 
-        if (apiKeys.length) {
-          if (lastAiError.includes("billing_not_active") || lastAiError.includes("credit_balance_exhausted") || lastAiError.includes("insufficient_quota")) {
+        if (isWriteIntent(text)) {
+          const action = await highPriorityAction(message, history, auth.username);
+          if (action) {
             return out({
-              ok: false,
-              mode: "gpt-unavailable",
-              code: "OPENAI_BILLING_INACTIVE",
-              answer: "A Trans Salomão IA está conectada à OpenAI, mas a conta da API está sem créditos. Não vou executar comandos por um modo inferior para evitar alterações erradas."
-            }, 503);
+              ok: true,
+              mode: "felipe-local-action",
+              provider: "felipe-ia",
+              ...action,
+            });
           }
-          if (lastAiError.includes("invalid_api_key") || lastAiError.includes("Incorrect API key")) {
-            return out({
-              ok: false,
-              mode: "gpt-unavailable",
-              code: "OPENAI_KEY_INVALID",
-              answer: "A chave da OpenAI configurada foi recusada. Não vou executar comandos por um modo inferior até existir uma chave válida."
-            }, 503);
-          }
-          return out({
-            ok: false,
-            mode: "gpt-unavailable",
-            code: "OPENAI_UNAVAILABLE",
-            answer: "A OpenAI está temporariamente indisponível. Nenhuma alteração foi executada."
-          }, 503);
-        }
-
-        if (isWriteIntent(norm(message))) {
-          return out({
-            ok: false,
-            mode: "gpt-required",
-            code: "OPENAI_REQUIRED_FOR_WRITE",
-            answer: "A API da OpenAI precisa estar ativa para executar comandos que alteram o Trans Salomão. Nenhuma alteração foi feita."
-          }, 503);
         }
 
         const local = await localAnswer(message, history);
-        return out({ ok: true, mode: "local-readonly", ...local });
+        return out({
+          ok: true,
+          mode: "neon-local",
+          provider: "felipe-ia",
+          ...local,
+        });
       },
     },
   },
@@ -989,5 +964,8 @@ async function localAnswer(message:string,history:Turn[]){
     return{answer:"Diga o nome do conjunto ou a placa para eu consultar o registro correto. Se quiser a lista, diga “listar conjuntos”."};
   }
 
-  return{answer:"Não tenho segurança para responder essa pergunta pelo roteador local. A IA avançada ainda não está conectada neste servidor; prefiro não inventar uma resposta. Para dados do Trans Salomão, diga claramente o que deseja consultar, por exemplo: “faturamento hoje”, “listar motoristas”, “viagens do Clóvis” ou “abastecimentos do conjunto X”."};
+  return{
+    bridgeNeeded:true,
+    answer:"Não identifiquei uma consulta operacional específica. Vou encaminhar a mensagem para a Felipe IA local.",
+  };
 }
