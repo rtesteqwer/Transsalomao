@@ -323,7 +323,7 @@ if (installFelipeIaBridge && !original.includes("apply-felipe-ia-bridge-20261003
   if (!original.includes(dailyMarker)) throw new Error("Missing Felipe IA bridge insertion point");
   original = original.replace(
     dailyMarker,
-    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-felipe-ia-bridge-20261003.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n${dailyMarker}`
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-felipe-ia-bridge-20261003.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 } else if (!installFelipeIaBridge) {
   console.log('[felipe-ia-bridge] skipped: Vercel project is not Trans Salomao');
