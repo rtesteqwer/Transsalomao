@@ -35,6 +35,25 @@ async function felipeBridge(action: string, extra: Record<string, unknown> = {})
   return data as any;
 }
 
+function shouldUseFelipeIA(message: string) {
+  const text = String(message || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  const transSalomaoTerms = [
+    "trans salomao", "motorista", "viagem", "frete", "faturamento", "caixa",
+    "abastec", "diesel", "combustivel", "despesa", "adiantamento", "comissao",
+    "ticket", "pesagem", "peso liquido", "tonelada", "carreta", "conjunto",
+    "placa", "gerencia", "relatorio", "excel", "rota", "preco por tonelada",
+    "litros", "quilometr", " km", "cliente", "pendente", "lancamento",
+    "lancar", "cadastrar", "editar viagem", "apagar viagem", "aceitar viagem",
+    "aprovar", "fechar viagem"
+  ];
+
+  return !transSalomaoTerms.some((term) => text.includes(term));
+}
+
 async function sendViaFelipeIA(message: string, history: Turn[]) {
   const worker = await felipeBridge("worker_status");
   if (!worker?.online) throw new Error("FELIPE_IA_OFFLINE");
@@ -131,7 +150,7 @@ function patchAssistantPage(rel) {
   const sendReplacement = String.raw`    try {
       const isFelipe = session.username.trim().toLowerCase() === "felipe";
 
-      if (!(developerMode && isFelipe)) {
+      if (!(developerMode && isFelipe) && felipeIaOnline && shouldUseFelipeIA(message)) {
         try {
           const localAnswer = await sendViaFelipeIA(message, prior);
           if (localAnswer) {
