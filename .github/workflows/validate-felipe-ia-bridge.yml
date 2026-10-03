@@ -38,3 +38,15 @@ jobs:
         run: |
           set -euo pipefail
           npm run build
+          WORK="$(ls -dt /tmp/transsalomao-build-* 2>/dev/null | head -1 || true)"
+          echo "Reconstructed workdir: $WORK"
+          if [ -n "$WORK" ] && [ -d "$WORK" ]; then
+            echo "Installed @tanstack/react-start versions:"
+            npm --prefix "$WORK" ls @tanstack/react-start --all || true
+            echo "Direct package version:"
+            node -e "const fs=require('fs'),p=process.argv[1]; console.log(JSON.parse(fs.readFileSync(p,'utf8')).version)" "$WORK/node_modules/@tanstack/react-start/package.json" || true
+            echo "Files under reconstructed app mentioning 1.168.49:"
+            grep -RIl --exclude='*.map' '1.168.49' "$WORK" 2>/dev/null | head -50 || true
+          fi
+          echo "Files in Vercel output mentioning 1.168.49:"
+          grep -RIl --exclude='*.map' '1.168.49' .vercel/output 2>/dev/null | head -50 || true
