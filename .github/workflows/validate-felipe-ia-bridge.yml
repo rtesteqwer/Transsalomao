@@ -1,0 +1,40 @@
+name: Validate Felipe IA Bridge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bootstrap.mjs"
+      - "render-overrides/apply-felipe-ia-bridge-20261003.mjs"
+      - "render-overrides/felipe-ia-bridge-20261003.ts"
+      - "render-overrides/felipe-ia-bridge-20261003.py"
+      - "render-overrides/felipe-ia-link-20261003.sh"
+      - ".github/workflows/validate-felipe-ia-bridge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL: "1"
+      VERCEL_PROJECT_PRODUCTION_URL: "transsalomao.vercel.app"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Syntax checks
+        run: |
+          set -euo pipefail
+          node --check bootstrap.mjs
+          node --check render-overrides/apply-felipe-ia-bridge-20261003.mjs
+          python3 -m py_compile render-overrides/felipe-ia-bridge-20261003.py
+          bash -n render-overrides/felipe-ia-link-20261003.sh
+      - name: Reconstruct and build application
+        run: |
+          set -euo pipefail
+          npm run build
