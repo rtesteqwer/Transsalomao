@@ -42,3 +42,5 @@ jobs:
           set -euo pipefail
           URL="$(npx --yes vercel@latest deploy --force --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
           echo "Published: $URL"
+
+# Felipe IA routing deploy 2026-10-03
