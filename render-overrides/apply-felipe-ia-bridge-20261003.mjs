@@ -47,7 +47,7 @@ copy("render-overrides/felipe-ia-bridge-20261003.py", "public/felipe-ia-bridge.p
 copy("render-overrides/felipe-ia-link-20261003.sh", "public/felipe-ia-link.sh");
 
 const helper = String.raw`
-const FELIPE_IA_BRIDGE_VERSION = "2026.10.03.3";
+const FELIPE_IA_BRIDGE_VERSION = "2026.10.03.4";
 
 async function felipeBridge(action: string, extra: Record<string, unknown> = {}) {
   const response = await api("/api/felipe-ia-bridge", {
@@ -193,6 +193,29 @@ function patchAssistantPage(rel) {
       const target = developerMode && isFelipe ? "/api/assistant/developer" : "/api/assistant";
 `;
   s = s.replace(sendMarker, sendReplacement);
+
+  const bridgeFallbackMarker = String.raw`      const data = await response.json().catch(() => ({}));
+      const answer =
+`;
+  if (!s.includes(bridgeFallbackMarker)) throw new Error("felipe-ia-bridge fallback marker missing in " + rel);
+  const bridgeFallbackReplacement = String.raw`      const data = await response.json().catch(() => ({}));
+
+      if (!(developerMode && isFelipe) && data?.bridgeNeeded && felipeIaOnline) {
+        try {
+          const localAnswer = await sendViaFelipeIA(message, prior);
+          if (localAnswer) {
+            setFelipeIaOnline(true);
+            setHistory((current) => [...current, { role: "assistant", content: localAnswer }]);
+            return;
+          }
+        } catch {
+          setFelipeIaOnline(false);
+        }
+      }
+
+      const answer =
+`;
+  s = s.replace(bridgeFallbackMarker, bridgeFallbackReplacement);
 
   s = s.replaceAll(
     "{session.model} • Trans Salomão",
