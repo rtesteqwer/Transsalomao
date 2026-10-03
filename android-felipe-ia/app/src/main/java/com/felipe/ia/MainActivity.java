@@ -60,8 +60,22 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(Color.rgb(11, 18, 32));
-        getWindow().setNavigationBarColor(Color.rgb(11, 18, 32));
+        final int appBackground = Color.rgb(11, 18, 32);
+        getWindow().setStatusBarColor(appBackground);
+        getWindow().setNavigationBarColor(appBackground);
+        getWindow().getDecorView().setBackgroundColor(appBackground);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.view.WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsAppearance(
+                        0,
+                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
+                                android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                );
+            }
+        }
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
                 checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
@@ -72,8 +86,11 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.rgb(11, 18, 32));
 
         webView = new WebView(this);
+        webView.setBackgroundColor(appBackground);
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
+        progress.setBackgroundColor(appBackground);
+        progress.setVisibility(View.GONE);
 
         FrameLayout.LayoutParams webParams = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -448,21 +465,46 @@ public class MainActivity extends Activity {
     private void installMobileUiFixes(WebView view) {
         final String js =
                 "(function(){" +
-                "if(window.__FIA_MOBILE_UI_V4){try{window.__FIA_MOBILE_UI_V4.refresh();}catch(e){}return;}" +
-                "var api={};window.__FIA_MOBILE_UI_V4=api;" +
+                "if(window.__FIA_MOBILE_UI_V5){try{window.__FIA_MOBILE_UI_V5.refresh();}catch(e){}return;}" +
+                "var api={};window.__FIA_MOBILE_UI_V5=api;" +
                 "function norm(v){return String(v||'').replace(/\\\\s+/g,' ').trim();}" +
                 "function text(el){return norm(el&&el.textContent);}" +
+                "function ensureViewport(){" +
+                "var meta=document.querySelector('meta[name=viewport]');" +
+                "if(!meta){meta=document.createElement('meta');meta.name='viewport';(document.head||document.documentElement).appendChild(meta);}" +
+                "meta.setAttribute('content','width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover');" +
+                "document.documentElement.setAttribute('data-fia-native-app','1');" +
+                "try{document.documentElement.style.background='#0b1220';document.body.style.background='#0b1220';}catch(e){}" +
+                "}" +
                 "function addStyle(){" +
-                "if(document.getElementById('fia-mobile-ui-v4-style'))return;" +
-                "var st=document.createElement('style');st.id='fia-mobile-ui-v4-style';" +
-                "st.textContent='[data-fia-sidebar=\\\\\"1\\\\\"]{transition:transform .22s ease!important;will-change:transform!important;}'+" +
-                "'[data-fia-sidebar=\\\\\"1\\\\\"].fia-native-closed{transform:translateX(-110%)!important;pointer-events:none!important;}'+" +
-                "'#fia-native-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:2147483000;opacity:1;transition:opacity .18s ease;}'+" +
-                "'#fia-native-backdrop.fia-hidden{opacity:0;pointer-events:none;}'+" +
-                "'#fia-native-close{position:absolute;right:12px;top:12px;z-index:2147483646;width:38px;height:38px;border-radius:12px;border:1px solid rgba(255,255,255,.15);background:rgba(25,25,25,.82);color:#fff;font-size:24px;line-height:34px;text-align:center;padding:0;box-shadow:none;}'+" +
-                "'#fia-native-close:active{transform:scale(.96);}'+" +
+                "if(document.getElementById('fia-mobile-ui-v5-style'))return;" +
+                "var st=document.createElement('style');st.id='fia-mobile-ui-v5-style';" +
+                "st.textContent=" +
+                "'html,body{margin:0!important;padding:0!important;width:100%!important;max-width:100%!important;background:#0b1220!important;overflow-x:hidden!important;}'+ " +
+                "'html{height:100%!important;-webkit-text-size-adjust:100%;}'+ " +
+                "'body{min-height:100vh!important;min-height:100dvh!important;min-height:-webkit-fill-available!important;}'+ " +
+                "'body>div:first-child{max-width:100vw!important;}'+ " +
+                "'img,video,canvas{max-width:100%;height:auto;}'+ " +
+                "'pre{max-width:100%;overflow-x:auto;}'+ " +
+                "'input,textarea,select{max-width:100%;}'+ " +
+                "'[data-fia-sidebar=\\\"1\\\"]{transition:transform .22s ease!important;will-change:transform!important;}'+ " +
+                "'[data-fia-sidebar=\\\"1\\\"].fia-native-closed{transform:translateX(-110%)!important;pointer-events:none!important;}'+ " +
+                "'#fia-native-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.34);z-index:2147483000;opacity:1;transition:opacity .18s ease;}'+ " +
+                "'#fia-native-backdrop.fia-hidden{opacity:0;pointer-events:none;}'+ " +
+                "'#fia-native-close{position:absolute;right:12px;top:max(12px,env(safe-area-inset-top));z-index:2147483646;width:40px;height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.15);background:rgba(25,25,25,.88);color:#fff;font-size:26px;line-height:36px;text-align:center;padding:0;box-shadow:none;}'+ " +
+                "'#fia-native-close:active{transform:scale(.96);}'+ " +
+                "'@media(max-width:900px){html,body{width:100vw!important;min-width:0!important;}[data-fia-sidebar=\\\"1\\\"]{position:fixed!important;left:0!important;top:0!important;bottom:0!important;height:100vh!important;height:100dvh!important;width:min(86vw,340px)!important;max-width:340px!important;padding-top:max(8px,env(safe-area-inset-top))!important;padding-bottom:max(8px,env(safe-area-inset-bottom))!important;}button,[role=button],a,input,textarea,select{touch-action:manipulation;}textarea,input,select{font-size:16px!important;}}'+ " +
                 "'@media(min-width:901px){#fia-native-backdrop,#fia-native-close{display:none!important;}}';" +
                 "(document.head||document.documentElement).appendChild(st);" +
+                "}" +
+                "function removeTopBlank(){" +
+                "if(!document.body)return;var kids=document.body.children;" +
+                "for(var i=0;i<Math.min(kids.length,4);i++){var el=kids[i];if(!el||el.id==='fia-native-backdrop')continue;" +
+                "var r=el.getBoundingClientRect(),cs=getComputedStyle(el),t=text(el);" +
+                "var bg=String(cs.backgroundColor||'').replace(/\\s+/g,'');" +
+                "var white=(bg==='rgb(255,255,255)'||bg==='rgba(255,255,255,1)');" +
+                "if(r.top<=1&&r.height>0&&r.height<=64&&t.length===0&&white){el.style.display='none';}" +
+                "}" +
                 "}" +
                 "function fixCodex(){" +
                 "var nodes=document.querySelectorAll('button,a,[role=button]');" +
@@ -519,11 +561,12 @@ public class MainActivity extends Activity {
                 "var drawer=findSidebar();var toggle=findToggle(drawer);if(!toggle||toggle.__fiaToggle)return;toggle.__fiaToggle=true;" +
                 "toggle.addEventListener('click',function(){setTimeout(function(){var d=findSidebar();if(d){d.classList.remove('fia-native-closed');syncBackdrop(d);}},120);},false);" +
                 "}" +
-                "api.refresh=function(){try{addStyle();fixCodex();installDrawer();hookToggle();}catch(e){}};" +
+                "api.refresh=function(){try{ensureViewport();addStyle();removeTopBlank();fixCodex();installDrawer();hookToggle();}catch(e){}};" +
                 "api.refresh();" +
                 "var queued=false;var mo=new MutationObserver(function(){if(queued)return;queued=true;setTimeout(function(){queued=false;api.refresh();},80);});" +
                 "mo.observe(document.documentElement,{childList:true,subtree:true,characterData:true});" +
                 "window.addEventListener('resize',function(){setTimeout(api.refresh,60);});" +
+                "window.addEventListener('orientationchange',function(){setTimeout(api.refresh,160);});" +
                 "})();";
         view.evaluateJavascript(js, null);
     }
