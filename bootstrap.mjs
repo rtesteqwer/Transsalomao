@@ -316,6 +316,19 @@ if (installChatGptShare && !original.includes("apply-share-to-chatgpt-20260929.m
   console.log('[share-to-chatgpt] skipped: Vercel project is not Trans Salomao');
 }
 
+// Ponte segura: Trans Salomão IA -> Felipe IA local no Ubuntu.
+// O mesmo repositório alimenta outros projetos Vercel; a ponte pertence somente ao Trans Salomão.
+const installFelipeIaBridge = process.env.VERCEL !== '1' || String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').toLowerCase().includes('transsalomao.vercel.app');
+if (installFelipeIaBridge && !original.includes("apply-felipe-ia-bridge-20261003.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing Felipe IA bridge insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-felipe-ia-bridge-20261003.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n${dailyMarker}`
+  );
+} else if (!installFelipeIaBridge) {
+  console.log('[felipe-ia-bridge] skipped: Vercel project is not Trans Salomao');
+}
+
 // Fix the TanStack Start transport before Vite hashes the browser assets.
 // Using JSON avoids the framed-response retry loop observed in Edge, and doing
 // this before the build guarantees new immutable JS filenames for clients.
