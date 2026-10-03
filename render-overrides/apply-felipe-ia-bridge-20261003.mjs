@@ -11,7 +11,7 @@ const packagePath = path.join(target, "package.json");
 if (!fs.existsSync(packagePath)) throw new Error("felipe-ia-bridge missing reconstructed package.json");
 const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 let tanstackUpdated = false;
-for (const section of ["dependencies", "devDependencies"]) {
+for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
   if (packageJson?.[section]?.["@tanstack/react-start"]) {
     packageJson[section]["@tanstack/react-start"] = "1.168.60";
     tanstackUpdated = true;
@@ -20,9 +20,18 @@ for (const section of ["dependencies", "devDependencies"]) {
     packageJson[section]["@tanstack/start-server-core"] = "1.169.39";
   }
 }
+
+// Force every transitive copy too. Vercel rejects a deployment if even one
+// vulnerable @tanstack/react-start remains in the dependency graph.
+packageJson.overrides = {
+  ...(packageJson.overrides || {}),
+  "@tanstack/react-start": "1.168.60",
+  "@tanstack/start-server-core": "1.169.39",
+};
+
 if (!tanstackUpdated) throw new Error("felipe-ia-bridge expected @tanstack/react-start in reconstructed package.json");
 fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + "\n");
-console.log("[felipe-ia-bridge] TanStack Start upgraded to patched 1.168.60");
+console.log("[felipe-ia-bridge] TanStack Start forced to patched 1.168.60 across dependency graph");
 
 
 function copy(from, to) {
@@ -38,7 +47,7 @@ copy("render-overrides/felipe-ia-bridge-20261003.py", "public/felipe-ia-bridge.p
 copy("render-overrides/felipe-ia-link-20261003.sh", "public/felipe-ia-link.sh");
 
 const helper = String.raw`
-const FELIPE_IA_BRIDGE_VERSION = "2026.10.03.2";
+const FELIPE_IA_BRIDGE_VERSION = "2026.10.03.3";
 
 async function felipeBridge(action: string, extra: Record<string, unknown> = {}) {
   const response = await api("/api/felipe-ia-bridge", {
