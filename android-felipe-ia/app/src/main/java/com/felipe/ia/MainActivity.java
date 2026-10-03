@@ -217,6 +217,7 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 installBlobDownloadBridge(view);
+                installMobileUiFixes(view);
             }
         });
 
@@ -439,6 +440,90 @@ public class MainActivity extends Activity {
                 "};" +
                 "var nativeClick=HTMLAnchorElement.prototype.click;" +
                 "HTMLAnchorElement.prototype.click=function(){var href=String(this.href||'');if(href.indexOf('blob:')===0){window.__FIA_SAVE_BLOB(href,this.download||'',this.type||'');return;}return nativeClick.call(this);};" +
+                "})();";
+        view.evaluateJavascript(js, null);
+    }
+
+
+    private void installMobileUiFixes(WebView view) {
+        final String js =
+                "(function(){" +
+                "if(window.__FIA_MOBILE_UI_V4){try{window.__FIA_MOBILE_UI_V4.refresh();}catch(e){}return;}" +
+                "var api={};window.__FIA_MOBILE_UI_V4=api;" +
+                "function norm(v){return String(v||'').replace(/\\\\s+/g,' ').trim();}" +
+                "function text(el){return norm(el&&el.textContent);}" +
+                "function addStyle(){" +
+                "if(document.getElementById('fia-mobile-ui-v4-style'))return;" +
+                "var st=document.createElement('style');st.id='fia-mobile-ui-v4-style';" +
+                "st.textContent='[data-fia-sidebar=\\\\\"1\\\\\"]{transition:transform .22s ease!important;will-change:transform!important;}'+" +
+                "'[data-fia-sidebar=\\\\\"1\\\\\"].fia-native-closed{transform:translateX(-110%)!important;pointer-events:none!important;}'+" +
+                "'#fia-native-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:2147483000;opacity:1;transition:opacity .18s ease;}'+" +
+                "'#fia-native-backdrop.fia-hidden{opacity:0;pointer-events:none;}'+" +
+                "'#fia-native-close{position:absolute;right:12px;top:12px;z-index:2147483646;width:38px;height:38px;border-radius:12px;border:1px solid rgba(255,255,255,.15);background:rgba(25,25,25,.82);color:#fff;font-size:24px;line-height:34px;text-align:center;padding:0;box-shadow:none;}'+" +
+                "'#fia-native-close:active{transform:scale(.96);}'+" +
+                "'@media(min-width:901px){#fia-native-backdrop,#fia-native-close{display:none!important;}}';" +
+                "(document.head||document.documentElement).appendChild(st);" +
+                "}" +
+                "function fixCodex(){" +
+                "var nodes=document.querySelectorAll('button,a,[role=button]');" +
+                "for(var i=0;i<nodes.length;i++){" +
+                "var el=nodes[i],raw=text(el);if(!/codex/i.test(raw))continue;" +
+                "var kids=el.querySelectorAll('svg,span,i');" +
+                "for(var k=0;k<kids.length;k++){var kt=text(kids[k]);if(kids[k].tagName==='SVG'||/^<\\\\s*\\\\/\\\\s*>$/.test(kt)||/^<\\\\s*>$/.test(kt)){kids[k].style.display='none';}}" +
+                "for(var n=0;n<el.childNodes.length;n++){var node=el.childNodes[n];if(node.nodeType===3){node.nodeValue=String(node.nodeValue||'').replace(/<\\\\s*\\\\/\\\\s*>/g,'').replace(/<\\\\s*>/g,'');}}" +
+                "var after=text(el);if(/^<\\\\s*\\\\/\\\\s*>\\\\s*codex$/i.test(after)||/^<\\\\s*>\\\\s*codex$/i.test(after)){el.textContent='Codex';}" +
+                "}" +
+                "}" +
+                "function findSidebar(){" +
+                "var all=document.querySelectorAll('aside,nav,section,div');var list=[];" +
+                "for(var i=0;i<all.length;i++){var el=all[i],t=text(el);if(!/Conversas/i.test(t)||!/Limpar conversas/i.test(t))continue;" +
+                "var r=el.getBoundingClientRect();if(r.width<220||r.width>Math.max(620,window.innerWidth*.94)||r.height<window.innerHeight*.55||r.left>60)continue;" +
+                "list.push({el:el,area:r.width*r.height});}" +
+                "list.sort(function(a,b){return a.area-b.area;});return list.length?list[0].el:null;" +
+                "}" +
+                "function ensureBackdrop(){" +
+                "var b=document.getElementById('fia-native-backdrop');if(b)return b;" +
+                "b=document.createElement('div');b.id='fia-native-backdrop';b.className='fia-hidden';" +
+                "b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();closeSmart();},true);" +
+                "document.body.appendChild(b);return b;" +
+                "}" +
+                "function visible(drawer){if(!drawer)return false;var r=drawer.getBoundingClientRect(),cs=getComputedStyle(drawer);return cs.display!=='none'&&cs.visibility!=='hidden'&&r.right>30&&r.width>150;}" +
+                "function findToggle(drawer){" +
+                "var nodes=document.querySelectorAll('button,[role=button]');" +
+                "for(var i=0;i<nodes.length;i++){var el=nodes[i];if(drawer&&drawer.contains(el))continue;var a=norm(el.getAttribute('aria-label')).toLowerCase();var tt=text(el);" +
+                "if(a.indexOf('menu')>=0||a.indexOf('sidebar')>=0||a.indexOf('conversa')>=0||tt==='☰'||tt==='☷'||tt==='≡')return el;}" +
+                "return null;" +
+                "}" +
+                "function forceClose(drawer){if(!drawer)return;drawer.classList.add('fia-native-closed');var b=ensureBackdrop();b.classList.add('fia-hidden');}" +
+                "function syncBackdrop(drawer){var b=ensureBackdrop();if(window.innerWidth<=900&&visible(drawer)&&!drawer.classList.contains('fia-native-closed'))b.classList.remove('fia-hidden');else b.classList.add('fia-hidden');}" +
+                "function closeSmart(){" +
+                "var drawer=findSidebar();if(!drawer)return;var toggle=findToggle(drawer);" +
+                "if(toggle&&!drawer.classList.contains('fia-native-closed')){try{toggle.click();}catch(e){}}" +
+                "setTimeout(function(){var d=findSidebar()||drawer;if(visible(d))forceClose(d);else syncBackdrop(d);},80);" +
+                "}" +
+                "api.close=closeSmart;" +
+                "function installDrawer(){" +
+                "var drawer=findSidebar();if(!drawer)return;drawer.setAttribute('data-fia-sidebar','1');" +
+                "var zi=parseInt(getComputedStyle(drawer).zIndex||'0',10);if(!isFinite(zi)||zi<2147483001)drawer.style.zIndex='2147483001';" +
+                "if(getComputedStyle(drawer).position==='static')drawer.style.position='fixed';" +
+                "var close=drawer.querySelector('#fia-native-close');if(!close){close=document.createElement('button');close.id='fia-native-close';close.type='button';close.setAttribute('aria-label','Fechar menu');close.textContent='×';close.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();closeSmart();},true);drawer.appendChild(close);}" +
+                "if(!drawer.__fiaClick){drawer.__fiaClick=true;drawer.addEventListener('click',function(e){" +
+                "var hit=e.target&&e.target.closest?e.target.closest('button,a,[role=button]'):null;if(!hit||hit.id==='fia-native-close')return;" +
+                "var tt=text(hit);if(/Nova conversa/i.test(tt)||(!/Tema|Limpar conversas|Codex|Felipe IA/i.test(tt)&&tt.length>0)){setTimeout(closeSmart,40);}" +
+                "},false);" +
+                "var sx=0;drawer.addEventListener('touchstart',function(e){if(e.touches&&e.touches[0])sx=e.touches[0].clientX;},{passive:true});" +
+                "drawer.addEventListener('touchend',function(e){if(e.changedTouches&&e.changedTouches[0]&&sx-e.changedTouches[0].clientX>65)closeSmart();},{passive:true});}" +
+                "syncBackdrop(drawer);" +
+                "}" +
+                "function hookToggle(){" +
+                "var drawer=findSidebar();var toggle=findToggle(drawer);if(!toggle||toggle.__fiaToggle)return;toggle.__fiaToggle=true;" +
+                "toggle.addEventListener('click',function(){setTimeout(function(){var d=findSidebar();if(d){d.classList.remove('fia-native-closed');syncBackdrop(d);}},120);},false);" +
+                "}" +
+                "api.refresh=function(){try{addStyle();fixCodex();installDrawer();hookToggle();}catch(e){}};" +
+                "api.refresh();" +
+                "var queued=false;var mo=new MutationObserver(function(){if(queued)return;queued=true;setTimeout(function(){queued=false;api.refresh();},80);});" +
+                "mo.observe(document.documentElement,{childList:true,subtree:true,characterData:true});" +
+                "window.addEventListener('resize',function(){setTimeout(api.refresh,60);});" +
                 "})();";
         view.evaluateJavascript(js, null);
     }
