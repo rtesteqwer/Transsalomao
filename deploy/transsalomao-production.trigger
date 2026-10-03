@@ -8,3 +8,4 @@ deploy-fueling-photo-fix-20260929-3
 deploy-fueling-visual-fingerprint-20260929-4
 deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-03 Felipe IA bridge a7d1792a39eaf35a057cceefb989b1b9fac9f2c1
+2026-10-03 Felipe IA bridge fixed 4f448fa4772b0ad9a22e3fe1913142fea06f0cce
