@@ -7,6 +7,24 @@ if (!process.argv[2] || !fs.existsSync(path.join(target, "src"))) {
 }
 const repo = process.cwd();
 
+const packagePath = path.join(target, "package.json");
+if (!fs.existsSync(packagePath)) throw new Error("felipe-ia-bridge missing reconstructed package.json");
+const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+let tanstackUpdated = false;
+for (const section of ["dependencies", "devDependencies"]) {
+  if (packageJson?.[section]?.["@tanstack/react-start"]) {
+    packageJson[section]["@tanstack/react-start"] = "1.168.60";
+    tanstackUpdated = true;
+  }
+  if (packageJson?.[section]?.["@tanstack/start-server-core"]) {
+    packageJson[section]["@tanstack/start-server-core"] = "1.169.39";
+  }
+}
+if (!tanstackUpdated) throw new Error("felipe-ia-bridge expected @tanstack/react-start in reconstructed package.json");
+fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + "\n");
+console.log("[felipe-ia-bridge] TanStack Start upgraded to patched 1.168.60");
+
+
 function copy(from, to) {
   const source = path.join(repo, from);
   const destination = path.join(target, to);
@@ -20,7 +38,7 @@ copy("render-overrides/felipe-ia-bridge-20261003.py", "public/felipe-ia-bridge.p
 copy("render-overrides/felipe-ia-link-20261003.sh", "public/felipe-ia-link.sh");
 
 const helper = String.raw`
-const FELIPE_IA_BRIDGE_VERSION = "2026.10.03.1";
+const FELIPE_IA_BRIDGE_VERSION = "2026.10.03.2";
 
 async function felipeBridge(action: string, extra: Record<string, unknown> = {}) {
   const response = await api("/api/felipe-ia-bridge", {
