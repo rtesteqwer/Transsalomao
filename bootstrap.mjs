@@ -316,17 +316,23 @@ if (installChatGptShare && !original.includes("apply-share-to-chatgpt-20260929.m
   console.log('[share-to-chatgpt] skipped: Vercel project is not Trans Salomao');
 }
 
-// Ponte segura: Trans Salomão IA -> Felipe IA local no Ubuntu.
-// O mesmo repositório alimenta outros projetos Vercel; a ponte pertence somente ao Trans Salomão.
-const installFelipeIaBridge = process.env.VERCEL !== '1' || String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').toLowerCase().includes('transsalomao.vercel.app');
-if (installFelipeIaBridge && !original.includes("apply-felipe-ia-bridge-20261003.mjs")) {
-  if (!original.includes(dailyMarker)) throw new Error("Missing Felipe IA bridge insertion point");
-  original = original.replace(
-    dailyMarker,
-    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-felipe-ia-bridge-20261003.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
-  );
-} else if (!installFelipeIaBridge) {
-  console.log('[felipe-ia-bridge] skipped: Vercel project is not Trans Salomao');
+// Limite de segurança: TransSalomao IA e Felipe IA são produtos independentes.
+// A aplicação empresarial não instala, publica ou encaminha mensagens para a Felipe IA.
+// Também removemos resíduos do bridge caso existam no snapshot reconstruído.
+if (!original.includes("[ai-boundary] Felipe IA bridge disabled")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing AI boundary insertion point");
+  const separationPatch = `
+console.log('[ai-boundary] Felipe IA bridge disabled');
+for (const rel of [
+  'src/routes/api/felipe-ia-bridge.ts',
+  'public/felipe-ia-bridge.py',
+  'public/felipe-ia-link.sh'
+]) {
+  const file = path.join(work, rel);
+  if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+}
+`;
+  original = original.replace(dailyMarker, separationPatch + "\n" + dailyMarker);
 }
 
 // Fix the TanStack Start transport before Vite hashes the browser assets.
