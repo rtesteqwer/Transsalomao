@@ -457,6 +457,16 @@ execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-mobil
   );
 }
 
+// Relatórios: despesas operacionais entram no PDF por motorista/cavalo,
+ // mas ficam fora das planilhas Excel.
+if (!original.includes("apply-report-expenses-pdf-only-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing report expense PDF-only insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-report-expenses-pdf-only-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Pagamentos de motoristas: lançamentos de pagamentos separados, consolidação de
 // adiantamentos e geração de termo de acerto/recibo para assinatura.
 if (!original.includes("apply-driver-payments-tab-20261004.mjs")) {
