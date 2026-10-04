@@ -44,3 +44,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 recover orphan weighing tickets and prevent ghost duplicates
 2026-10-04 fix Luis pending ton price to R$17
 2026-10-04 retry Luis R$17 ton price correction after build scope fix
+2026-10-04 final retry Luis R$17 ton price correction with Neon client
