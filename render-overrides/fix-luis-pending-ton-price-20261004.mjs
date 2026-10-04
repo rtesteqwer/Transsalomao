@@ -286,6 +286,34 @@ if (has3300 && has1000 && wrong4800.length === 1) {
   advanceAction.push("delete-stale-4800@03/10");
 }
 
+// Limpeza final do adiantamento antigo incorreto. Os valores comprovados no acerto
+// são R$ 3.300 em 16/09 e R$ 1.000 em 26/09; portanto o R$ 4.800 de 03/10
+// não pode permanecer somando junto com os dois lançamentos corretos.
+const correctAdvances = await sql`
+  select count(*)::int as qty
+  from expenses
+  where driver_id = ${driverId}
+    and category = 'Adiantamento'
+    and (
+      (date = date '2026-09-16' and abs(amount - 3300) < 0.01)
+      or
+      (date = date '2026-09-26' and abs(amount - 1000) < 0.01)
+    )
+`;
+let stale4800Deleted = 0;
+if (Number(correctAdvances[0]?.qty ?? 0) === 2) {
+  const deleted = await sql`
+    delete from expenses
+    where driver_id = ${driverId}
+      and category = 'Adiantamento'
+      and date = date '2026-10-03'
+      and abs(amount - 4800) < 0.01
+    returning id
+  `;
+  stale4800Deleted = deleted.length;
+}
+console.log("[fix-luis] stale_4800_deleted=" + stale4800Deleted);
+
 // 3) Verificação final. Não altera as 31 Caixinhas; apenas registra como elas ficaram no banco.
 const finalTon = await sql`
   select date, code, round(coalesce(nullif(net_weight,0),loaded_tons,0)::numeric,3) as tons,
