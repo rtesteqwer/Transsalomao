@@ -56,3 +56,5 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 add driver payments tab + signed settlement receipt
 
 2026-10-04 monthly and multi-month driver signed receipts
+
+2026-10-04 fix clipped Excel section title text b769ab1e
