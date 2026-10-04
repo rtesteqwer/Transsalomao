@@ -37,11 +37,5 @@ pkg.overrides = {
   "@tanstack/react-start": "1.168.60",
   "@tanstack/start-server-core": "1.169.39",
 };
-const lockPath = path.join(target, "package-lock.json");
-if (fs.existsSync(lockPath)) {
-  fs.rmSync(lockPath, { force: true });
-  changed = true;
-}
-
 fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
-console.log("[tanstack-security] forced patched TanStack versions: react-start=1.168.60, start-server-core=1.169.39; stale lock removed" + (changed ? "" : " (already patched)"));
+console.log("[tanstack-security] forced patched TanStack versions: react-start=1.168.60, start-server-core=1.169.39; existing lock retained for peer compatibility" + (changed ? "" : " (already patched)"));
