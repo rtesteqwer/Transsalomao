@@ -241,19 +241,6 @@ export async function saveTicket(
   }
 
   async function linkExactDuplicate(existing: ExistingTicket) {
-    if (freightMode !== "ton" || d.peso_liquido_kg == null) {
-      throw new TicketError(409, `Ticket ${d.numero_ticket} já foi lançado.`);
-    }
-
-    const existingKg = existing.peso_liquido_kg == null ? null : Number(existing.peso_liquido_kg);
-    if (!Number.isFinite(existingKg) || existingKg !== d.peso_liquido_kg) {
-      const existingText = Number.isFinite(existingKg) ? `${existingKg} kg` : "peso não informado";
-      throw new TicketError(
-        409,
-        `Ticket ${d.numero_ticket} já existe com ${existingText}, diferente de ${d.peso_liquido_kg} kg. A foto não foi vinculada automaticamente; confira na Gerência.`,
-      );
-    }
-
     const reports = await sql<{
       id: string;
       ticket: string;
@@ -279,8 +266,38 @@ export async function saveTicket(
       limit 1
     `;
     const report = reports[0];
+
+    // Um número só é duplicado de verdade quando o lançamento original ainda existe.
+    // Registros órfãos podem sobrar quando um lançamento antigo foi apagado. Nesse
+    // caso removemos somente a linha órfã da balança e executamos o save novamente,
+    // criando ticket + Caixa + vínculo de foto como um lançamento novo e consistente.
     if (!report) {
-      throw new TicketError(409, `Ticket ${d.numero_ticket} já existe, mas o lançamento original não foi encontrado. Confira na Gerência.`);
+      const removed = await sql<{ id: number }>`
+        delete from tickets_balanca tb
+        where tb.id=${existing.id}
+          and not exists (select 1 from reports r where r.id=tb.report_id)
+        returning tb.id
+      `;
+      if (removed[0]) return saveTicket(sql, data, meta);
+
+      // Outra requisição pode ter corrigido o vínculo ao mesmo tempo. Releia antes
+      // de decidir, para nunca criar duas viagens para o mesmo ticket.
+      const refreshed = await findExistingTicket();
+      if (refreshed) return linkExactDuplicate(refreshed);
+      return saveTicket(sql, data, meta);
+    }
+
+    if (freightMode !== "ton" || d.peso_liquido_kg == null) {
+      throw new TicketError(409, `Ticket ${d.numero_ticket} já foi lançado.`);
+    }
+
+    const existingKg = existing.peso_liquido_kg == null ? null : Number(existing.peso_liquido_kg);
+    if (!Number.isFinite(existingKg) || existingKg !== d.peso_liquido_kg) {
+      const existingText = Number.isFinite(existingKg) ? `${existingKg} kg` : "peso não informado";
+      throw new TicketError(
+        409,
+        `Ticket ${d.numero_ticket} já existe com ${existingText}, diferente de ${d.peso_liquido_kg} kg. A foto não foi vinculada automaticamente; confira na Gerência.`,
+      );
     }
 
     if (photo && photoId) {
