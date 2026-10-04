@@ -123,23 +123,19 @@ rep(
     const t = Number(total);
     const d = Number(discount || 0);
     const expected = l * p - d;`,
-`  if (liters && price && total) {
+`  if ((display.detected || display.standalone) && liters && total && (Number(liters) < 5 || Number(total) < 20)) {
+    liters = null;
+    price = null;
+    total = null;
+    confidence = Math.min(confidence, 0.72);
+    alerts.push("Números pequenos demais para um abastecimento de carreta foram descartados; confira os visores da bomba.");
+  }
+
+  if (liters && price && total) {
     const l = Number(liters);
     const p = Number(price);
     const t = Number(total);
     const d = Number(discount || 0);
-
-    // Nunca confirme como abastecimento de bomba um trio fisicamente absurdo.
-    // O OCR antigo podia transformar ruído do teclado em 1 L × R$7 = R$7.
-    if ((display.detected || display.standalone) && (l < 5 || t < 20)) {
-      liters = null;
-      price = null;
-      total = null;
-      consistency = "partial";
-      confidence = Math.min(confidence, 0.72);
-      alerts.push("Números pequenos demais para um abastecimento de carreta foram descartados; confira os visores da bomba.");
-    }
-
     const expected = l * p - d;`,
 "final pump sanity");
 
