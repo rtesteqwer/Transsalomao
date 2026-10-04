@@ -174,3 +174,9 @@ Publicação com detecção TanStack segura na raiz (2026-10-04):
 - package.json raiz declara @tanstack/start-server-core 1.169.39
 - aplicação reconstruída e output já validados sem 1.168.49
 Commit: 7a712d990f66b3cc25a49ee26c76b6be889e472f
+
+
+HEIC + TanStack clean-lock deploy 2026-10-04
+- HEIC/HEIF server conversion enabled for ticket photos
+- secure TanStack lock rebuilt from scratch
+- final npm install uses matching legacy peer resolution
