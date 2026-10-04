@@ -108,34 +108,17 @@ function replaceOnce(source, before, after, label, required = true) {
     }
   }
 
-  if (!/const pending =[\s\S]{0,500}reportLaunchTime\(b\)/.test(s)) {
-    const pendingStart = s.indexOf("  const pending =");
-    if (pendingStart < 0) {
-      console.log("[viagens-caixa-clean-latest] pending declaration not found; preserving existing Caixa order");
+  if (!s.includes("reportLaunchTime(b) - reportLaunchTime(a)")) {
+    const pendingLine = /^  const pending = ([^\n;]+);$/m;
+    if (pendingLine.test(s)) {
+      s = s.replace(
+        pendingLine,
+        (_match, expression) =>
+          "  const pending = [...(" + String(expression).trim() + ")].sort((a, b) => reportLaunchTime(b) - reportLaunchTime(a));",
+      );
+      console.log("[viagens-caixa-clean-latest] Caixa pending sorted by launch timestamp");
     } else {
-      // The Caixa expression has changed across releases and can be multiline or
-      // semicolon-free. Only rewrite it when a complete, recognizable statement exists.
-      const pendingEndCandidates = [
-        s.indexOf(";\n", pendingStart),
-        s.indexOf("\n  const ", pendingStart + 16),
-      ].filter((value) => value > pendingStart);
-      const pendingEnd = pendingEndCandidates.length ? Math.min(...pendingEndCandidates) : -1;
-      if (pendingEnd < 0) {
-        console.log("[viagens-caixa-clean-latest] pending declaration end not found; preserving existing Caixa order");
-      } else {
-        const hasSemicolon = s.slice(pendingStart, pendingEnd + 2).includes(";");
-        const statementEnd = hasSemicolon ? pendingEnd + 1 : pendingEnd;
-        const statement = s.slice(pendingStart, statementEnd);
-        const equalAt = statement.indexOf("=");
-        let expression = statement.slice(equalAt + 1).trim().replace(/;$/, "").trim();
-        if (!expression.includes("reports") || !expression.includes("pendente")) {
-          console.log("[viagens-caixa-clean-latest] unrecognized pending expression; preserving existing Caixa order");
-        } else {
-          const replacement =
-            "  const pending = [...(" + expression + ")].sort((a, b) => reportLaunchTime(b) - reportLaunchTime(a));";
-          s = s.slice(0, pendingStart) + replacement + s.slice(statementEnd);
-        }
-      }
+      console.log("[viagens-caixa-clean-latest] Caixa pending keeps server created_at order");
     }
   }
 
@@ -161,27 +144,23 @@ function replaceOnce(source, before, after, label, required = true) {
     false,
   );
 
-  {
-    const compactStart = s.indexOf("  const compactRows =");
-    if (compactStart < 0) {
-      console.log("[viagens-caixa-clean-latest] compactRows declaration not found; preserving existing Viagens rows");
-    } else {
-      const compactEnd = s.indexOf(";\n", compactStart);
-      if (compactEnd < 0) {
-        console.log("[viagens-caixa-clean-latest] compactRows declaration end not found; preserving existing Viagens rows");
-      } else {
-        const statement = s.slice(compactStart, compactEnd + 1);
-        if (statement !== "  const compactRows = rows;") {
-          s = s.slice(0, compactStart) + "  const compactRows = rows;" + s.slice(compactEnd + 1);
-        }
-      }
-    }
+  let individualFeed = false;
+  if (/^  const compactRows = [^\n;]+;$/m.test(s)) {
+    s = s.replace(/^  const compactRows = [^\n;]+;$/m, "  const compactRows = rows;");
+    individualFeed = true;
+    console.log("[viagens-caixa-clean-latest] all freight modes shown as individual launches");
+  } else if (s.includes("  const compactRows = rows;")) {
+    individualFeed = true;
+  } else {
+    console.log("[viagens-caixa-clean-latest] individual-feed rewrite skipped; grouped rows kept visible");
   }
 
-  s = s.replace(
-    '{groupedModeRows.length > 0 ? (',
-    '{false && groupedModeRows.length > 0 ? (',
-  );
+  if (individualFeed) {
+    s = s.replace(
+      '{groupedModeRows.length > 0 ? (',
+      '{false && groupedModeRows.length > 0 ? (',
+    );
+  }
 
   const orderSelect = `        <Select value={tripOrder} onChange={(e) => setTripOrder(e.target.value)} aria-label="Ordenar viagens">
           <option value="latest_launch">Últimos lançamentos — mais recentes primeiro</option>
