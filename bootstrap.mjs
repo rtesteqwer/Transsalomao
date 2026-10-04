@@ -406,7 +406,7 @@ if (!original.includes("apply-viagens-caixa-clean-latest-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing Viagens/Caixa final ordering insertion point");
   original = original.replace(
     dailyMarker,
-    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-viagens-caixa-clean-latest-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n${dailyMarker}`
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-viagens-caixa-clean-latest-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 }
 
