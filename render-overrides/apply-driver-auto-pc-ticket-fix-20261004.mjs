@@ -24,6 +24,22 @@ replaceOnce(
   "desktop container"
 );
 
+// In automatic mode, choosing a freight mode is optional; keep the buttons as
+// a manual override without telling the user they are required.
+replaceOnce(
+  '<Field label="Modo de frete" hint="Obrigatório — toque em uma opção">',
+  '<Field label="Modo de frete" hint={priceBatchMode ? "Opcional — a leitura automática identifica pela foto" : "Obrigatório — toque em uma opção"}>',
+  "automatic mode hint"
+);
+
+if (s.includes("Escolha o modo da viagem antes de enviar a foto.")) {
+  s = s.replace(
+    "Escolha o modo da viagem antes de enviar a foto.",
+    '{priceBatchMode ? "Modo automático ativo: envie a foto e o sistema identificará a modalidade." : "Escolha o modo da viagem antes de enviar a foto."}'
+  );
+  changed += 1;
+}
+
 // The intelligent reader is now the default. Explicit freight-mode buttons still
 // switch to manual mode through the existing setPriceBatchMode(false) behavior.
 replaceOnce(
