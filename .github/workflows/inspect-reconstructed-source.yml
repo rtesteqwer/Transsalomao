@@ -133,6 +133,18 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund
           npm run build
 
+      - name: Inspect built TanStack versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/trans-source
+          echo '--- installed package versions ---'
+          node -e "console.log('react-start', require('./node_modules/@tanstack/react-start/package.json').version); console.log('start-server-core', require('./node_modules/@tanstack/start-server-core/package.json').version)"
+          echo '--- vulnerable version references in generated Vercel output ---'
+          grep -RIl --binary-files=without-match '1\.168\.49' .vercel/output | head -100 || true
+          echo '--- react-start references in generated package manifests ---'
+          find .vercel/output -type f -name 'package.json' -print0 | xargs -0 grep -HnE '@tanstack/react-start|@tanstack/start-server-core|1\.168\.49|1\.168\.60|1\.169\.39' || true
+
       - name: Test ticket photo flows
         shell: bash
         run: |
