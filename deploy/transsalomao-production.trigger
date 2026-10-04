@@ -13,3 +13,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-03 Felipe IA bridge dependency fix 59a9dc4284e917874339e3e5f3d29f53fb6d28d9
 2026-10-04 deploy Qwen3-VL visual identification 2bdf24b182cc2c9235f4dd86f7427c5469d19aa8
 2026-10-04 redeploy Qwen3-VL after TanStack Start security patch f69669716b05da81be8be87e1444d21d84d30520
+2026-10-04 remove obsolete ChatGPT copy from visual readers 5ca67f5c5fab76b33e9b34e5b29a07849b52a20e
