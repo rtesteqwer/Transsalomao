@@ -49,3 +49,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 redeploy Excel layout fix after newline correction
 
 2026-10-04 reconcile Luis handwritten settlement after 31 caixinhas already added
+2026-10-04 fix driver deletion blocked by WhatsApp foreign keys

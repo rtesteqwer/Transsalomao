@@ -4,7 +4,7 @@
 create table if not exists whatsapp_group_invite_claims (
   invite_code text primary key,
   invite_url text not null,
-  driver_id text not null references drivers(id),
+  driver_id text not null references drivers(id) on delete cascade on update cascade,
   status text not null default 'pending',
   group_id text,
   created_at timestamptz not null default now(),
@@ -22,7 +22,7 @@ select
   'pending'
 from drivers d
 where d.status='ativo'
-  and lower(regexp_replace(trim(d.name), '\s+', ' ', 'g')) =
+  and lower(regexp_replace(trim(d.name), '\\s+', ' ', 'g')) =
       lower('Murillo Rocha Garcia')
 on conflict (invite_code) do update
 set invite_url=excluded.invite_url,
