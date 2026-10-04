@@ -1,13 +1,35 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getSession, signIn, signOut } from 'next-auth/react';
 
-const CHAT_KEY = 'felipe_ia_cloud_chats_v1';
+const CHAT_KEY = 'felipe_ia_cloud_chats_v2';
 const MEMORY_KEY = 'felipe_ia_cloud_memory_v1';
 const FEEDBACK_KEY = 'felipe_ia_cloud_feedback_v1';
 
-function id() {
+function makeId() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function Icon({ name, size = 24 }) {
+  const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
+  const paths = {
+    menu: <><path d="M4 7h16M4 12h16M4 17h16"/></>,
+    close: <><path d="m6 6 12 12M18 6 6 18"/></>,
+    search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></>,
+    user: <><circle cx="12" cy="8" r="4"/><path d="M4.5 20c1.6-4.3 4.2-6 7.5-6s5.9 1.7 7.5 6"/></>,
+    plus: <><path d="M12 5v14M5 12h14"/></>,
+    mic: <><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></>,
+    wave: <><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></>,
+    edit: <><path d="M4 20h4l11-11-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></>,
+    memory: <><path d="M8 3v3M16 3v3M8 18v3M16 18v3M3 8h3M18 8h3M3 16h3M18 16h3"/><rect x="6" y="6" width="12" height="12" rx="3"/></>,
+    folder: <><path d="M3 7h7l2 2h9v10H3z"/></>,
+    code: <><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></>,
+    dots: <><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>,
+    paperclip: <><path d="m20 11-8.5 8.5a5 5 0 0 1-7-7L14 3a3.5 3.5 0 1 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></>,
+    arrow: <><path d="M12 19V5M7 10l5-5 5 5"/></>
+  };
+  return <svg {...common}>{paths[name]}</svg>;
 }
 
 function loadJson(key, fallback) {
@@ -19,36 +41,10 @@ function loadJson(key, fallback) {
   }
 }
 
-function words(text) {
-  return new Set(
-    String(text || '')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .split(/[^a-z0-9_]+/)
-      .filter(w => w.length > 2)
-  );
-}
-
-function rankRelevant(query, items, getter) {
-  const q = words(query);
-  return items
-    .map(item => {
-      const itemWords = words(getter(item));
-      let score = 0;
-      for (const token of q) if (itemWords.has(token)) score += 1;
-      return { item, score };
-    })
-    .sort((a, b) => b.score - a.score)
-    .filter((x, index) => x.score > 0 || index < 3)
-    .slice(0, 8)
-    .map(x => x.item);
-}
-
 function newChat(mode = 'assistant') {
   return {
-    id: id(),
-    title: mode === 'code' ? 'Novo Felipe Code' : 'Nova conversa',
+    id: makeId(),
+    title: mode === 'code' ? 'Novo Felipe Code' : 'Novo chat',
     mode,
     messages: [],
     createdAt: Date.now(),
@@ -58,14 +54,13 @@ function newChat(mode = 'assistant') {
 
 function shortTitle(text) {
   const value = String(text || '').replace(/\s+/g, ' ').trim();
-  return value ? value.slice(0, 42) : 'Nova conversa';
+  return value ? value.slice(0, 44) : 'Novo chat';
 }
 
 async function readAttachment(file) {
   const max = 8 * 1024 * 1024;
   if (file.size > max) throw new Error(`${file.name}: máximo de 8 MB por arquivo.`);
-
-  const base = { id: id(), name: file.name, type: file.type || 'application/octet-stream' };
+  const base = { id: makeId(), name: file.name, type: file.type || 'application/octet-stream' };
 
   if (file.type.startsWith('image/') || file.type === 'application/pdf') {
     const dataUrl = await new Promise((resolve, reject) => {
@@ -77,8 +72,7 @@ async function readAttachment(file) {
     return { ...base, dataUrl };
   }
 
-  const text = (await file.text()).slice(0, 60000);
-  return { ...base, text };
+  return { ...base, text: (await file.text()).slice(0, 60000) };
 }
 
 export default function Home() {
@@ -92,56 +86,59 @@ export default function Home() {
   const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
-  const [memoryDraft, setMemoryDraft] = useState('');
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [providers, setProviders] = useState({});
+  const [session, setSession] = useState(null);
   const [error, setError] = useState('');
+  const [listening, setListening] = useState(false);
   const fileRef = useRef(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
     const savedChats = loadJson(CHAT_KEY, []);
-    const initialChats = savedChats.length ? savedChats : [newChat()];
-    setChats(initialChats);
-    setActiveId(initialChats[0].id);
+    const initial = savedChats.length ? savedChats : [newChat()];
+    setChats(initial);
+    setActiveId(initial[0].id);
     setMemory(loadJson(MEMORY_KEY, []));
     setFeedback(loadJson(FEEDBACK_KEY, []));
+    Promise.all([
+      getSession().catch(() => null),
+      fetch('/api/auth/providers').then(r => r.ok ? r.json() : {}).catch(() => ({}))
+    ]).then(([s, p]) => {
+      setSession(s);
+      setProviders(p || {});
+    });
     setReady(true);
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
-    localStorage.setItem(CHAT_KEY, JSON.stringify(chats.slice(0, 60)));
+    if (ready) localStorage.setItem(CHAT_KEY, JSON.stringify(chats.slice(0, 80)));
   }, [chats, ready]);
 
   useEffect(() => {
-    if (!ready) return;
-    localStorage.setItem(MEMORY_KEY, JSON.stringify(memory.slice(0, 200)));
+    if (ready) localStorage.setItem(MEMORY_KEY, JSON.stringify(memory.slice(0, 200)));
   }, [memory, ready]);
 
   useEffect(() => {
-    if (!ready) return;
-    localStorage.setItem(FEEDBACK_KEY, JSON.stringify(feedback.slice(0, 200)));
+    if (ready) localStorage.setItem(FEEDBACK_KEY, JSON.stringify(feedback.slice(0, 200)));
   }, [feedback, ready]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeId, chats, sending]);
 
-  const active = useMemo(
-    () => chats.find(c => c.id === activeId) || chats[0],
-    [chats, activeId]
-  );
+  const active = useMemo(() => chats.find(c => c.id === activeId) || chats[0], [chats, activeId]);
 
   function updateActive(updater) {
-    setChats(prev =>
-      prev.map(chat => {
-        if (chat.id !== active?.id) return chat;
-        const next = typeof updater === 'function' ? updater(chat) : { ...chat, ...updater };
-        return { ...next, updatedAt: Date.now() };
-      })
-    );
+    setChats(prev => prev.map(chat => {
+      if (chat.id !== active?.id) return chat;
+      const next = typeof updater === 'function' ? updater(chat) : { ...chat, ...updater };
+      return { ...next, updatedAt: Date.now() };
+    }));
   }
 
-  function createChat(mode = 'assistant') {
+  function createChat(mode = active?.mode || 'assistant') {
     const chat = newChat(mode);
     setChats(prev => [chat, ...prev]);
     setActiveId(chat.id);
@@ -153,23 +150,12 @@ export default function Home() {
 
   function setMode(mode) {
     if (!active) return;
-    updateActive(chat => ({
-      ...chat,
-      mode,
-      title:
-        chat.messages.length === 0
-          ? mode === 'code'
-            ? 'Novo Felipe Code'
-            : 'Nova conversa'
-          : chat.title
-    }));
+    updateActive(chat => ({ ...chat, mode }));
   }
 
   async function onFiles(event) {
     const list = Array.from(event.target.files || []).slice(0, 4);
     event.target.value = '';
-    if (!list.length) return;
-
     try {
       const parsed = [];
       for (const file of list) parsed.push(await readAttachment(file));
@@ -185,7 +171,7 @@ export default function Home() {
     if ((!text && !attachments.length) || !active || sending) return;
 
     const userMessage = {
-      id: id(),
+      id: makeId(),
       role: 'user',
       content: text || 'Analise os arquivos anexados.',
       attachmentNames: attachments.map(a => a.name),
@@ -193,19 +179,8 @@ export default function Home() {
     };
 
     const outgoing = [...active.messages, userMessage].slice(-24);
-    const relevantMemory = rankRelevant(
-      userMessage.content,
-      memory,
-      item => item.text
-    ).map(item => item.text);
-
-    const relevantFeedback = rankRelevant(
-      userMessage.content,
-      feedback,
-      item => `${item.question} ${item.correction}`
-    );
-
     const payloadAttachments = attachments;
+
     setInput('');
     setAttachments([]);
     setSending(true);
@@ -225,63 +200,30 @@ export default function Home() {
           mode: active.mode,
           messages: outgoing.map(m => ({ role: m.role, content: m.content })),
           attachments: payloadAttachments,
-          memory: relevantMemory,
-          feedback: relevantFeedback
+          memory: memory.slice(0, 12).map(x => x.text),
+          feedback: feedback.slice(0, 10)
         })
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Falha na Felipe IA.');
 
-      const assistantMessage = {
-        id: id(),
-        role: 'assistant',
-        content: data.text,
-        model: data.model,
-        toolSteps: data.toolSteps || 0,
-        createdAt: Date.now()
-      };
-
       updateActive(chat => ({
         ...chat,
-        messages: [...chat.messages, assistantMessage]
+        messages: [...chat.messages, {
+          id: makeId(),
+          role: 'assistant',
+          content: data.text,
+          model: data.model,
+          toolSteps: data.toolSteps || 0,
+          createdAt: Date.now()
+        }]
       }));
     } catch (e) {
       setError(e.message || 'Falha ao conectar com a Felipe IA.');
     } finally {
       setSending(false);
     }
-  }
-
-  function addMemory() {
-    const text = memoryDraft.trim();
-    if (!text) return;
-    setMemory(prev => [{ id: id(), text, createdAt: Date.now() }, ...prev]);
-    setMemoryDraft('');
-  }
-
-  function correctMessage(message, index) {
-    const before = active?.messages?.slice(0, index).reverse().find(m => m.role === 'user');
-    const correction = window.prompt('Qual seria a resposta correta ou a regra que a Felipe IA deve aprender?');
-    if (!correction?.trim()) return;
-
-    const item = {
-      id: id(),
-      question: before?.content || 'Contexto não identificado',
-      wrong: message.content.slice(0, 3000),
-      correction: correction.trim(),
-      createdAt: Date.now()
-    };
-    setFeedback(prev => [item, ...prev]);
-
-    setMemory(prev => [
-      {
-        id: id(),
-        text: `Correção aprendida: quando o contexto for "${item.question}", considere esta orientação: ${item.correction}`,
-        createdAt: Date.now()
-      },
-      ...prev
-    ]);
   }
 
   function deleteChat(chatId) {
@@ -293,213 +235,248 @@ export default function Home() {
     });
   }
 
-  if (!ready || !active) {
-    return <main className="loading">Carregando Felipe IA…</main>;
+  function startSpeech() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      setError('Reconhecimento de voz não é suportado neste navegador.');
+      return;
+    }
+    const rec = new Recognition();
+    rec.lang = 'pt-BR';
+    rec.interimResults = false;
+    rec.onstart = () => setListening(true);
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    rec.onresult = e => setInput(prev => (prev ? prev + ' ' : '') + e.results[0][0].transcript);
+    rec.start();
   }
 
+  async function login(provider) {
+    setAuthError('');
+    if (!providers?.[provider]) {
+      setAuthError(
+        provider === 'google'
+          ? 'O login Google está pronto na interface, mas ainda precisa das credenciais OAuth do Google na Vercel.'
+          : 'O login Apple/iCloud está pronto na interface, mas ainda precisa das credenciais Sign in with Apple na Vercel.'
+      );
+      return;
+    }
+    await signIn(provider, { callbackUrl: window.location.origin });
+  }
+
+  async function logout() {
+    await signOut({ redirect: false });
+    setSession(null);
+    setAccountOpen(false);
+  }
+
+  const initials = session?.user?.name
+    ? session.user.name.split(' ').slice(0, 2).map(x => x[0]).join('').toUpperCase()
+    : 'F';
+
+  if (!ready || !active) return <main className="loading">Carregando Felipe IA…</main>;
+
   return (
-    <main className="app">
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-        <div className="sideTop">
-          <div className="brand">
-            <div className="brandMark">F</div>
-            <div>
-              <strong>Felipe IA</strong>
-              <span>Cloud</span>
-            </div>
-          </div>
-          <button className="iconBtn mobileOnly" onClick={() => setSidebarOpen(false)}>✕</button>
+    <main className="appShell">
+      <header className="topBar">
+        <button className="topIcon" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu">
+          <Icon name="menu" size={27} />
+        </button>
+
+        <div className="modePill" role="tablist">
+          <button className={active.mode === 'assistant' ? 'active' : ''} onClick={() => setMode('assistant')}>IA</button>
+          <button className={active.mode === 'code' ? 'active' : ''} onClick={() => setMode('code')}>Code</button>
         </div>
 
-        <button className="newChat" onClick={() => createChat(active.mode)}>＋ Nova conversa</button>
+        <button className="accountButton" onClick={() => setAccountOpen(true)} aria-label="Entrar na conta">
+          {session?.user?.image ? <img src={session.user.image} alt="" /> : session?.user ? <span>{initials}</span> : <Icon name="user" size={24} />}
+        </button>
+      </header>
 
-        <div className="chatList">
-          {chats
-            .slice()
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .map(chat => (
-              <div key={chat.id} className={`chatRow ${chat.id === active.id ? 'active' : ''}`}>
-                <button
-                  className="chatSelect"
-                  onClick={() => {
-                    setActiveId(chat.id);
-                    setSidebarOpen(false);
-                  }}
-                >
-                  <span>{chat.mode === 'code' ? '⌘' : '◉'}</span>
-                  <span>{chat.title}</span>
-                </button>
-                <button className="deleteChat" onClick={() => deleteChat(chat.id)}>×</button>
-              </div>
-            ))}
-        </div>
-
-        <div className="sideBottom">
-          <button className="sideAction" onClick={() => setMemoryOpen(true)}>
-            🧠 Memória <span>{memory.length}</span>
-          </button>
-          <div className="cloudStatus"><i /> Sem Ubuntu • Nuvem</div>
-        </div>
-      </aside>
-
-      {sidebarOpen && <button className="overlay" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
-
-      <section className="workspace">
-        <header className="topbar">
-          <button className="iconBtn mobileOnly" onClick={() => setSidebarOpen(true)}>☰</button>
-          <div className="topTitle">
-            <strong>{active.mode === 'code' ? 'Felipe Code' : 'Felipe IA'}</strong>
-            <span>{active.mode === 'code' ? 'Qwen3 Coder + Sandbox' : 'Qwen3 VL • visão + PDF'}</span>
-          </div>
-          <div className="modeSwitch">
-            <button className={active.mode === 'assistant' ? 'selected' : ''} onClick={() => setMode('assistant')}>IA</button>
-            <button className={active.mode === 'code' ? 'selected' : ''} onClick={() => setMode('code')}>Code</button>
-          </div>
-        </header>
-
+      <section className="chatStage">
         <div className="messages">
           {active.messages.length === 0 && (
-            <div className="hero">
-              <div className="heroMark">F</div>
-              <h1>{active.mode === 'code' ? 'Felipe Code' : 'Felipe IA'}</h1>
-              <p>
-                {active.mode === 'code'
-                  ? 'Programação com Qwen3 Coder e execução em sandbox isolado na nuvem.'
-                  : 'Assistente em nuvem com memória, aprendizado por correções, leitura de imagens e PDFs.'}
-              </p>
-              <div className="suggestions">
-                {(active.mode === 'code'
-                  ? ['Crie uma função e teste', 'Analise este erro', 'Refatore este código']
-                  : ['Analise este PDF', 'Leia esta foto', 'Me ajude a planejar algo'])
-                  .map(item => (
-                    <button key={item} onClick={() => setInput(item)}>{item}</button>
-                  ))}
-              </div>
+            <div className="starterArea">
+              <button onClick={() => setInput('Leia e explique este arquivo para mim.')}>📎 Leia e explique um arquivo</button>
+              <button onClick={() => setInput('Me ajude a organizar uma ideia.')}>✦ Organize uma ideia comigo</button>
+              <button onClick={() => setInput('Crie um plano passo a passo para mim.')}>🚗 Crie um plano passo a passo</button>
             </div>
           )}
 
-          {active.messages.map((message, index) => (
+          {active.messages.map(message => (
             <article key={message.id} className={`message ${message.role}`}>
-              <div className="avatar">{message.role === 'user' ? 'V' : 'F'}</div>
-              <div className="bubble">
-                <div className="messageMeta">
-                  <strong>{message.role === 'user' ? 'Você' : active.mode === 'code' ? 'Felipe Code' : 'Felipe IA'}</strong>
-                  {message.model && <span>{message.model.replace('alibaba/', '')}</span>}
+              {message.role === 'user' ? (
+                <div className="userBubble">
+                  <div>{message.content}</div>
+                  {!!message.attachmentNames?.length && (
+                    <div className="attachmentLine"><Icon name="paperclip" size={17} /> {message.attachmentNames.join(' • ')}</div>
+                  )}
                 </div>
-                <div className="messageText">{message.content}</div>
-                {!!message.attachmentNames?.length && (
-                  <div className="attachmentLine">📎 {message.attachmentNames.join(' • ')}</div>
-                )}
-                {message.role === 'assistant' && (
-                  <div className="messageActions">
-                    <button onClick={() => navigator.clipboard?.writeText(message.content)}>Copiar</button>
-                    <button onClick={() => correctMessage(message, index)}>Corrigir / ensinar</button>
-                    {message.toolSteps > 0 && <span>{message.toolSteps} etapas verificadas</span>}
+              ) : (
+                <div className="assistantReply">
+                  <div className="assistantMark">F</div>
+                  <div>
+                    <div className="assistantText">{message.content}</div>
+                    {message.model && <div className="modelMeta">{message.model.replace('alibaba/', '')}</div>}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </article>
           ))}
 
           {sending && (
-            <article className="message assistant">
-              <div className="avatar">F</div>
-              <div className="bubble thinking">
-                <span />
-                <span />
-                <span />
-              </div>
-            </article>
+            <div className="assistantReply pending">
+              <div className="assistantMark">F</div>
+              <div className="dots"><i/><i/><i/></div>
+            </div>
           )}
           <div ref={bottomRef} />
         </div>
+      </section>
 
-        <div className="composerWrap">
-          {error && <div className="errorBox">{error}</div>}
+      <section className="composerZone">
+        {error && <div className="errorBox">{error}</div>}
 
-          {!!attachments.length && (
-            <div className="attachmentTray">
-              {attachments.map(file => (
-                <div className="attachmentChip" key={file.id}>
-                  <span>📎 {file.name}</span>
-                  <button onClick={() => setAttachments(prev => prev.filter(x => x.id !== file.id))}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="composer">
-            <button className="attachBtn" onClick={() => fileRef.current?.click()} title="Anexar arquivo">＋</button>
-            <input
-              ref={fileRef}
-              type="file"
-              hidden
-              multiple
-              accept="image/*,application/pdf,text/*,.md,.json,.csv"
-              onChange={onFiles}
-            />
-            <textarea
-              value={input}
-              rows={1}
-              placeholder={active.mode === 'code' ? 'Peça para programar, testar ou depurar…' : 'Mensagem para Felipe IA…'}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-            />
-            <button className="sendBtn" onClick={send} disabled={sending || (!input.trim() && !attachments.length)}>
-              ↑
-            </button>
+        {!!attachments.length && (
+          <div className="attachmentTray">
+            {attachments.map(file => (
+              <div className="attachmentChip" key={file.id}>
+                <Icon name="paperclip" size={15} />
+                <span>{file.name}</span>
+                <button onClick={() => setAttachments(prev => prev.filter(x => x.id !== file.id))}>×</button>
+              </div>
+            ))}
           </div>
-          <div className="composerHint">
-            {active.mode === 'code'
-              ? 'Código é executado em sandbox isolado, não no seu computador.'
-              : 'Memória e histórico desta versão ficam neste dispositivo.'}
+        )}
+
+        <div className="composer">
+          <textarea
+            value={input}
+            rows={1}
+            placeholder={active.mode === 'code' ? 'Peça para programar…' : 'Pergunte à Felipe IA'}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+          <div className="composerBottom">
+            <button className="roundControl" onClick={() => fileRef.current?.click()} aria-label="Anexar">
+              <Icon name="plus" size={28} />
+            </button>
+            <input ref={fileRef} type="file" hidden multiple accept="image/*,application/pdf,text/*,.md,.json,.csv" onChange={onFiles} />
+
+            <button className="modelButton" onClick={() => setMode(active.mode === 'code' ? 'assistant' : 'code')}>
+              {active.mode === 'code' ? 'Qwen3 Coder' : 'Qwen3 VL'} <span>⌄</span>
+            </button>
+
+            <button className={`roundControl micButton ${listening ? 'listening' : ''}`} onClick={startSpeech} aria-label="Microfone">
+              <Icon name="mic" size={25} />
+            </button>
+
+            {input.trim() || attachments.length ? (
+              <button className="voiceButton send" onClick={send} disabled={sending} aria-label="Enviar">
+                <Icon name="arrow" size={24} />
+              </button>
+            ) : (
+              <button className={`voiceButton ${listening ? 'listening' : ''}`} onClick={startSpeech} aria-label="Conversar por voz">
+                <Icon name="wave" size={25} />
+              </button>
+            )}
           </div>
         </div>
       </section>
 
+      <div className={`sideDrawer ${sidebarOpen ? 'open' : ''}`}>
+        <div className="drawerTop">
+          <div className="felipeLogo">F</div>
+          <div className="drawerActions">
+            <button><Icon name="search" size={25}/></button>
+            <button onClick={() => setSidebarOpen(false)}><Icon name="close" size={25}/></button>
+          </div>
+        </div>
+
+        <button className="newChatButton" onClick={() => createChat()}>
+          <Icon name="edit" size={25}/> Novo chat
+        </button>
+
+        <div className="drawerMenu">
+          <button onClick={() => setMemoryOpen(true)}><Icon name="memory" size={25}/> Memória</button>
+          <button onClick={() => fileRef.current?.click()}><Icon name="folder" size={25}/> Arquivos</button>
+          <button onClick={() => { setMode('code'); setSidebarOpen(false); }}><Icon name="code" size={25}/> Felipe Code</button>
+          <button onClick={() => setAccountOpen(true)}><Icon name="user" size={25}/> Conta</button>
+        </div>
+
+        <div className="recentLabel">Recentes</div>
+        <div className="drawerChats">
+          {chats.slice().sort((a,b) => b.updatedAt - a.updatedAt).map(chat => (
+            <div className={`drawerChat ${chat.id === active.id ? 'selected' : ''}`} key={chat.id}>
+              <button onClick={() => { setActiveId(chat.id); setSidebarOpen(false); }}>
+                <span>{chat.title}</span>
+              </button>
+              <button className="chatMore" onClick={() => deleteChat(chat.id)}><Icon name="dots" size={20}/></button>
+            </div>
+          ))}
+        </div>
+
+        <button className="drawerAccount" onClick={() => setAccountOpen(true)}>
+          <div className="accountAvatar">{session?.user?.image ? <img src={session.user.image} alt="" /> : initials}</div>
+          <div>
+            <strong>{session?.user?.name || 'Entrar na conta'}</strong>
+            <span>{session?.user?.email || 'Google ou Apple/iCloud'}</span>
+          </div>
+        </button>
+      </div>
+
+      {sidebarOpen && <button className="screenOverlay" onClick={() => setSidebarOpen(false)} aria-label="Fechar menu" />}
+
+      {accountOpen && (
+        <div className="modalBackdrop" onClick={() => setAccountOpen(false)}>
+          <section className="accountModal" onClick={e => e.stopPropagation()}>
+            <button className="modalClose" onClick={() => setAccountOpen(false)}><Icon name="close" size={22}/></button>
+
+            {session?.user ? (
+              <>
+                <div className="accountBigAvatar">{session.user.image ? <img src={session.user.image} alt="" /> : initials}</div>
+                <h2>{session.user.name || 'Sua conta'}</h2>
+                <p>{session.user.email}</p>
+                <button className="oauthButton" onClick={logout}>Sair da conta</button>
+              </>
+            ) : (
+              <>
+                <div className="accountLogo">F</div>
+                <h2>Entrar na Felipe IA</h2>
+                <p>Sincronize sua conta e prepare a Felipe IA para usar seus dados em qualquer dispositivo.</p>
+
+                <button className="oauthButton" onClick={() => login('google')}>
+                  <span className="providerIcon">G</span> Continuar com Google
+                </button>
+                <button className="oauthButton" onClick={() => login('apple')}>
+                  <span className="providerIcon appleIcon">A</span> Continuar com Apple / iCloud
+                </button>
+
+                {authError && <div className="authNotice">{authError}</div>}
+                <small>Seus provedores de login são configurados com OAuth na Vercel. A Felipe IA não recebe sua senha do Google ou iCloud.</small>
+              </>
+            )}
+          </section>
+        </div>
+      )}
+
       {memoryOpen && (
         <div className="modalBackdrop" onClick={() => setMemoryOpen(false)}>
           <section className="memoryPanel" onClick={e => e.stopPropagation()}>
-            <header>
-              <div>
-                <strong>Memória da Felipe IA</strong>
-                <span>Aprendizado controlado por você</span>
-              </div>
-              <button className="iconBtn" onClick={() => setMemoryOpen(false)}>✕</button>
-            </header>
-
-            <div className="memoryAdd">
-              <textarea
-                value={memoryDraft}
-                placeholder="Ex.: Prefiro respostas curtas e código completo quando eu pedir para programar."
-                onChange={e => setMemoryDraft(e.target.value)}
-              />
-              <button onClick={addMemory}>Salvar memória</button>
-            </div>
-
+            <header><strong>Memória da Felipe IA</strong><button onClick={() => setMemoryOpen(false)}><Icon name="close" size={22}/></button></header>
             <div className="memoryList">
-              {memory.length === 0 && <p>Nenhuma memória salva ainda.</p>}
-              {memory.map(item => (
-                <div key={item.id} className="memoryItem">
+              {memory.length === 0 ? <p>Nenhuma memória salva ainda.</p> : memory.map(item => (
+                <div className="memoryItem" key={item.id}>
                   <span>{item.text}</span>
                   <button onClick={() => setMemory(prev => prev.filter(x => x.id !== item.id))}>Excluir</button>
                 </div>
               ))}
             </div>
-
-            {feedback.length > 0 && (
-              <div className="feedbackInfo">
-                <strong>{feedback.length} correções aprendidas</strong>
-                <button onClick={() => {
-                  if (window.confirm('Apagar todas as correções aprendidas?')) setFeedback([]);
-                }}>Limpar correções</button>
-              </div>
-            )}
           </section>
         </div>
       )}
