@@ -549,18 +549,18 @@ function matchFleetByPlate(readPlate: string, fleets: any[]) {
   s = required(
     s,
     `              where category = 'Despesa'
-                and date = ${date}`,
-    `              where category = ${category}
-                and date = ${date}`,
+                and date = \${date}`,
+    `              where category = \${category}
+                and date = \${date}`,
     "batch dedup category",
   );
 
   s = required(
     s,
-    `                ${id}, ${date}, ${time}, ${null}, ${null}, ${null},
-                'Despesa', ${description}, ${amount}, ${notes}`,
-    `                ${id}, ${date}, ${time}, ${resolvedFleetId}, ${resolvedFleetId ? (assetType || "tractor") : null}, ${null},
-                ${category}, ${description}, ${amount}, ${notes}`,
+    `                \${id}, \${date}, \${time}, \${null}, \${null}, \${null},
+                'Despesa', \${description}, \${amount}, \${notes}`,
+    `                \${id}, \${date}, \${time}, \${resolvedFleetId}, \${resolvedFleetId ? assetType : null}, \${null},
+                \${category}, \${description}, \${amount}, \${notes}`,
     "batch insert rich fields",
   );
 
@@ -572,7 +572,7 @@ function matchFleetByPlate(readPlate: string, fleets: any[]) {
               category,
               description,
               fleetId: resolvedFleetId,
-              assetType: resolvedFleetId ? (assetType || "tractor") : null,
+              assetType: resolvedFleetId ? assetType : null,
             });`,
     "batch created response rich fields",
   );
