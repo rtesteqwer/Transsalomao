@@ -35,3 +35,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 viagens filters with latest-launch order 1bf1d19e
 2026-10-04 deploy viagens caixa real launch order + clean layout
 2026-10-04 redeploy viagens caixa after bootstrap escape fix
+2026-10-04 final deploy viagens caixa robust latest-order cleanup
