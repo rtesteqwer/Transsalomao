@@ -24,7 +24,7 @@ function addImport(text) {
   if (text.includes(marker)) return text;
   const line = 'import { qwen3VlModel, qwen3VlResponsesUrl, qwen3VlToken } from "@/lib/qwen3-vl.server";';
   const matches = [...text.matchAll(/^import .*;\s*$/gm)];
-  if (!matches.length) throw new Error("qwen3-vl: import block not found");
+  if (!matches.length) return line + "\n" + text;
   const last = matches[matches.length - 1];
   const end = (last.index || 0) + last[0].length;
   return text.slice(0, end) + "\n" + line + text.slice(end);
