@@ -97,7 +97,7 @@ edit("src/lib/api.ts", (source) => {
   patchDelete(
     "deleteReport",
     "reports",
-    "try { await sql" + bt + "update trip_ticket_photos set relation_type='unlinked', relation_id='pending', report_status=null where relation_type='report' and relation_id=" + dataIdExpr + bt + "; } catch {}",
+    "try { await sql" + bt + "update trip_ticket_photos set relation_type='unlinked', relation_id='pending', report_status=null where relation_type='report' and relation_id=" + dataIdExpr + bt + "; } catch {}\n    try { await sql" + bt + "delete from tickets_balanca where report_id=" + dataIdExpr + bt + "; } catch {}",
     "O lançamento já não existe ou a exclusão não foi confirmada pelo banco."
   );
   patchDelete(
