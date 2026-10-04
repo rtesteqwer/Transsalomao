@@ -46,6 +46,30 @@ jobs:
           printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_5J9tpQrlU27PsKdOY2N7QzBaFyn9"}' > .vercel/project.json
           npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
 
+      - name: Ensure private collective-learning Blob
+        working-directory: felipe-ia-cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q '^BLOB_READ_WRITE_TOKEN=' .vercel/.env.production.local 2>/dev/null; then
+            echo "Collective-learning Blob already connected."
+          else
+            echo "Creating and connecting private Blob store for collective learning..."
+            npx --yes vercel@latest blob create-store felipe-ia-learning-prod \
+              --access private \
+              --region gru1 \
+              --environment production \
+              --yes \
+              --scope=transsalomao \
+              --token="$VERCEL_TOKEN" >/tmp/blob-create.log 2>&1
+            echo "Private Blob store connected."
+            npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN" >/dev/null
+            grep -q '^BLOB_READ_WRITE_TOKEN=' .vercel/.env.production.local || {
+              echo "BLOB_READ_WRITE_TOKEN was not connected to felipe-ia."
+              exit 1
+            }
+          fi
+
       - name: Deploy production from correct source directory
         working-directory: felipe-ia-cloud
         shell: bash
