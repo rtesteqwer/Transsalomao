@@ -250,7 +250,7 @@ s = s.replace(
 
 s = s.replace(
   '    workbook.eachSheet((excelSheet: any) => { excelSheet.eachRow({ includeEmpty: true }, (excelRow: any) => { excelRow.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } }; }); }); });',
-  '    workbook.eachSheet((excelSheet: any) => {\\n      excelSheet.eachRow({ includeEmpty: true }, (excelRow: any) => {\\n        excelRow.eachCell({ includeEmpty: true }, (cell: any) => {\\n          cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } };\\n          if (typeof cell.value === "number") {\\n            cell.alignment = { ...(cell.alignment ?? {}), vertical: cell.alignment?.vertical ?? "middle", shrinkToFit: true };\\n          }\\n        });\\n      });\\n      excelSheet.columns.forEach((column: any) => { if (column && (!column.width || column.width < 12)) column.width = 12; });\\n    });'
+  '    workbook.eachSheet((excelSheet: any) => {\n      excelSheet.eachRow({ includeEmpty: true }, (excelRow: any) => {\n        excelRow.eachCell({ includeEmpty: true }, (cell: any) => {\n          cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } };\n          if (typeof cell.value === "number") {\n            cell.alignment = { ...(cell.alignment ?? {}), vertical: cell.alignment?.vertical ?? "middle", shrinkToFit: true };\n          }\n        });\n      });\n      excelSheet.columns.forEach((column: any) => { if (column && (!column.width || column.width < 12)) column.width = 12; });\n    });'
 );
 
 fs.writeFileSync(file, s);
