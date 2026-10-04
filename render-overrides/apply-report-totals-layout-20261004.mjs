@@ -121,7 +121,7 @@ const summaryBlock = `    const modeName = (mode: string) => mode === "ton" ? "P
     summary.eachCell((cell: any, col: number) => {
       cell.font = { bold: true, color: { argb: black }, size: 10 };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: totalFill } };
-      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true, shrinkToFit: col % 2 === 0 };
       cell.border = border;
       if (col % 2 === 0) cell.numFmt = 'R$ #,##0.00';
     });
@@ -148,6 +148,7 @@ const summaryBlock = `    const modeName = (mode: string) => mode === "ton" ? "P
       for (let c = 3; c <= 9; c += 1) {
         row.getCell(c).numFmt = 'R$ #,##0.00';
         row.getCell(c).font = { bold: c >= 5, color: { argb: black }, size: 10 };
+        row.getCell(c).alignment = { horizontal: "right", vertical: "middle", shrinkToFit: true };
       }
     });
     const driverSummaryEndRow = sheet.rowCount;
@@ -162,7 +163,7 @@ s = s.replace(
 
 s = s.replace(
   '    [13, 18, 22, 16, 9, 20, 18, 18, 16, 16, 16, 16, 16].forEach((width, i) => {\n      sheet.getColumn(i + 1).width = width;\n    });\n    sheet.autoFilter = { from: "A6", to: `H${Math.max(6, 6 + grouped.size)}` };',
-  '    [24, 12, 20, 18, 18, 18, 18, 18, 20, 18, 18, 18, 18].forEach((width, i) => {\n      sheet.getColumn(i + 1).width = width;\n    });\n    sheet.autoFilter = { from: "A6", to: "I" + Math.max(6, driverSummaryEndRow) };'
+  '    [26, 18, 22, 20, 22, 20, 22, 20, 24, 20, 22, 20, 22].forEach((width, i) => {\n      sheet.getColumn(i + 1).width = width;\n    });\n    sheet.autoFilter = { from: "A6", to: "I" + Math.max(6, driverSummaryEndRow) };'
 );
 
 s = s.replace(
@@ -240,11 +241,16 @@ s = s.slice(0, widthsPos) + details + s.slice(widthsPos);
 
 s = s.replace(
   '        [12, 12, 20, 17, 17, 20, 18, 16, 14, 14, 14, 15, 15, 12, 15, 15, 15]\n          .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });',
-  '        [15, 15, 24, 20, 20, 22, 20, 22, 16, 16, 16, 20, 20, 15, 20, 20, 20]\n          .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });'
+  '        [17, 18, 28, 24, 24, 24, 22, 22, 18, 18, 18, 22, 24, 17, 24, 24, 24]\n          .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });'
 );
 s = s.replace(
   '        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, tonSheet.rowCount - 1), column: 17 } };',
   '        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, driverTableEndRow - 1), column: 17 } };'
+);
+
+s = s.replace(
+  '    workbook.eachSheet((excelSheet: any) => { excelSheet.eachRow({ includeEmpty: true }, (excelRow: any) => { excelRow.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } }; }); }); });',
+  '    workbook.eachSheet((excelSheet: any) => {\\n      excelSheet.eachRow({ includeEmpty: true }, (excelRow: any) => {\\n        excelRow.eachCell({ includeEmpty: true }, (cell: any) => {\\n          cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } };\\n          if (typeof cell.value === "number") {\\n            cell.alignment = { ...(cell.alignment ?? {}), vertical: cell.alignment?.vertical ?? "middle", shrinkToFit: true };\\n          }\\n        });\\n      });\\n      excelSheet.columns.forEach((column: any) => { if (column && (!column.width || column.width < 12)) column.width = 12; });\\n    });'
 );
 
 fs.writeFileSync(file, s);
