@@ -42,3 +42,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 deploy fail-safe viagens caixa cleanup
 2026-10-04 driver automatic mode copy and optional manual mode d2e68a60
 2026-10-04 recover orphan weighing tickets and prevent ghost duplicates
+2026-10-04 fix Luis pending ton price to R$17
