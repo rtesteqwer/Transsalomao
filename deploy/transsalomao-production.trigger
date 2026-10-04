@@ -30,3 +30,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 fix pump display OCR false 1x7=7 fallback 3ce833d7
 2026-10-04 order viagens by latest launch 6cee633a
 2026-10-04 manage all pending fuelings in abastecimentos 41dd55fa
+2026-10-04 fix management panel stale deploy loading 6b0c95c1
