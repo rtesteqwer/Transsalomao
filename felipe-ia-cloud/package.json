@@ -13,6 +13,7 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "jose": "latest"
+    "jose": "latest",
+    "@vercel/blob": "latest"
   }
 }
