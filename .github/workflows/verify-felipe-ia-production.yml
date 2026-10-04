@@ -1,0 +1,29 @@
+name: Verify Felipe IA Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-felipe-ia-production.yml'
+      - 'deploy/verify-felipe-ia-production.trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify Felipe IA text response
+        shell: bash
+        run: |
+          set -euo pipefail
+          body='{"mode":"assistant","messages":[{"role":"user","content":"Responda apenas: OK"}],"attachments":[],"memory":[],"feedback":[]}'
+          code="$(curl -sS -o /tmp/felipe-response.json -w '%{http_code}'             -X POST 'https://felipe-ia.vercel.app/api/chat'             -H 'content-type: application/json'             --data "$body")"
+          echo "HTTP=$code"
+          cat /tmp/felipe-response.json
+          echo
+          test "$code" = "200"
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/felipe-response.json","utf8")); if(!j.text) process.exit(1); console.log("FELIPE_IA_TEXT_OK")'
