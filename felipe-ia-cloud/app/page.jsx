@@ -132,7 +132,20 @@ export default function Home() {
   useEffect(() => {
     if (!ready) return;
     if (!profileId) return;
-    localStorage.setItem(scopedKey(CHAT_KEY, profileId), JSON.stringify(chats.slice(0, 60)));
+    const compactChats = chats.slice(0, 60).map(chat => ({
+      ...chat,
+      messages: chat.messages.map(message => ({
+        ...message,
+        images: Array.isArray(message.images)
+          ? message.images.map(image => ({
+              id: image.id,
+              mediaType: image.mediaType,
+              expired: true
+            }))
+          : undefined
+      }))
+    }));
+    localStorage.setItem(scopedKey(CHAT_KEY, profileId), JSON.stringify(compactChats));
   }, [chats, ready, profileId]);
 
   useEffect(() => {
@@ -277,6 +290,7 @@ export default function Home() {
         id: id(),
         role: 'assistant',
         content: data.text,
+        images: Array.isArray(data.images) ? data.images : [],
         task: data.task,
         verified: Boolean(data.verified),
         corrected: Boolean(data.corrected),
@@ -402,7 +416,7 @@ export default function Home() {
           <button className="iconBtn mobileOnly" onClick={() => setSidebarOpen(true)}>☰</button>
           <div className="topTitle">
             <strong>{active.mode === 'code' ? 'Felipe Code' : 'Felipe IA'}</strong>
-            <span>{active.mode === 'code' ? 'Execução + testes em sandbox' : 'Roteamento automático • visão • PDF • código'}</span>
+            <span>{active.mode === 'code' ? 'Execução + testes em sandbox' : 'Roteamento automático • imagens • visão • PDF • código'}</span>
           </div>
           <div className="modeSwitch">
             <button className={active.mode === 'assistant' ? 'selected' : ''} onClick={() => setMode('assistant')}>Auto</button>
@@ -418,12 +432,12 @@ export default function Home() {
               <p>
                 {active.mode === 'code'
                   ? 'Programação com execução e testes em sandbox isolado na nuvem.'
-                  : 'Assistente em nuvem com roteamento automático, memória pessoal, aprendizado coletivo, imagens e PDFs.'}
+                  : 'Assistente em nuvem com roteamento automático, memória pessoal, criação e leitura de imagens, PDFs e código.'}
               </p>
               <div className="suggestions">
                 {(active.mode === 'code'
                   ? ['Crie uma função e teste', 'Analise este erro', 'Refatore este código']
-                  : ['Analise este PDF', 'Leia esta foto', 'Me ajude a planejar algo'])
+                  : ['Crie uma imagem para mim', 'Analise este PDF', 'Leia esta foto', 'Me ajude a planejar algo'])
                   .map(item => (
                     <button key={item} onClick={() => setInput(item)}>{item}</button>
                   ))}
@@ -442,6 +456,30 @@ export default function Home() {
                   {message.corrected && <span>revisado</span>}
                 </div>
                 <div className="messageText">{message.content}</div>
+                {!!message.images?.filter(image => image?.dataUrl).length && (
+                  <div className="generatedImages">
+                    {message.images
+                      .filter(image => image?.dataUrl)
+                      .map((image, imageIndex) => (
+                        <a
+                          className="generatedImageLink"
+                          href={image.dataUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          key={image.id || imageIndex}
+                        >
+                          <img
+                            className="generatedImage"
+                            src={image.dataUrl}
+                            alt={`Imagem gerada pela Felipe IA ${imageIndex + 1}`}
+                          />
+                        </a>
+                      ))}
+                  </div>
+                )}
+                {!!message.images?.some(image => image?.expired) && !message.images?.some(image => image?.dataUrl) && (
+                  <div className="generatedImageExpired">A imagem desta conversa não fica salva após recarregar a página.</div>
+                )}
                 {!!message.attachmentNames?.length && (
                   <div className="attachmentLine">📎 {message.attachmentNames.join(' • ')}</div>
                 )}
