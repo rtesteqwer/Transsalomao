@@ -16,3 +16,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 remove obsolete ChatGPT copy from visual readers 5ca67f5c5fab76b33e9b34e5b29a07849b52a20e
 2026-10-04 driver fixed modes value and quantity 6dc4816b025b6268b3e2815455e3af0b4c673bc2
 2026-10-04 remove ChatGPT UI and fix Qwen3-VL AI Gateway OIDC
+2026-10-04 qwen runtime oidc gateway auth
