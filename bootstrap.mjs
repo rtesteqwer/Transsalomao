@@ -345,13 +345,13 @@ if (!original.includes("apply-tanstack-start-security-20261004.mjs")) {
     `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-tanstack-start-security-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 }
-// Limite de segurança: TransSalomao IA e Felipe IA são produtos independentes.
-// A aplicação empresarial não instala, publica ou encaminha mensagens para a Felipe IA.
-// Também removemos resíduos do bridge caso existam no snapshot reconstruído.
-if (!original.includes("[ai-boundary] Felipe IA bridge disabled")) {
+// A Felipe IA Cloud é o cérebro de linguagem da Trans Salomão IA.
+// O bridge antigo dependente de Ubuntu/Ollama permanece proibido e é removido
+// do snapshot para evitar regressão para a arquitetura local.
+if (!original.includes("[ai-boundary] legacy Ubuntu bridge disabled; Felipe IA Cloud enabled")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing AI boundary insertion point");
   const separationPatch = `
-console.log('[ai-boundary] Felipe IA bridge disabled');
+console.log('[ai-boundary] legacy Ubuntu bridge disabled; Felipe IA Cloud enabled');
 for (const rel of [
   'src/routes/api/felipe-ia-bridge.ts',
   'public/felipe-ia-bridge.py',
