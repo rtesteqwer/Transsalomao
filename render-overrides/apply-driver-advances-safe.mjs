@@ -45,6 +45,28 @@ const robustQuickPatch = `  {
 
 source = source.slice(0, start) + robustQuickPatch + source.slice(end);
 
+// O snippet geral de PDF evoluiu e pode ter novos argumentos entre fuelings e periodLabel.
+// Torna apenas os dois pontos de entrada de "advances" flexíveis, preservando os demais
+// checks obrigatórios do patch para evitar alterações parciais silenciosas.
+source = source.replace(
+  "p = replaceRequired(p, '  fuelings = [],\\n  periodLabel,', '  fuelings = [],\\n  advances = [],\\n  periodLabel,', 'pdf advances arg');",
+  `if (!/^[ \\t]*advances\\s*=\\s*\\[\\],/m.test(p)) {
+    p = p.replace(/^([ \\t]*fuelings\\s*=\\s*\\[\\],\\s*)$/m, "$1\\n  advances = [],");
+  }
+  if (!/^[ \\t]*advances\\s*=\\s*\\[\\],/m.test(p)) {
+    throw new Error("apply-driver-advances: could not install advances argument");
+  }`,
+);
+source = source.replace(
+  "p = replaceRequired(p, '  fuelings?: ReportFueling[];\\n  periodLabel?: string;', '  fuelings?: ReportFueling[];\\n  advances?: Array<{ driverId?: string | null; driverName?: string; date: string; amount: number; description?: string }>;\\n  periodLabel?: string;', 'pdf advances type');",
+  `if (!/^[ \\t]*advances\\?:\\s*Array</m.test(p)) {
+    p = p.replace(/^([ \\t]*fuelings\\?:\\s*ReportFueling\\[\\];\\s*)$/m, "$1\\n  advances?: Array<{ driverId?: string | null; driverName?: string; date: string; amount: number; description?: string }>;");
+  }
+  if (!/^[ \\t]*advances\\?:\\s*Array</m.test(p)) {
+    throw new Error("apply-driver-advances: could not install advances type");
+  }`,
+);
+
 const temp = path.join(os.tmpdir(), `apply-driver-advances-${Date.now()}.mjs`);
 fs.writeFileSync(temp, source);
 execFileSync(process.execPath, [temp, target], { cwd: repo, stdio: 'inherit' });
