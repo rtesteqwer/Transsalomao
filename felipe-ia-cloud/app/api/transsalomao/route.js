@@ -1,27 +1,23 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { generateText } from 'ai';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 const MODEL = process.env.FELIPE_MODEL || 'alibaba/qwen3-vl-thinking';
+const TEAM_SLUG = 'transsalomao';
+const TEAM_ID = 'team_CmpJdXo3MzDAX3TZXFp9am5F';
+const TRANS_PROJECT = 'transsalomao';
+const TRANS_PROJECT_ID = 'prj_jB9N2LQ3grttSuBALVVGp5X5gVdH';
+const AUDIENCE = 'https://vercel.com/transsalomao';
+const ALLOWED_ISSUERS = new Set([
+  'https://oidc.vercel.com/transsalomao',
+  'https://oidc.vercel.com'
+]);
+const jwksByIssuer = new Map();
 
 function clean(value, max = 12000) {
   return String(value ?? '').slice(0, max);
-}
-
-function authorized(request) {
-  const secret = String(process.env.TRANS_SALOMAO_SHARED_SECRET || '').trim();
-  const auth = String(request.headers.get('authorization') || '');
-  const app = request.headers.get('x-trans-salomao');
-
-  if (!secret || app !== '1' || !auth.startsWith('Bearer ')) return false;
-
-  const supplied = auth.slice(7);
-  const a = Buffer.from(secret);
-  const b = Buffer.from(supplied);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
 }
 
 function safeContext(value) {
@@ -30,6 +26,54 @@ function safeContext(value) {
     return JSON.stringify(value).slice(0, 70000);
   } catch {
     return 'Contexto operacional inválido.';
+  }
+}
+
+function jwksFor(issuer) {
+  if (!jwksByIssuer.has(issuer)) {
+    jwksByIssuer.set(
+      issuer,
+      createRemoteJWKSet(new URL(issuer.replace(/\/$/, '') + '/.well-known/jwks'))
+    );
+  }
+  return jwksByIssuer.get(issuer);
+}
+
+async function authorize(request) {
+  if (request.headers.get('x-trans-salomao') !== '1') return false;
+
+  const auth = String(request.headers.get('authorization') || '');
+  if (!auth.startsWith('Bearer ')) return false;
+  const token = auth.slice(7).trim();
+  if (!token) return false;
+
+  let decoded;
+  try {
+    decoded = decodeJwt(token);
+  } catch {
+    return false;
+  }
+
+  const issuer = String(decoded?.iss || '');
+  if (!ALLOWED_ISSUERS.has(issuer)) return false;
+
+  try {
+    const { payload } = await jwtVerify(token, jwksFor(issuer), {
+      issuer,
+      audience: AUDIENCE,
+      subject: `owner:${TEAM_SLUG}:project:${TRANS_PROJECT}:environment:production`
+    });
+
+    return (
+      payload.owner === TEAM_SLUG &&
+      payload.owner_id === TEAM_ID &&
+      payload.project === TRANS_PROJECT &&
+      payload.project_id === TRANS_PROJECT_ID &&
+      payload.environment === 'production'
+    );
+  } catch (error) {
+    console.error('Felipe IA OIDC validation failed:', error);
+    return false;
   }
 }
 
@@ -60,7 +104,7 @@ ${safeContext(context)}`;
 
 export async function POST(request) {
   try {
-    if (!authorized(request)) {
+    if (!(await authorize(request))) {
       return Response.json({ ok: false, code: 'UNAUTHORIZED' }, { status: 401 });
     }
 
