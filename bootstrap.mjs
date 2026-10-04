@@ -346,6 +346,15 @@ if (!original.includes("apply-multitab-auth-fueling-20261004.mjs")) {
   );
 }
 
+// Abastecimentos pendentes: mostrar todos e permitir editar/excluir na própria aba.
+if (!original.includes("apply-pending-fuelings-management-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing pending fuelings insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-pending-fuelings-management-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Visor de bomba: endurece o OCR de contingência para não aceitar falsos trios como 1 L × R$ 7 = R$ 7.
 if (!original.includes("apply-fueling-pump-fallback-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing fueling pump fallback insertion point");
