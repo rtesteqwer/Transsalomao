@@ -211,3 +211,4 @@ Publicar correção de despesas em lote 2026-10-04:
 2026-10-04 financial document date-time from receipt/photo only
 2026-10-04 retry financial document date-time source v2
 2026-10-04 retry financial document date-time source v3
+2026-10-04 publish report expenses pdf-only
