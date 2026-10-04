@@ -583,10 +583,15 @@ console.log("[fueling-ocr-assets-injector] installed");
 if (!original.includes("[fix-luis-ton-price]")) {
   const buildMarker = "execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });";
   if (!original.includes(buildMarker)) throw new Error("Build marker not found for Luis ton price fix");
+  const fixRun = `
+{
   const fixSource = path.join(repo, 'render-overrides', 'fix-luis-pending-ton-price-20261004.mjs');
-  if (!fs.existsSync(fixSource)) throw new Error("Luis ton price fix script missing");
+  if (!fs.existsSync(fixSource)) throw new Error('Luis ton price fix script missing');
   const fixTarget = path.join(work, '.fix-luis-pending-ton-price-20261004.mjs');
-  const fixRun = `fs.copyFileSync(${JSON.stringify(fixSource)}, ${JSON.stringify(fixTarget)});\nexecFileSync(process.execPath, [${JSON.stringify(fixTarget)}], { cwd: work, stdio: 'inherit', env: process.env });\n`;
+  fs.copyFileSync(fixSource, fixTarget);
+  execFileSync(process.execPath, [fixTarget], { cwd: work, stdio: 'inherit', env: process.env });
+}
+`;
   original = original.replace(buildMarker, fixRun + buildMarker);
 }
 
