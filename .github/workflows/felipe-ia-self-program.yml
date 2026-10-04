@@ -1,0 +1,161 @@
+name: Felipe IA Self Programming
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'felipe-ia-cloud/scripts/self-program.mjs'
+      - 'felipe-ia-cloud/lib/self-programming.js'
+      - '.github/workflows/felipe-ia-self-program.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: felipe-ia-self-program
+  cancel-in-progress: false
+
+jobs:
+  self-program:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Pull Felipe IA production environment
+        working-directory: felipe-ia-cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${VERCEL_TOKEN:-}" || { echo "VERCEL_TOKEN ausente"; exit 1; }
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_5J9tpQrlU27PsKdOY2N7QzBaFyn9"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+
+      - name: Install
+        working-directory: felipe-ia-cloud
+        run: npm install
+
+      - name: Generate autonomous improvement
+        id: generate
+        working-directory: felipe-ia-cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          node scripts/self-program.mjs
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('.self-program-result.json','utf8'));
+          for (const [k,v] of Object.entries({
+            status:r.status||'',
+            task_id:r.taskId||'',
+            summary:(r.summary||'').replace(/\n/g,' '),
+            risk:r.risk||''
+          })) fs.appendFileSync(process.env.GITHUB_OUTPUT, k+'='+v+'\n');
+          NODE
+
+      - name: Stop when there is no task
+        if: steps.generate.outputs.status == 'no_task' || steps.generate.outputs.status == 'rejected'
+        run: echo "Nenhuma alteração será aplicada."
+
+      - name: Validate changed paths
+        if: steps.generate.outputs.status == 'generated'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bad="$(git diff --name-only | grep -Ev '^felipe-ia-cloud/(app|lib)/.*\.(js|jsx|css|md)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Arquivos fora da área permitida:"
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$(git diff --name-only)" || { echo "Nenhuma mudança real."; exit 1; }
+
+      - name: Build and test
+        if: steps.generate.outputs.status == 'generated'
+        working-directory: felipe-ia-cloud
+        run: npm run build
+
+      - name: Open autonomous PR
+        if: steps.generate.outputs.status == 'generated'
+        id: pr
+        shell: bash
+        run: |
+          set -euo pipefail
+          task="${{ steps.generate.outputs.task_id }}"
+          branch="felipe-ia/self-${task}"
+          git config user.name "Felipe IA"
+          git config user.email "felipe-ia@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add felipe-ia-cloud/app felipe-ia-cloud/lib
+          git commit -m "Felipe IA: autoprogramação ${task}"
+          git push origin "$branch"
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('felipe-ia-cloud/.self-program-result.json','utf8'));
+          const body=[
+            'Alteração criada autonomamente pela Felipe IA.',
+            '',
+            'Tarefa: '+String(r.summary||'Melhoria autônoma'),
+            '',
+            'Risco estimado: '+String(r.risk||'medium'),
+            '',
+            'Arquivos: '+(Array.isArray(r.files)?r.files.join(', '):''),
+            '',
+            'O build passou. Este PR exige aprovação do proprietário antes de entrar em produção.'
+          ].join('\n');
+          fs.writeFileSync('/tmp/felipe-ia-pr-body.md', body);
+          NODE
+
+          url="$(gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Felipe IA • autoprogramação ${task}" \
+            --body-file /tmp/felipe-ia-pr-body.md)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "$url"
+
+      - name: Mark task as PR opened
+        if: steps.generate.outputs.status == 'generated' && steps.pr.outputs.url != ''
+        working-directory: felipe-ia-cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          node scripts/self-program.mjs mark \
+            "${{ steps.generate.outputs.task_id }}" \
+            pr_opened \
+            "${{ steps.pr.outputs.url }}" \
+            "${{ steps.generate.outputs.summary }}"
+
+      - name: Mark failed task
+        if: failure() && steps.generate.outputs.task_id != ''
+        working-directory: felipe-ia-cloud
+        shell: bash
+        run: |
+          set +e
+          set -a
+          source .vercel/.env.production.local 2>/dev/null
+          set +a
+          node scripts/self-program.mjs mark "${{ steps.generate.outputs.task_id }}" failed "" "Falha de build, validação ou publicação do PR."

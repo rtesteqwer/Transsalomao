@@ -10,6 +10,11 @@ import {
   shouldReview
 } from '../../../lib/agent-core.js';
 import { loadRelevantSharedKnowledge, saveSharedLearning } from '../../../lib/shared-learning.js';
+import {
+  enqueueSelfProgrammingTask,
+  isSelfProgrammingRequest,
+  selfProgrammingEnabled
+} from '../../../lib/self-programming.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -186,13 +191,15 @@ export async function POST(request) {
     }
 
     const contextText = latestUserText(rawMessages);
+    const wantsSelfProgramming = isSelfProgrammingRequest(contextText);
     const sharedLearning = await loadRelevantSharedKnowledge(contextText);
     const system = buildAgentSystem({
       task,
       memoryText,
       feedbackText,
       sharedKnowledgeText: sharedLearning.text,
-      sharedLearningEnabled: sharedLearning.enabled
+      sharedLearningEnabled: sharedLearning.enabled,
+      selfProgrammingEnabled: selfProgrammingEnabled()
     });
     let draft = '';
     let images = [];
@@ -251,8 +258,20 @@ export async function POST(request) {
       type: 'interaction'
     });
 
+    const selfProgramming = wantsSelfProgramming
+      ? await enqueueSelfProgrammingTask({
+          request: contextText,
+          userId: body?.userId
+        })
+      : { enabled: selfProgrammingEnabled(), queued: false };
+
+    let finalAnswer = reviewed.answer;
+    if (selfProgramming?.queued) {
+      finalAnswer += `\n\nAutoprogramação: tarefa ${selfProgramming.taskId} registrada. A Felipe IA vai criar a alteração em uma branch isolada, executar o build e abrir um PR para aprovação antes de qualquer mudança em produção.`;
+    }
+
     return Response.json({
-      text: reviewed.answer,
+      text: finalAnswer,
       mode: publicModeForTask(task),
       task,
       verified: reviewed.reviewed || verifiedByExecution,
@@ -263,7 +282,8 @@ export async function POST(request) {
         enabled: sharedLearning.enabled,
         used: sharedLearning.items.length,
         saved: learned.saved
-      }
+      },
+      selfProgramming
     }, {
       headers: {
         'Cache-Control': 'no-store',
