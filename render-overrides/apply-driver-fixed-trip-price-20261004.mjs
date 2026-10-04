@@ -37,8 +37,8 @@ s = s.replaceAll(
 
 // Lançamento manual: cria exatamente a quantidade solicitada também para Diária.
 must(
-  '      const count = batchMode ? (batchPhotos.length || tripCountN) : 1;',
-  '      const count = pricedTripMode ? (batchMode && batchPhotos.length > 0 ? batchPhotos.length : tripCountN) : 1;',
+  '      const count = batchPhotos.length > 0 ? batchPhotos.length : (batchMode ? tripCountN : 1);',
+  '      const count = batchPhotos.length > 0 ? batchPhotos.length : (pricedTripMode ? tripCountN : 1);',
   "priced mode count"
 );
 
