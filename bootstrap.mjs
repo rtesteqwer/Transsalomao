@@ -550,6 +550,15 @@ console.log('[fueling-ocr-assets] preparing same-origin OCR assets');
 }
 console.log("[fueling-ocr-assets-injector] installed");
 
+// Keep the final install aligned with the freshly regenerated secure lockfile.
+{
+  const normalInstall = "execSync('npm install --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });";
+  const secureInstall = "execSync('npm install --legacy-peer-deps --ignore-scripts --no-audit --no-fund', { cwd: work, stdio: 'inherit', env: process.env });";
+  if (original.includes(normalInstall)) original = original.replace(normalInstall, secureInstall);
+  else if (!original.includes(secureInstall)) throw new Error("TanStack secure install marker not found");
+  console.log("[tanstack-secure-install] final npm install will use regenerated secure lock");
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
