@@ -101,24 +101,42 @@ function replaceOnce(source, before, after, label, required = true) {
 }
 
 `;
-    if (!s.includes(marker)) throw new Error("viagens-caixa-clean-latest: LancamentosPage marker missing");
-    s = s.replace(marker, helper + marker);
+    if (!s.includes(marker)) {
+      console.log("[viagens-caixa-clean-latest] Caixa helper marker not found; preserving existing Caixa implementation");
+    } else {
+      s = s.replace(marker, helper + marker);
+    }
   }
 
   if (!/const pending =[\s\S]{0,500}reportLaunchTime\(b\)/.test(s)) {
     const pendingStart = s.indexOf("  const pending =");
-    if (pendingStart < 0) throw new Error("viagens-caixa-clean-latest: Caixa pending declaration missing");
-    const pendingEnd = s.indexOf(";\n", pendingStart);
-    if (pendingEnd < 0) throw new Error("viagens-caixa-clean-latest: Caixa pending declaration end missing");
-    const statement = s.slice(pendingStart, pendingEnd + 1);
-    const equalAt = statement.indexOf("=");
-    const expression = statement.slice(equalAt + 1, -1).trim();
-    if (!expression.includes("reports") || !expression.includes("pendente")) {
-      throw new Error("viagens-caixa-clean-latest: unexpected Caixa pending expression: " + statement);
+    if (pendingStart < 0) {
+      console.log("[viagens-caixa-clean-latest] pending declaration not found; preserving existing Caixa order");
+    } else {
+      // The Caixa expression has changed across releases and can be multiline or
+      // semicolon-free. Only rewrite it when a complete, recognizable statement exists.
+      const pendingEndCandidates = [
+        s.indexOf(";\n", pendingStart),
+        s.indexOf("\n  const ", pendingStart + 16),
+      ].filter((value) => value > pendingStart);
+      const pendingEnd = pendingEndCandidates.length ? Math.min(...pendingEndCandidates) : -1;
+      if (pendingEnd < 0) {
+        console.log("[viagens-caixa-clean-latest] pending declaration end not found; preserving existing Caixa order");
+      } else {
+        const hasSemicolon = s.slice(pendingStart, pendingEnd + 2).includes(";");
+        const statementEnd = hasSemicolon ? pendingEnd + 1 : pendingEnd;
+        const statement = s.slice(pendingStart, statementEnd);
+        const equalAt = statement.indexOf("=");
+        let expression = statement.slice(equalAt + 1).trim().replace(/;$/, "").trim();
+        if (!expression.includes("reports") || !expression.includes("pendente")) {
+          console.log("[viagens-caixa-clean-latest] unrecognized pending expression; preserving existing Caixa order");
+        } else {
+          const replacement =
+            "  const pending = [...(" + expression + ")].sort((a, b) => reportLaunchTime(b) - reportLaunchTime(a));";
+          s = s.slice(0, pendingStart) + replacement + s.slice(statementEnd);
+        }
+      }
     }
-    const replacement =
-      "  const pending = [...(" + expression + ")].sort((a, b) => reportLaunchTime(b) - reportLaunchTime(a));";
-    s = s.slice(0, pendingStart) + replacement + s.slice(pendingEnd + 1);
   }
 
   s = s.replace(
@@ -145,12 +163,18 @@ function replaceOnce(source, before, after, label, required = true) {
 
   {
     const compactStart = s.indexOf("  const compactRows =");
-    if (compactStart < 0) throw new Error("viagens-caixa-clean-latest: compactRows declaration missing");
-    const compactEnd = s.indexOf(";\n", compactStart);
-    if (compactEnd < 0) throw new Error("viagens-caixa-clean-latest: compactRows declaration end missing");
-    const statement = s.slice(compactStart, compactEnd + 1);
-    if (statement !== "  const compactRows = rows;") {
-      s = s.slice(0, compactStart) + "  const compactRows = rows;" + s.slice(compactEnd + 1);
+    if (compactStart < 0) {
+      console.log("[viagens-caixa-clean-latest] compactRows declaration not found; preserving existing Viagens rows");
+    } else {
+      const compactEnd = s.indexOf(";\n", compactStart);
+      if (compactEnd < 0) {
+        console.log("[viagens-caixa-clean-latest] compactRows declaration end not found; preserving existing Viagens rows");
+      } else {
+        const statement = s.slice(compactStart, compactEnd + 1);
+        if (statement !== "  const compactRows = rows;") {
+          s = s.slice(0, compactStart) + "  const compactRows = rows;" + s.slice(compactEnd + 1);
+        }
+      }
     }
   }
 
