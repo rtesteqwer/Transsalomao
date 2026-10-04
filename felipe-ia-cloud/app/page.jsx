@@ -2,9 +2,27 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const CHAT_KEY = 'felipe_ia_cloud_chats_v1';
-const MEMORY_KEY = 'felipe_ia_cloud_memory_v1';
-const FEEDBACK_KEY = 'felipe_ia_cloud_feedback_v1';
+const PROFILE_KEY = 'felipe_ia_cloud_profile_v1';
+const CHAT_KEY = 'felipe_ia_cloud_chats_v2';
+const MEMORY_KEY = 'felipe_ia_cloud_memory_v2';
+const FEEDBACK_KEY = 'felipe_ia_cloud_feedback_v2';
+
+function getProfileId() {
+  try {
+    let value = localStorage.getItem(PROFILE_KEY);
+    if (!value) {
+      value = 'profile_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem(PROFILE_KEY, value);
+    }
+    return value;
+  } catch {
+    return 'local';
+  }
+}
+
+function scopedKey(base, profileId) {
+  return base + ':' + (profileId || 'local');
+}
 
 function id() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -83,6 +101,7 @@ async function readAttachment(file) {
 
 export default function Home() {
   const [ready, setReady] = useState(false);
+  const [profileId, setProfileId] = useState('');
   const [chats, setChats] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [memory, setMemory] = useState([]);
@@ -98,29 +117,34 @@ export default function Home() {
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    const savedChats = loadJson(CHAT_KEY, []);
+    const profile = getProfileId();
+    const savedChats = loadJson(scopedKey(CHAT_KEY, profile), []);
     const initialChats = savedChats.length ? savedChats : [newChat()];
+    setProfileId(profile);
     setChats(initialChats);
     setActiveId(initialChats[0].id);
-    setMemory(loadJson(MEMORY_KEY, []));
-    setFeedback(loadJson(FEEDBACK_KEY, []));
+    setMemory(loadJson(scopedKey(MEMORY_KEY, profile), []));
+    setFeedback(loadJson(scopedKey(FEEDBACK_KEY, profile), []));
     setReady(true);
   }, []);
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(CHAT_KEY, JSON.stringify(chats.slice(0, 60)));
-  }, [chats, ready]);
+    if (!profileId) return;
+    localStorage.setItem(scopedKey(CHAT_KEY, profileId), JSON.stringify(chats.slice(0, 60)));
+  }, [chats, ready, profileId]);
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(MEMORY_KEY, JSON.stringify(memory.slice(0, 200)));
-  }, [memory, ready]);
+    if (!profileId) return;
+    localStorage.setItem(scopedKey(MEMORY_KEY, profileId), JSON.stringify(memory.slice(0, 200)));
+  }, [memory, ready, profileId]);
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(FEEDBACK_KEY, JSON.stringify(feedback.slice(0, 200)));
-  }, [feedback, ready]);
+    if (!profileId) return;
+    localStorage.setItem(scopedKey(FEEDBACK_KEY, profileId), JSON.stringify(feedback.slice(0, 200)));
+  }, [feedback, ready, profileId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -226,7 +250,8 @@ export default function Home() {
           messages: outgoing.map(m => ({ role: m.role, content: m.content })),
           attachments: payloadAttachments,
           memory: relevantMemory,
-          feedback: relevantFeedback
+          feedback: relevantFeedback,
+          userId: profileId
         })
       });
 
@@ -237,7 +262,9 @@ export default function Home() {
         id: id(),
         role: 'assistant',
         content: data.text,
-        model: data.model,
+        task: data.task,
+        verified: Boolean(data.verified),
+        corrected: Boolean(data.corrected),
         toolSteps: data.toolSteps || 0,
         createdAt: Date.now()
       };
@@ -349,10 +376,10 @@ export default function Home() {
           <button className="iconBtn mobileOnly" onClick={() => setSidebarOpen(true)}>☰</button>
           <div className="topTitle">
             <strong>{active.mode === 'code' ? 'Felipe Code' : 'Felipe IA'}</strong>
-            <span>{active.mode === 'code' ? 'Qwen3 Coder + Sandbox' : 'Qwen3 VL • visão + PDF'}</span>
+            <span>{active.mode === 'code' ? 'Execução + testes em sandbox' : 'Roteamento automático • visão • PDF • código'}</span>
           </div>
           <div className="modeSwitch">
-            <button className={active.mode === 'assistant' ? 'selected' : ''} onClick={() => setMode('assistant')}>IA</button>
+            <button className={active.mode === 'assistant' ? 'selected' : ''} onClick={() => setMode('assistant')}>Auto</button>
             <button className={active.mode === 'code' ? 'selected' : ''} onClick={() => setMode('code')}>Code</button>
           </div>
         </header>
@@ -364,8 +391,8 @@ export default function Home() {
               <h1>{active.mode === 'code' ? 'Felipe Code' : 'Felipe IA'}</h1>
               <p>
                 {active.mode === 'code'
-                  ? 'Programação com Qwen3 Coder e execução em sandbox isolado na nuvem.'
-                  : 'Assistente em nuvem com memória, aprendizado por correções, leitura de imagens e PDFs.'}
+                  ? 'Programação com execução e testes em sandbox isolado na nuvem.'
+                  : 'Assistente em nuvem com roteamento automático, memória, aprendizado por correções, imagens e PDFs.'}
               </p>
               <div className="suggestions">
                 {(active.mode === 'code'
@@ -384,7 +411,9 @@ export default function Home() {
               <div className="bubble">
                 <div className="messageMeta">
                   <strong>{message.role === 'user' ? 'Você' : active.mode === 'code' ? 'Felipe Code' : 'Felipe IA'}</strong>
-                  {message.model && <span>{message.model.replace('alibaba/', '')}</span>}
+                  {message.task && <span>{message.task.toLowerCase()}</span>}
+                  {message.verified && <span>verificado</span>}
+                  {message.corrected && <span>revisado</span>}
                 </div>
                 <div className="messageText">{message.content}</div>
                 {!!message.attachmentNames?.length && (
@@ -457,7 +486,7 @@ export default function Home() {
           <div className="composerHint">
             {active.mode === 'code'
               ? 'Código é executado em sandbox isolado, não no seu computador.'
-              : 'Memória e histórico desta versão ficam neste dispositivo.'}
+              : 'Memória e histórico ficam isolados neste perfil local até o login da conta ser ativado.'}
           </div>
         </div>
       </section>

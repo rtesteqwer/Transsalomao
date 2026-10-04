@@ -1,5 +1,14 @@
 import { generateText, stepCountIs } from 'ai';
 import { executeCode } from 'ai-sdk-tool-code-execution';
+import {
+  TASK,
+  buildAgentSystem,
+  buildReviewSystem,
+  classifyTask,
+  parseReviewedAnswer,
+  publicModeForTask,
+  shouldReview
+} from '../../../lib/agent-core.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -14,7 +23,7 @@ function cleanString(value, max = 12000) {
 function buildContext(memory = [], feedback = []) {
   const mem = memory
     .slice(0, 12)
-    .map((item, i) => `${i + 1}. ${cleanString(item, 1800)}`)
+    .map((item, i) => `${i + 1}. ${cleanString(typeof item === 'string' ? item : item?.text, 1800)}`)
     .join('\n');
 
   const fixes = feedback
@@ -81,90 +90,123 @@ function prepareMessages(messages = [], attachments = []) {
   return safe;
 }
 
-function normalSystem(memoryText, feedbackText) {
-  return `Você é Felipe IA, um assistente pessoal independente, executando 100% em nuvem.
-
-REGRAS CENTRAIS:
-- Não dependa de Ubuntu, Ollama, notebook local ou túnel Cloudflare.
-- Não mostre, consulte, misture ou invente dados da Trans Salomão. Felipe IA é separada da Trans Salomão IA.
-- Responda em português do Brasil por padrão, salvo pedido diferente.
-- Seja preciso, útil e objetivo. Quando não souber, diga que não sabe.
-- Para imagens e PDFs, leia o conteúdo visual/documental com atenção e diferencie fato de inferência.
-- Use as memórias abaixo apenas quando forem realmente relevantes.
-- Dê prioridade às correções aprovadas pelo usuário quando elas se aplicarem ao caso atual.
-- Nunca afirme que executou uma ação externa quando não executou.
-
-MEMÓRIAS RELEVANTES:
-${memoryText}
-
-CORREÇÕES APROVADAS:
-${feedbackText}`;
+function latestUserText(messages = []) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === 'user') return cleanString(messages[i]?.content, 24000);
+  }
+  return '';
 }
 
-function codeSystem(memoryText, feedbackText) {
-  return `Você é Felipe Code, o modo de programação da Felipe IA.
+function hasVisualAttachment(attachments = []) {
+  return attachments.some(file => {
+    const type = String(file?.type || '');
+    return type === 'application/pdf' || type.startsWith('image/');
+  });
+}
 
-OBJETIVO:
-Resolver tarefas de programação com raciocínio, geração de código, testes e verificação em ambiente isolado.
+async function reviewDraft({ task, draft, contextText }) {
+  if (!shouldReview(task, contextText)) {
+    return { answer: draft, reviewed: false, changed: false };
+  }
 
-REGRAS:
-- Você é independente de ChatGPT/Codex como produto; o seu modelo principal é Qwen3 Coder.
-- Use a ferramenta de execução de código quando isso aumentar a confiabilidade da resposta.
-- O ambiente de execução é um sandbox efêmero: não confunda com o computador do usuário.
-- Nunca alegue ter alterado arquivos, servidores, GitHub ou Vercel do usuário sem uma ferramenta específica para isso.
-- Não tente acessar segredos, process.env, credenciais, rede privada ou dados da Trans Salomão.
-- Faça testes antes de declarar que um código está correto quando for possível testar no sandbox.
-- Prefira mudanças pequenas, verificáveis e reversíveis.
-- Se a tarefa for apenas explicar código, não execute ferramentas desnecessariamente.
+  const review = await generateText({
+    model: NORMAL_MODEL,
+    system: buildReviewSystem(task),
+    messages: [
+      {
+        role: 'user',
+        content: [
+          'PEDIDO/CONTEXTO RESUMIDO:',
+          cleanString(contextText, 7000),
+          '',
+          'RESPOSTA CANDIDATA:',
+          cleanString(draft, 22000)
+        ].join('\n')
+      }
+    ],
+    reasoning: 'high'
+  });
 
-MEMÓRIAS RELEVANTES:
-${memoryText}
-
-CORREÇÕES APROVADAS:
-${feedbackText}`;
+  return parseReviewedAnswer(review.text, draft);
 }
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const mode = body?.mode === 'code' ? 'code' : 'assistant';
+    const requestedMode =
+      body?.mode === 'code' ? 'code' :
+      body?.mode === 'assistant' ? 'assistant' :
+      'auto';
+
+    const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
+    const attachments = Array.isArray(body?.attachments) ? body.attachments : [];
+
+    let task = classifyTask({
+      messages: rawMessages,
+      attachments,
+      requestedMode
+    });
+
+    if (task === TASK.CODE && hasVisualAttachment(attachments)) {
+      task = TASK.MIXED;
+    }
+
     const { memoryText, feedbackText } = buildContext(body?.memory, body?.feedback);
-    const messages = prepareMessages(body?.messages, body?.attachments || []);
+    const messages = prepareMessages(rawMessages, attachments);
 
     if (!messages.length) {
       return Response.json({ error: 'Mensagem vazia.' }, { status: 400 });
     }
 
-    if (mode === 'code') {
+    const system = buildAgentSystem({ task, memoryText, feedbackText });
+    const contextText = latestUserText(rawMessages);
+    let draft = '';
+    let toolSteps = 0;
+    let verifiedByExecution = false;
+
+    if (task === TASK.CODE) {
       const result = await generateText({
         model: CODE_MODEL,
-        system: codeSystem(memoryText, feedbackText),
+        system,
         messages,
         tools: {
           executeCode: executeCode()
         },
-        stopWhen: stepCountIs(4)
+        stopWhen: stepCountIs(6)
       });
 
-      return Response.json({
-        text: result.text || 'Tarefa concluída no modo Code.',
-        model: CODE_MODEL,
-        mode,
-        toolSteps: Array.isArray(result.steps) ? result.steps.length : 0
+      draft = result.text || 'Não consegui concluir a tarefa de programação.';
+      toolSteps = Array.isArray(result.steps) ? result.steps.length : 0;
+      verifiedByExecution = toolSteps > 0;
+    } else {
+      const result = await generateText({
+        model: NORMAL_MODEL,
+        system,
+        messages,
+        reasoning: 'high'
       });
+
+      draft = result.text || 'Não consegui gerar uma resposta.';
     }
 
-    const result = await generateText({
-      model: NORMAL_MODEL,
-      system: normalSystem(memoryText, feedbackText),
-      messages,
-      reasoning: 'high'
+    const reviewed = await reviewDraft({
+      task,
+      draft,
+      contextText
     });
 
     return Response.json({
-      text: result.text || 'Não consegui gerar uma resposta.',
-      model: NORMAL_MODEL,
-      mode
+      text: reviewed.answer,
+      mode: publicModeForTask(task),
+      task,
+      verified: reviewed.reviewed || verifiedByExecution,
+      corrected: reviewed.changed,
+      toolSteps
+    }, {
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      }
     });
   } catch (error) {
     console.error('Felipe IA /api/chat error:', error);
