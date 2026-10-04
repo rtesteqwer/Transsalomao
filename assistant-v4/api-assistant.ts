@@ -18,7 +18,7 @@ export const Route = createFileRoute("/api/assistant")({
           aiConfigured: felipeIaConfigured(),
           model: felipeIaConfigured() ? "Felipe IA Cloud" : "Modo local",
           provider: felipeIaConfigured() ? "felipe-ia-cloud" : "trans-salomao-local",
-          capabilities: ["consultar", "criar", "editar", "lançar", "aprovar", "configurar acesso"],
+          capabilities: ["consultar", "criar", "editar", "corrigir", "lançar", "aprovar", "rejeitar", "excluir com confirmação", "configurar acesso", "programar e publicar como Felipe"],
         });
       },
 
@@ -147,7 +147,15 @@ function newId(prefix: string) { return `${prefix}_${crypto.randomUUID().replace
 function passwordHash(v: string) { return createHash("sha256").update(v).digest("hex"); }
 function hasAny(t: string, words: string[]) { return words.some((w) => t.includes(w)); }
 function isWriteIntent(t: string) {
-  return hasAny(t, ["adicionar", "adicione", "criar", "crie", "cadastrar", "cadastre", "registrar", "registre", "lancar", "lance", "editar", "edite", "alterar", "altere", "mudar", "mude", "aprovar", "aprove", "aceitar", "aceite", "rejeitar", "rejeite", "excluir", "exclua", "apagar", "apague", "desativar", "desative", "remover"]);
+  return hasAny(t, [
+    "adicionar","adicione","criar","crie","cadastrar","cadastre","registrar","registre",
+    "lancar","lance","editar","edite","alterar","altere","mudar","mude","corrigir","corrija",
+    "ajustar","ajuste","atualizar","atualize","definir","defina","configurar","configure",
+    "trocar","troque","salvar","salve","aprovar","aprove","aceitar","aceite","rejeitar","rejeite",
+    "fechar","feche","ativar","ative","desativar","desative","vincular","vincule",
+    "desvincular","desvincule","excluir","exclua","apagar","apague","deletar","delete","remover",
+    "programar","programe","implementar","implemente","publicar","publique"
+  ]);
 }
 function isDestructive(t: string) { return hasAny(t, ["excluir", "exclua", "apagar", "apague", "remover tudo", "deletar", "delete"]); }
 function explicitlyConfirmed(t: string) { return hasAny(t, ["confirmo", "confirmar", "pode executar", "pode apagar", "pode excluir", "sim, execute", "sim execute"]); }
