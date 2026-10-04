@@ -284,6 +284,15 @@ if (!original.includes("apply-universal-file-readers-20260929.mjs")) {
   );
 }
 
+// Despesas: permitir selecionar vários comprovantes e lançar cada item extraído em lote.
+if (!original.includes("apply-expense-batch-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing expense batch insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-expense-batch-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Abastecimentos: persistir e exibir desconto + total final pago do MESMO ticket.
 if (!original.includes("apply-fueling-net-fields-20260929.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing fueling net fields insertion point");
