@@ -64,7 +64,7 @@ export const Route = createFileRoute("/api/baixar-relatorio")({
             headers: {
               "Content-Type": mime,
               "Content-Length": String(bytes.length),
-              "Content-Disposition": `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+              "Content-Disposition": "attachment; filename=" + JSON.stringify(asciiName) + "; filename*=UTF-8''" + encodeURIComponent(fileName),
               "Cache-Control": "no-store, max-age=0",
               "X-Content-Type-Options": "nosniff",
             },
