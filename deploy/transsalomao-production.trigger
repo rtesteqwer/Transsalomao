@@ -14,3 +14,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 deploy Qwen3-VL visual identification 2bdf24b182cc2c9235f4dd86f7427c5469d19aa8
 2026-10-04 redeploy Qwen3-VL after TanStack Start security patch f69669716b05da81be8be87e1444d21d84d30520
 2026-10-04 remove obsolete ChatGPT copy from visual readers 5ca67f5c5fab76b33e9b34e5b29a07849b52a20e
+2026-10-04 driver fixed modes value and quantity 6dc4816b025b6268b3e2815455e3af0b4c673bc2
