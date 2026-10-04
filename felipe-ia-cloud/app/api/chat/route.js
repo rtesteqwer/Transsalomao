@@ -172,10 +172,17 @@ function buildResponsesInput(messages = [], attachments = []) {
   ];
 }
 
-function gatewayClient() {
-  const apiKey = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
+function gatewayClient(request) {
+  const runtimeOidc = request.headers.get('x-vercel-oidc-token');
+  const apiKey =
+    process.env.AI_GATEWAY_API_KEY ||
+    runtimeOidc ||
+    process.env.VERCEL_OIDC_TOKEN;
+
   if (!apiKey) {
-    const error = new Error('A autenticação OIDC da Vercel não está disponível neste deploy.');
+    const error = new Error(
+      'OIDC não disponível no runtime. Verifique o header x-vercel-oidc-token e a configuração OIDC do projeto.'
+    );
     error.code = 'missing_gateway_auth';
     throw error;
   }
@@ -243,7 +250,7 @@ export async function POST(request) {
       });
     }
 
-    const client = gatewayClient();
+    const client = gatewayClient(request);
     const response = await client.responses.create({
       model: NORMAL_MODEL,
       instructions: normalSystem(memoryText, feedbackText),
