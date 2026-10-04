@@ -1,31 +1,68 @@
-import { getSql } from "@/lib/db";
+import { createHash } from "node:crypto";
 
 export function salomaoModel() {
-  return process.env.OPENAI_ASSISTANT_MODEL?.trim() || "gpt-5.6-sol";
+  return process.env.QWEN3_VL_MODEL?.trim() || "alibaba/qwen3-vl-instruct";
 }
 
 export async function getSalomaoOpenAIKeys() {
-  const keys: string[] = [];
+  const token = process.env.AI_GATEWAY_API_KEY?.trim();
+  return token ? [token] : [];
+}
 
-  // A Salomão IA pode guardar uma credencial privada no próprio banco.
-  try {
-    const sql = await getSql();
-    const rows = await sql<{ secret_value: string }>`
-      select secret_value
-      from assistant_secrets
-      where name = 'openai_api_key'
-        and length(btrim(secret_value)) > 20
-      order by 1
-      limit 1
-    `;
-    const dbKey = rows[0]?.secret_value?.trim();
-    if (dbKey) keys.push(dbKey);
-  } catch {
-    // Instalações antigas podem não ter a tabela; nesse caso usa o ambiente.
+export function felipeIaUrl() {
+  return (process.env.FELIPE_IA_URL?.trim() || "https://felipe-ia-transsalomao.vercel.app").replace(/\/$/, "");
+}
+
+function felipeIaSecret() {
+  const explicit = process.env.FELIPE_IA_SHARED_SECRET?.trim();
+  if (explicit) return explicit;
+
+  const base = process.env.TICKET_TOKEN?.trim();
+  if (!base) return "";
+  return createHash("sha256").update("felipe-ia:" + base).digest("hex");
+}
+
+export function felipeIaConfigured() {
+  return Boolean(felipeIaSecret());
+}
+
+type FelipeTurn = { role: "user" | "assistant"; content: string };
+
+export async function askFelipeIa(input: {
+  message: string;
+  history?: FelipeTurn[];
+  context?: unknown;
+  task?: string;
+}) {
+  const secret = felipeIaSecret();
+  if (!secret) throw new Error("FELIPE_IA_NOT_CONFIGURED");
+
+  const response = await fetch(felipeIaUrl() + "/api/transsalomao", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+      "X-Trans-Salomao": "1",
+    },
+    body: JSON.stringify({
+      message: String(input.message || "").slice(0, 12000),
+      history: Array.isArray(input.history) ? input.history.slice(-24) : [],
+      context: input.context ?? null,
+      task: String(input.task || "answer").slice(0, 80),
+    }),
+    signal: AbortSignal.timeout(110000),
+  });
+
+  const data: any = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(String(data?.error || data?.code || `FELIPE_IA_HTTP_${response.status}`));
   }
 
-  const envKey = process.env.OPENAI_API_KEY?.trim();
-  if (envKey) keys.push(envKey);
+  const text = String(data?.text || "").trim();
+  if (!text) throw new Error("FELIPE_IA_EMPTY_RESPONSE");
 
-  return [...new Set(keys)];
+  return {
+    text,
+    model: String(data?.model || "Felipe IA Cloud"),
+  };
 }
