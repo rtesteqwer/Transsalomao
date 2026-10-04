@@ -28,3 +28,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 fix admin trip submit from multiple tabs 32d209e2
 2026-10-04 add remove button to saved fueling photo launches 730bbfe7
 2026-10-04 fix pump display OCR false 1x7=7 fallback 3ce833d7
+2026-10-04 order viagens by latest launch 6cee633a
