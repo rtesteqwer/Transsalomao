@@ -22,13 +22,15 @@ for (const name of ['ticket-core', 'ticket-parser']) {
 const { parseTicketOcr, finishTicketReading } = await import(pathToFileURL(path.join(tmp, 'ticket-parser.mjs')));
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
-test('ticket reader uses ChatGPT first and ships automatic local OCR fallback', () => {
+test('ticket reader uses Qwen3-VL first and ships automatic local OCR fallback', () => {
   const route = readFileSync(path.join(source, 'src/routes/api/ler-ticket.ts'), 'utf8');
   const motorista = readFileSync(path.join(source, 'src/routes/motorista.tsx'), 'utf8');
   const pkg = JSON.parse(readFileSync(path.join(source, 'package.json'), 'utf8'));
-  assert.match(route, /api\.openai\.com\/v1\/responses/);
+  assert.match(route, /qwen3VlResponsesUrl/);
+  assert.match(route, /qwen3VlToken/);
+  assert.match(route, /qwen3VlModel/);
   assert.match(route, /input_image/);
-  assert.match(route, /OPENAI_API_KEY/);
+  assert.match(route, /provider: "qwen3-vl"/);
   assert.match(route, /body\.ocrText/);
   assert.match(route, /parseTicketOcr/);
   assert.match(motorista, /ocrTicketLocal/);
