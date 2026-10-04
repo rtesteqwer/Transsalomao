@@ -105,13 +105,21 @@ function replaceOnce(source, before, after, label, required = true) {
     s = s.replace(marker, helper + marker);
   }
 
-  s = replaceOnce(
-    s,
-    '  const pending = data?.reports.filter((r) => r.status === "pendente") ?? [];',
-    '  const pending = [...(data?.reports.filter((r) => r.status === "pendente") ?? [])].sort((a, b) => reportLaunchTime(b) - reportLaunchTime(a));',
-    "Caixa pending newest first",
-    false,
-  );
+  if (!/const pending =[\\s\\S]{0,500}reportLaunchTime\\(b\\)/.test(s)) {
+    const pendingStart = s.indexOf("  const pending =");
+    if (pendingStart < 0) throw new Error("viagens-caixa-clean-latest: Caixa pending declaration missing");
+    const pendingEnd = s.indexOf(";\\n", pendingStart);
+    if (pendingEnd < 0) throw new Error("viagens-caixa-clean-latest: Caixa pending declaration end missing");
+    const statement = s.slice(pendingStart, pendingEnd + 1);
+    const equalAt = statement.indexOf("=");
+    const expression = statement.slice(equalAt + 1, -1).trim();
+    if (!expression.includes("reports") || !expression.includes("pendente")) {
+      throw new Error("viagens-caixa-clean-latest: unexpected Caixa pending expression: " + statement);
+    }
+    const replacement =
+      "  const pending = [...(" + expression + ")].sort((a, b) => reportLaunchTime(b) - reportLaunchTime(a));";
+    s = s.slice(0, pendingStart) + replacement + s.slice(pendingEnd + 1);
+  }
 
   s = s.replace(
     /Motorista e conjunto são obrigatórios\.[^"<]*Os tickets são automáticos[^"<]*/g,
@@ -135,13 +143,16 @@ function replaceOnce(source, before, after, label, required = true) {
     false,
   );
 
-  s = replaceOnce(
-    s,
-    '  const compactRows = rows.filter((t) => t.freightMode !== "caixinha" && t.freightMode !== "cegonha");',
-    '  const compactRows = rows;',
-    "show every launch individually",
-    false,
-  );
+  {
+    const compactStart = s.indexOf("  const compactRows =");
+    if (compactStart < 0) throw new Error("viagens-caixa-clean-latest: compactRows declaration missing");
+    const compactEnd = s.indexOf(";\\n", compactStart);
+    if (compactEnd < 0) throw new Error("viagens-caixa-clean-latest: compactRows declaration end missing");
+    const statement = s.slice(compactStart, compactEnd + 1);
+    if (statement !== "  const compactRows = rows;") {
+      s = s.slice(0, compactStart) + "  const compactRows = rows;" + s.slice(compactEnd + 1);
+    }
+  }
 
   s = s.replace(
     '{groupedModeRows.length > 0 ? (',
