@@ -18,7 +18,9 @@ Versão da Felipe IA independente do notebook Ubuntu.
 
 - FELIPE_MODEL: substitui o modelo principal.
 - FELIPE_CODE_MODEL: substitui o modelo de programação.
-- BLOB_READ_WRITE_TOKEN: habilita a memória coletiva persistente da Felipe IA. É criada automaticamente quando um Vercel Blob privado é conectado ao projeto.
+- BLOB_READ_WRITE_TOKEN: opção de autenticação estática para a memória coletiva.
+- FELIPE_LEARNING_STORE_ID: opcional; substitui o store privado padrão da memória coletiva.
+- Em produção na Vercel, a memória coletiva usa preferencialmente autenticação OIDC automática com o Blob privado `felipe-ia-learning`, sem segredo exposto no frontend.
 
 Na Vercel, o AI Gateway pode autenticar por OIDC sem colocar uma chave de API no frontend.
 
