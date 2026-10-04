@@ -207,3 +207,5 @@ Publicar correção de despesas em lote 2026-10-04:
 - despesas completas podem ser selecionadas e lançadas em lote
 - mantém Preencher individual para conferência
 - duplicados são ignorados
+
+2026-10-04 financial document date-time from receipt/photo only
