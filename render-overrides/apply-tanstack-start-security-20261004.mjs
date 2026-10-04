@@ -40,7 +40,12 @@ pkg.overrides = {
 };
 fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
 
-// Refresh the lockfile itself before the normal install/build. Vercel's package
+// Recreate the graph from scratch. npm may otherwise keep obsolete nested
+// package-lock entries, and Vercel scans those too.
+const lockPath = path.join(target, "package-lock.json");
+if (fs.existsSync(lockPath)) fs.rmSync(lockPath, { force: true });
+
+// Refresh the lockfile itself before the normal install/build. Stale TanStack entries cannot survive. Vercel's package
 // security scanner also evaluates lockfile metadata, so leaving 1.168.49 there
 // causes a deployment block even when package.json already requests 1.168.60.
 execFileSync(
@@ -49,15 +54,18 @@ execFileSync(
   { cwd: target, stdio: "inherit", env: process.env },
 );
 
-const lockPath = path.join(target, "package-lock.json");
 if (!fs.existsSync(lockPath)) throw new Error("tanstack-security: package-lock.json was not generated");
 const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-const installedReactStart = lock.packages?.["node_modules/@tanstack/react-start"]?.version;
-const installedServerCore = lock.packages?.["node_modules/@tanstack/start-server-core"]?.version;
-if (installedReactStart !== "1.168.60" || installedServerCore !== "1.169.39") {
-  throw new Error(
-    "tanstack-security: lockfile still unsafe (react-start=" + installedReactStart +
-    ", start-server-core=" + installedServerCore + ")",
-  );
+const packageEntries = Object.entries(lock.packages ?? {});
+const reactStartCopies = packageEntries
+  .filter(([name]) => name === "node_modules/@tanstack/react-start" || name.endsWith("/node_modules/@tanstack/react-start"))
+  .map(([name, meta]) => ({ name, version: String((meta as any)?.version ?? "") }));
+const serverCoreCopies = packageEntries
+  .filter(([name]) => name === "node_modules/@tanstack/start-server-core" || name.endsWith("/node_modules/@tanstack/start-server-core"))
+  .map(([name, meta]) => ({ name, version: String((meta as any)?.version ?? "") }));
+const unsafeReactStart = reactStartCopies.filter((item) => item.version !== "1.168.60");
+const unsafeServerCore = serverCoreCopies.filter((item) => item.version !== "1.169.39");
+if (!reactStartCopies.length || !serverCoreCopies.length || unsafeReactStart.length || unsafeServerCore.length) {
+  throw new Error("tanstack-security: unsafe dependency graph " + JSON.stringify({ reactStartCopies, serverCoreCopies }));
 }
 console.log("[tanstack-security] package.json + lockfile secured: react-start=1.168.60, start-server-core=1.169.39" + (changed ? "" : " (already pinned)"));
