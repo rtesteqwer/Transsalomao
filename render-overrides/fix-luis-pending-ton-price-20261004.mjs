@@ -62,7 +62,10 @@ const porto14Anchors = await sql`
   where driver_id = ${driverId}
     and date = date '2026-09-27'
     and freight_mode = 'ton'
-    and abs(coalesce(nullif(net_weight,0), loaded_tons, 0) - any(array[39.24::double precision,35.84::double precision])) < 0.006
+    and (
+      abs(coalesce(nullif(net_weight,0), loaded_tons, 0) - 39.24) < 0.006
+      or abs(coalesce(nullif(net_weight,0), loaded_tons, 0) - 35.84) < 0.006
+    )
     and abs(coalesce(price_per_ton,0) - 14) < 0.001
   order by code
 `;
