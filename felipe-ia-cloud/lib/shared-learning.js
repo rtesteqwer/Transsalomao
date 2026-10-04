@@ -2,6 +2,7 @@ import { get, put } from '@vercel/blob';
 
 const INDEX_PATH = 'felipe-learning-v1/index.json';
 const MAX_ITEMS = 600;
+const DEFAULT_STORE_ID = 'store_kA4R5ebF5rPZler5';
 
 function clean(value, max = 1800) {
   return String(value ?? '')
@@ -38,14 +39,25 @@ function fingerprint(question, answer, type) {
   return (h >>> 0).toString(36);
 }
 
+function blobOptions() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (token) return { access: 'private', token };
+
+  const oidcToken = process.env.VERCEL_OIDC_TOKEN;
+  const storeId = process.env.FELIPE_LEARNING_STORE_ID || DEFAULT_STORE_ID;
+  if (oidcToken && storeId) return { access: 'private', oidcToken, storeId };
+
+  return null;
+}
+
 function enabled() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  return Boolean(blobOptions());
 }
 
 async function readIndex() {
   if (!enabled()) return [];
   try {
-    const result = await get(INDEX_PATH, { access: 'private' });
+    const result = await get(INDEX_PATH, { ...blobOptions(), useCache: false });
     if (!result?.stream) return [];
     const text = await new Response(result.stream).text();
     const parsed = JSON.parse(text);
@@ -68,7 +80,7 @@ async function writeIndex(items) {
         items: items.slice(-MAX_ITEMS)
       }),
       {
-        access: 'private',
+        ...blobOptions(),
         allowOverwrite: true,
         contentType: 'application/json'
       }
