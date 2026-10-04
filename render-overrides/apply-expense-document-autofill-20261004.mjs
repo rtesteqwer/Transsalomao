@@ -127,13 +127,13 @@ function requiredRegex(text, regex, replacement, label) {
     if (file.mime !== "application/pdf") throw new FinancialDocumentError(415, "O leitor automático sem IA aceita somente PDF.");
     return analyzePdfTextLocally({ ...input, mime: file.mime, base64: file.base64 });
   }
-  const qwenKey = qwen3VlToken();`,
+  const qwenKey = await qwen3VlToken();`,
     `  if (input.reader === "pdf_text") {
     if (file.mime !== "application/pdf") throw new FinancialDocumentError(415, "O leitor automático sem IA aceita somente PDF.");
     const local = await analyzePdfTextLocally({ ...input, mime: file.mime, base64: file.base64 });
     if (input.kind !== "expense") return local;
     try {
-      const enrichKey = qwen3VlToken();
+      const enrichKey = await qwen3VlToken();
       if (enrichKey) {
         const enriched = await analyzeWithKey(enrichKey, {
           fileName: input.fileName,
