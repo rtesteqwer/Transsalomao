@@ -23,11 +23,11 @@ function addImport(text) {
   const marker = 'from "@/lib/qwen3-vl.server"';
   if (text.includes(marker)) return text;
   const line = 'import { qwen3VlModel, qwen3VlResponsesUrl, qwen3VlToken } from "@/lib/qwen3-vl.server";';
-  const matches = [...text.matchAll(/^import .*;\\s*$/gm)];
+  const matches = [...text.matchAll(/^import .*;\s*$/gm)];
   if (!matches.length) throw new Error("qwen3-vl: import block not found");
   const last = matches[matches.length - 1];
   const end = (last.index || 0) + last[0].length;
-  return text.slice(0, end) + "\\n" + line + text.slice(end);
+  return text.slice(0, end) + "\n" + line + text.slice(end);
 }
 
 function required(text, before, after, label) {
@@ -44,7 +44,7 @@ function regexRequired(text, regex, replacement, label) {
 
 function common(text) {
   text = text.replaceAll('"https://api.openai.com/v1/responses"', "qwen3VlResponsesUrl()");
-  text = text.replace(/\\n\\s*reasoning:\\s*\\{\\s*effort:\\s*"(?:low|medium|high)"\\s*\\},/g, "");
+  text = text.replace(/\n\s*reasoning:\s*\{\s*effort:\s*"(?:low|medium|high)"\s*\},/g, "");
   return text;
 }
 
@@ -65,7 +65,7 @@ copy("render-overrides/qwen3-vl-20261004.server.ts", "src/lib/qwen3-vl.server.ts
   );
   s = regexRequired(
     s,
-    /const model =\\n\\s*process\\.env\\.OPENAI_TICKET_MODEL\\?\\.trim\\(\\) \\|\\|\\n\\s*process\\.env\\.OPENAI_WHATSAPP_MODEL\\?\\.trim\\(\\) \\|\\|\\n\\s*"gpt-5\\.6-sol";/,
+    /const model =\n\s*process\.env\.OPENAI_TICKET_MODEL\?\.trim\(\) \|\|\n\s*process\.env\.OPENAI_WHATSAPP_MODEL\?\.trim\(\) \|\|\n\s*"gpt-5\.6-sol";/,
     'const model = qwen3VlModel();',
     "ticket model"
   );
@@ -83,17 +83,17 @@ copy("render-overrides/qwen3-vl-20261004.server.ts", "src/lib/qwen3-vl.server.ts
 {
   const rel = "src/lib/fueling-photo-reader.server.ts";
   let s = read(rel);
-  s = s.replace('import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";\\n', "");
+  s = s.replace('import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";\n', "");
   s = addImport(s);
   s = required(
     s,
     "const keys = await getSalomaoOpenAIKeys();",
-    "const qwenKey = qwen3VlToken();\\n  const keys = qwenKey ? [qwenKey] : [];",
+    "const qwenKey = qwen3VlToken();\n  const keys = qwenKey ? [qwenKey] : [];",
     "fueling key list"
   );
   s = regexRequired(
     s,
-    /const model =\\n\\s*process\\.env\\.OPENAI_FUELING_MODEL\\?\\.trim\\(\\) \\|\\|\\n\\s*process\\.env\\.OPENAI_TICKET_MODEL\\?\\.trim\\(\\) \\|\\|\\n\\s*salomaoModel\\(\\);/,
+    /const model =\n\s*process\.env\.OPENAI_FUELING_MODEL\?\.trim\(\) \|\|\n\s*process\.env\.OPENAI_TICKET_MODEL\?\.trim\(\) \|\|\n\s*salomaoModel\(\);/,
     "const model = qwen3VlModel();",
     "fueling model"
   );
@@ -106,12 +106,12 @@ copy("render-overrides/qwen3-vl-20261004.server.ts", "src/lib/qwen3-vl.server.ts
 {
   const rel = "src/lib/financial-document-reader.server.ts";
   let s = read(rel);
-  s = s.replace('import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";\\n', "");
+  s = s.replace('import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";\n', "");
   s = addImport(s);
   s = required(
     s,
     "const keys = await getSalomaoOpenAIKeys();",
-    "const qwenKey = qwen3VlToken();\\n  const keys = qwenKey ? [qwenKey] : [];",
+    "const qwenKey = qwen3VlToken();\n  const keys = qwenKey ? [qwenKey] : [];",
     "financial key list"
   );
   s = s.replaceAll("A Salomão IA precisa da API OpenAI ativa para ler o comprovante.", "O Qwen3-VL precisa do AI Gateway ativo para ler este comprovante.");
@@ -125,12 +125,12 @@ copy("render-overrides/qwen3-vl-20261004.server.ts", "src/lib/qwen3-vl.server.ts
 {
   const rel = "src/lib/operation-import-ai.server.ts";
   let s = read(rel);
-  s = s.replace('import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";\\n', "");
+  s = s.replace('import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";\n', "");
   s = addImport(s);
   s = required(
     s,
     "const keys = await getSalomaoOpenAIKeys();",
-    "const qwenKey = qwen3VlToken();\\n  const keys = qwenKey ? [qwenKey] : [];",
+    "const qwenKey = qwen3VlToken();\n  const keys = qwenKey ? [qwenKey] : [];",
     "operation import key list"
   );
   s = s.replaceAll("A Salomão IA precisa da API OpenAI ativa para ler o arquivo.", "O Qwen3-VL precisa do AI Gateway ativo para ler o arquivo.");
@@ -144,12 +144,12 @@ copy("render-overrides/qwen3-vl-20261004.server.ts", "src/lib/qwen3-vl.server.ts
 {
   const rel = "src/routes/api/assistant/document-intake.ts";
   let s = read(rel);
-  s = s.replace('import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";\\n', "");
+  s = s.replace('import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";\n', "");
   s = addImport(s);
   s = required(
     s,
     "const keys = await getSalomaoOpenAIKeys();",
-    "const qwenKey = qwen3VlToken();\\n        const keys = qwenKey ? [qwenKey] : [];",
+    "const qwenKey = qwen3VlToken();\n        const keys = qwenKey ? [qwenKey] : [];",
     "assistant intake key list"
   );
   s = s.replace(
@@ -170,7 +170,7 @@ copy("render-overrides/qwen3-vl-20261004.server.ts", "src/lib/qwen3-vl.server.ts
   s = required(s, 'if (!key) throw new Error("OPENAI_API_KEY não configurada.");', 'if (!key) throw new Error("Qwen3-VL/AI Gateway não configurado.");', "whatsapp key error");
   s = regexRequired(
     s,
-    /const model =\\n\\s*process\\.env\\.OPENAI_WHATSAPP_MODEL\\?\\.trim\\(\\) \\|\\|\\n\\s*process\\.env\\.OPENAI_TICKET_MODEL\\?\\.trim\\(\\) \\|\\|\\n\\s*process\\.env\\.OPENAI_ASSISTANT_MODEL\\?\\.trim\\(\\) \\|\\|\\n\\s*"gpt-5\\.6-sol";/,
+    /const model =\n\s*process\.env\.OPENAI_WHATSAPP_MODEL\?\.trim\(\) \|\|\n\s*process\.env\.OPENAI_TICKET_MODEL\?\.trim\(\) \|\|\n\s*process\.env\.OPENAI_ASSISTANT_MODEL\?\.trim\(\) \|\|\n\s*"gpt-5\.6-sol";/,
     "const model = qwen3VlModel();",
     "whatsapp model"
   );
