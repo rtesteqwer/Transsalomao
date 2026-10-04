@@ -25,3 +25,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 Felipe IA Cloud manifest fixed 642409c3
 2026-10-04 redeploy Felipe IA latest Agent Core after OIDC enable
 2026-10-04 multitab trips + ticket auth refresh + fueling pump prefill b6774e0c
+2026-10-04 fix admin trip submit from multiple tabs 32d209e2
