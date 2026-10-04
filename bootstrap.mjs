@@ -316,6 +316,14 @@ if (installChatGptShare && !original.includes("apply-share-to-chatgpt-20260929.m
   console.log('[share-to-chatgpt] skipped: Vercel project is not Trans Salomao');
 }
 
+// Qwen3-VL: motor padrão para identificação de fotos e PDFs em todos os fluxos operacionais.
+if (!original.includes("apply-qwen3-vl-identification-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing Qwen3-VL visual identification insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-qwen3-vl-identification-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
 // Limite de segurança: TransSalomao IA e Felipe IA são produtos independentes.
 // A aplicação empresarial não instala, publica ou encaminha mensagens para a Felipe IA.
 // Também removemos resíduos do bridge caso existam no snapshot reconstruído.
