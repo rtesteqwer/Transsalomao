@@ -233,13 +233,13 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
           pageSetup: { orientation: "landscape", paperSize: 8, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
         });
         tonSheet.orderNo = 1;
-        tonSheet.addImage(logoId, { tl: { col: 0.12, row: 0.12 }, ext: { width: 150, height: 68 } });
-        tonSheet.mergeCells("C1:Q2");
+        tonSheet.addImage(logoId, { tl: { col: 0.08, row: 0.08 }, ext: { width: 220, height: 92 } });
+        tonSheet.mergeCells("D1:N2");
         tonSheet.getCell("C1").value = "RELATÓRIO COMPLETO DO MOTORISTA - TRANS SALOMÃO";
         tonSheet.getCell("C1").font = { bold: true, size: 18, color: { argb: "111111" } };
         tonSheet.getCell("C1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "DCEAF7" } };
         tonSheet.getCell("C1").alignment = { horizontal: "center", vertical: "middle" };
-        tonSheet.mergeCells("C3:Q3");
+        tonSheet.mergeCells("D3:N3");
         tonSheet.getCell("C3").value = driverScope.name + " • " + excelPeriodLabel + " • Relatórios • Operador: " + excelOperator;
         tonSheet.getCell("C3").font = { bold: true, size: 11, color: { argb: "111111" } };
         tonSheet.getCell("C3").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "F8FAFC" } };
@@ -250,7 +250,7 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
         const totalCommissionDriver = excelTrips.reduce((sum: number, trip: any) => sum + Number(trip.commissionValue ?? trip.commission ?? 0), 0);
         const totalDieselDriver = excelTrips.reduce((sum: number, trip: any) => sum + Number(trip.dieselCost ?? 0), 0);
 
-        tonSheet.mergeCells("A4:Q4");
+        tonSheet.mergeCells("A4:N4");
         tonSheet.getCell("A4").value =
           "VIAGENS EM ORDEM DE DATA • Viagens: " + excelTrips.length +
           " • Por tonelada: " + countMode("ton") +
@@ -261,7 +261,7 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
         tonSheet.getCell("A4").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "EAF4FB" } };
         tonSheet.getCell("A4").alignment = { horizontal: "center", vertical: "middle", wrapText: false };
 
-        tonSheet.mergeCells("A5:Q5");
+        tonSheet.mergeCells("A5:N5");
         tonSheet.getCell("A5").value =
           "Frete total: " + brl(totalFreightDriver) +
           " • Comissão total: " + brl(totalCommissionDriver) +
@@ -271,15 +271,15 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
         tonSheet.getCell("A5").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2CC" } };
         tonSheet.getCell("A5").alignment = { horizontal: "center", vertical: "middle", wrapText: false };
 
-        tonSheet.getRow(1).height = 28;
-        tonSheet.getRow(2).height = 28;
-        tonSheet.getRow(3).height = 22;
+        tonSheet.getRow(1).height = 34;
+        tonSheet.getRow(2).height = 34;
+        tonSheet.getRow(3).height = 24;
         tonSheet.getRow(4).height = 22;
         tonSheet.getRow(5).height = 22;
 
         const tonHeader = tonSheet.getRow(6);
         tonHeader.values = [
-          "Data", "Ticket", "Cliente", "Origem", "Destino", "Motorista", "Conjunto", "Modalidade (tipo de viagem)",
+          "Data", "Ticket", "Motorista", "Conjunto", "Modalidade (tipo de viagem)",
           "Peso carregado (t)", "Peso bruto (t)", "Peso líquido (t)", "Preço/t ou diária",
           "Frete", "Comissão (%)", "Comissão", "Após comissão", "Resultado bruto"
         ];
@@ -297,24 +297,24 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
             const group = item.group;
             const values = (key: string) => { const list = [...new Set(group.items.map((x: any) => String(x?.[key] ?? "").trim()).filter(Boolean))]; return list.length === 1 ? list[0] : list.length > 1 ? "Vários" : ""; };
             const groupDate = group.firstDate === group.lastDate ? formatDate(group.firstDate) : formatDate(group.firstDate) + " a " + formatDate(group.lastDate);
-            const row = tonSheet.addRow([groupDate, String(group.count) + " viagens", values("client"), values("origin"), values("destination"), driverScope.name, values("fleetName"), info.label, "", "", "", "", group.freight, "", group.commission, group.after, group.result]);
+            const row = tonSheet.addRow([groupDate, String(group.count) + " viagens", driverScope.name, values("fleetName"), info.label, "", "", "", "", group.freight, "", group.commission, group.after, group.result]);
             row.height = 22;
             row.eachCell((cell: any) => { cell.font = { bold: true, color: { argb: "111111" }, size: 10 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.alignment = { vertical: "middle", wrapText: false }; cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } }; });
-            [13, 15, 16, 17].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; });
+            [10, 12, 13, 14].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; });
             return;
           }
           const trip = item.trip;
           const freight = Number(trip.freight ?? 0);
           const commission = Number(trip.commissionValue ?? trip.commission ?? 0);
           const dieselCost = Number(trip.dieselCost ?? 0);
-          const row = tonSheet.addRow([formatDate(trip.date), String(trip.code ?? "—"), String(trip.client ?? "—"), String(trip.origin ?? "—"), String(trip.destination ?? "—"), String(trip.driverName ?? driverScope.name), String(trip.fleetName ?? "—"), info.label, Number(trip.loadedTons ?? 0), Number(trip.grossWeight ?? 0), Number(trip.netWeight ?? 0), item.mode === "trip" ? Number(trip.pricePerTrip ?? freight) : Number(trip.pricePerTon ?? 0), freight, freight > 0 ? commission / freight : 0, commission, Number(trip.afterCommission ?? (freight - commission)), Number(trip.grossResult ?? (freight - dieselCost))]);
+          const row = tonSheet.addRow([formatDate(trip.date), String(trip.code ?? "—"), String(trip.driverName ?? driverScope.name), String(trip.fleetName ?? "—"), info.label, Number(trip.loadedTons ?? 0), Number(trip.grossWeight ?? 0), Number(trip.netWeight ?? 0), item.mode === "trip" ? Number(trip.pricePerTrip ?? freight) : Number(trip.pricePerTon ?? 0), freight, freight > 0 ? commission / freight : 0, commission, Number(trip.afterCommission ?? (freight - commission)), Number(trip.grossResult ?? (freight - dieselCost))]);
           row.height = 22;
           row.eachCell((cell: any) => { cell.font = { color: { argb: "111111" }, size: 10 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: info.fill } }; cell.alignment = { vertical: "middle", wrapText: false }; cell.border = { top: { style: "thin", color: { argb: info.accent } }, bottom: { style: "thin", color: { argb: info.accent } }, left: { style: "thin", color: { argb: info.accent } }, right: { style: "thin", color: { argb: info.accent } } }; });
-          [9, 10, 11].forEach((c) => { row.getCell(c).numFmt = '0.000 "t"'; }); [12, 13, 15, 16, 17].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; }); row.getCell(14).numFmt = '0.00%'; row.getCell(8).font = { bold: true, color: { argb: "111111" }, size: 10 };
+          [6, 7, 8].forEach((c) => { row.getCell(c).numFmt = '0.000 "t"'; }); [9, 10, 12, 13, 14].forEach((c) => { row.getCell(c).numFmt = 'R$ #,##0.00'; }); row.getCell(11).numFmt = '0.00%'; row.getCell(5).font = { bold: true, color: { argb: "111111" }, size: 10 };
         });
 
         const totalRow = tonSheet.addRow([
-          "TOTAL", "", "", "", "", "", "", "",
+          "TOTAL", "", "", "", "",
           excelTrips.reduce((sum: number, trip: any) => sum + Number(trip.loadedTons ?? 0), 0),
           excelTrips.reduce((sum: number, trip: any) => sum + Number(trip.grossWeight ?? 0), 0),
           excelTrips.reduce((sum: number, trip: any) => sum + Number(trip.netWeight ?? 0), 0),
@@ -332,14 +332,14 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
           cell.border = border;
           cell.alignment = { vertical: "middle", wrapText: false };
         });
-        [9, 10, 11].forEach((c) => { totalRow.getCell(c).numFmt = '0.000 "t"'; });
-        [13, 15, 16, 17].forEach((c) => { totalRow.getCell(c).numFmt = 'R$ #,##0.00'; });
+        [6, 7, 8].forEach((c) => { totalRow.getCell(c).numFmt = '0.000 "t"'; });
+        [10, 12, 13, 14].forEach((c) => { totalRow.getCell(c).numFmt = 'R$ #,##0.00'; });
 
-        [12, 12, 20, 17, 17, 20, 18, 16, 14, 14, 14, 15, 15, 12, 15, 15, 15]
+        [12, 14, 22, 18, 19, 14, 14, 14, 16, 15, 12, 15, 15, 16]
           .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });
         tonSheet.views = [{ state: "frozen", ySplit: 6 }];
-        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, tonSheet.rowCount - 1), column: 17 } };
-        tonSheet.printArea = "A1:Q" + tonSheet.rowCount;
+        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, tonSheet.rowCount - 1), column: 14 } };
+        tonSheet.printArea = "A1:N" + tonSheet.rowCount;
 
         // O Excel individual deve ter uma única aba: resumo + todas as modalidades nela.
         workbook.removeWorksheet(sheet.id);
