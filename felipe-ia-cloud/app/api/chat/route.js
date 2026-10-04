@@ -1,3 +1,4 @@
+import OpenAI from 'openai';
 import { generateText, stepCountIs } from 'ai';
 import { executeCode } from 'ai-sdk-tool-code-execution';
 
@@ -124,18 +125,106 @@ CORREÇÕES APROVADAS:
 ${feedbackText}`;
 }
 
+function buildResponsesInput(messages = [], attachments = []) {
+  const history = messages
+    .slice(-18)
+    .map(m => `${m.role === 'assistant' ? 'Felipe IA' : 'Usuário'}: ${cleanString(m.content, 14000)}`)
+    .join('\n\n');
+
+  const content = [
+    {
+      type: 'input_text',
+      text: history || 'Usuário: Analise os arquivos anexados.'
+    }
+  ];
+
+  for (const file of attachments.slice(0, 4)) {
+    const name = cleanString(file?.name, 180);
+    const type = cleanString(file?.type, 120);
+    const dataUrl = typeof file?.dataUrl === 'string' ? file.dataUrl : '';
+    const text = typeof file?.text === 'string' ? file.text.slice(0, 60000) : '';
+
+    if (type.startsWith('image/') && dataUrl.startsWith('data:image/')) {
+      content.push({
+        type: 'input_image',
+        image_url: dataUrl,
+        detail: 'auto'
+      });
+    } else if (type === 'application/pdf' && dataUrl.startsWith('data:application/pdf')) {
+      content.push({
+        type: 'input_file',
+        filename: name || 'documento.pdf',
+        file_data: dataUrl
+      });
+    } else if (text) {
+      content.push({
+        type: 'input_text',
+        text: `\n--- ARQUIVO: ${name || 'texto'} ---\n${text}\n--- FIM DO ARQUIVO ---`
+      });
+    }
+  }
+
+  return [
+    {
+      role: 'user',
+      content
+    }
+  ];
+}
+
+function gatewayClient() {
+  const apiKey = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
+  if (!apiKey) {
+    const error = new Error('A autenticação OIDC da Vercel não está disponível neste deploy.');
+    error.code = 'missing_gateway_auth';
+    throw error;
+  }
+
+  return new OpenAI({
+    apiKey,
+    baseURL: 'https://ai-gateway.vercel.sh/v1'
+  });
+}
+
+function friendlyError(error) {
+  const status = Number(error?.status || error?.response?.status || 0);
+  const code = cleanString(error?.code || error?.error?.code || '', 120).toLowerCase();
+  const raw = cleanString(error?.message || error?.error?.message || 'Erro desconhecido', 700)
+    .replace(/(?:sk|vcp|vercel_[a-z0-9_-]*)-[A-Za-z0-9_-]{12,}/gi, '[segredo ocultado]');
+
+  if (code.includes('missing_gateway_auth')) {
+    return 'A Felipe IA está publicada, mas o Vercel AI Gateway não recebeu a autenticação OIDC deste deploy.';
+  }
+  if (status === 401 || status === 403) {
+    return 'O Vercel AI Gateway recusou a autenticação deste deploy. Vou manter o erro identificado para corrigir a autorização do Gateway.';
+  }
+  if (status === 402 || code.includes('quota') || code.includes('credit') || raw.toLowerCase().includes('credit')) {
+    return 'O Vercel AI Gateway está sem créditos disponíveis para executar o modelo Qwen.';
+  }
+  if (status === 413 || raw.toLowerCase().includes('too large')) {
+    return 'O arquivo enviado é maior do que o limite aceito. Envie uma imagem ou PDF menor.';
+  }
+  if (status === 429) {
+    return 'O Vercel AI Gateway atingiu o limite temporário de solicitações. Tente novamente em alguns instantes.';
+  }
+
+  return `Falha no Vercel AI Gateway: ${raw}`;
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
     const mode = body?.mode === 'code' ? 'code' : 'assistant';
+    const attachments = Array.isArray(body?.attachments) ? body.attachments : [];
     const { memoryText, feedbackText } = buildContext(body?.memory, body?.feedback);
-    const messages = prepareMessages(body?.messages, body?.attachments || []);
+    const baseMessages = Array.isArray(body?.messages) ? body.messages : [];
 
-    if (!messages.length) {
+    if (!baseMessages.length) {
       return Response.json({ error: 'Mensagem vazia.' }, { status: 400 });
     }
 
     if (mode === 'code') {
+      const messages = prepareMessages(baseMessages, attachments);
       const result = await generateText({
         model: CODE_MODEL,
         system: codeSystem(memoryText, feedbackText),
@@ -154,25 +243,29 @@ export async function POST(request) {
       });
     }
 
-    const result = await generateText({
+    const client = gatewayClient();
+    const response = await client.responses.create({
       model: NORMAL_MODEL,
-      system: normalSystem(memoryText, feedbackText),
-      messages,
-      reasoning: 'high'
+      instructions: normalSystem(memoryText, feedbackText),
+      input: buildResponsesInput(baseMessages, attachments)
     });
 
     return Response.json({
-      text: result.text || 'Não consegui gerar uma resposta.',
+      text: response.output_text || 'Não consegui gerar uma resposta.',
       model: NORMAL_MODEL,
       mode
     });
   } catch (error) {
-    console.error('Felipe IA /api/chat error:', error);
-    const message = error instanceof Error ? error.message : 'Erro desconhecido';
+    console.error('Felipe IA /api/chat error:', {
+      name: error?.name,
+      status: error?.status,
+      code: error?.code,
+      message: error?.message
+    });
+
     return Response.json(
       {
-        error: 'A Felipe IA encontrou um erro ao processar a solicitação.',
-        detail: process.env.NODE_ENV === 'development' ? message : undefined
+        error: friendlyError(error)
       },
       { status: 500 }
     );
