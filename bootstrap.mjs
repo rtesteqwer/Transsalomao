@@ -400,6 +400,16 @@ if (!original.includes("apply-trips-filter-order-20261004.mjs")) {
   );
 }
 
+// Relatórios Excel: consolida abastecimentos, adiantamentos e despesas por motorista,
+// corrige colunas estreitas/##### e organiza também o relatório individual.
+if (!original.includes("apply-report-totals-layout-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing report totals/layout insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-report-totals-layout-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // TanStack Start: corrige GHSA-qx66-fv34-fjm8 antes do npm install/build.
 if (!original.includes("apply-tanstack-start-security-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing TanStack security insertion point");
