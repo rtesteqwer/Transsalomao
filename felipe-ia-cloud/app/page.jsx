@@ -112,6 +112,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [memoryDraft, setMemoryDraft] = useState('');
+  const [collectiveLearning, setCollectiveLearning] = useState(null);
   const [error, setError] = useState('');
   const fileRef = useRef(null);
   const bottomRef = useRef(null);
@@ -149,6 +150,17 @@ export default function Home() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeId, chats, sending]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/learn', { cache: 'no-store' })
+      .then(response => response.json())
+      .then(data => {
+        if (!cancelled && typeof data?.enabled === 'boolean') setCollectiveLearning(data.enabled);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const active = useMemo(
     () => chats.find(c => c.id === activeId) || chats[0],
@@ -257,6 +269,9 @@ export default function Home() {
 
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Falha na Felipe IA.');
+      if (typeof data?.sharedLearning?.enabled === 'boolean') {
+        setCollectiveLearning(data.sharedLearning.enabled);
+      }
 
       const assistantMessage = {
         id: id(),
@@ -309,6 +324,17 @@ export default function Home() {
       },
       ...prev
     ]);
+
+    fetch('/api/learn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: item.question, correction: item.correction })
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (typeof data?.enabled === 'boolean') setCollectiveLearning(data.enabled);
+      })
+      .catch(() => {});
   }
 
   function deleteChat(chatId) {
@@ -392,7 +418,7 @@ export default function Home() {
               <p>
                 {active.mode === 'code'
                   ? 'Programação com execução e testes em sandbox isolado na nuvem.'
-                  : 'Assistente em nuvem com roteamento automático, memória, aprendizado por correções, imagens e PDFs.'}
+                  : 'Assistente em nuvem com roteamento automático, memória pessoal, aprendizado coletivo, imagens e PDFs.'}
               </p>
               <div className="suggestions">
                 {(active.mode === 'code'
@@ -486,7 +512,11 @@ export default function Home() {
           <div className="composerHint">
             {active.mode === 'code'
               ? 'Código é executado em sandbox isolado, não no seu computador.'
-              : 'Memória e histórico ficam isolados neste perfil local até o login da conta ser ativado.'}
+              : collectiveLearning === true
+                ? 'Aprendizado coletivo ativo • aprende com interações e correções de todos os usuários.'
+                : collectiveLearning === false
+                  ? 'Memória local ativa • aprendizado coletivo aguardando armazenamento compartilhado.'
+                  : 'Memória pessoal + aprendizado coletivo.'}
           </div>
         </div>
       </section>
@@ -497,7 +527,7 @@ export default function Home() {
             <header>
               <div>
                 <strong>Memória da Felipe IA</strong>
-                <span>Aprendizado controlado por você</span>
+                <span>Memória pessoal + aprendizado coletivo da Felipe IA</span>
               </div>
               <button className="iconBtn" onClick={() => setMemoryOpen(false)}>✕</button>
             </header>

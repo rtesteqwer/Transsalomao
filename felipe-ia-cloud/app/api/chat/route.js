@@ -9,6 +9,7 @@ import {
   publicModeForTask,
   shouldReview
 } from '../../../lib/agent-core.js';
+import { loadRelevantSharedKnowledge, saveSharedLearning } from '../../../lib/shared-learning.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -158,8 +159,15 @@ export async function POST(request) {
       return Response.json({ error: 'Mensagem vazia.' }, { status: 400 });
     }
 
-    const system = buildAgentSystem({ task, memoryText, feedbackText });
     const contextText = latestUserText(rawMessages);
+    const sharedLearning = await loadRelevantSharedKnowledge(contextText);
+    const system = buildAgentSystem({
+      task,
+      memoryText,
+      feedbackText,
+      sharedKnowledgeText: sharedLearning.text,
+      sharedLearningEnabled: sharedLearning.enabled
+    });
     let draft = '';
     let toolSteps = 0;
     let verifiedByExecution = false;
@@ -195,13 +203,24 @@ export async function POST(request) {
       contextText
     });
 
+    const learned = await saveSharedLearning({
+      question: contextText,
+      answer: reviewed.answer,
+      type: 'interaction'
+    });
+
     return Response.json({
       text: reviewed.answer,
       mode: publicModeForTask(task),
       task,
       verified: reviewed.reviewed || verifiedByExecution,
       corrected: reviewed.changed,
-      toolSteps
+      toolSteps,
+      sharedLearning: {
+        enabled: sharedLearning.enabled,
+        used: sharedLearning.items.length,
+        saved: learned.saved
+      }
     }, {
       headers: {
         'Cache-Control': 'no-store',
