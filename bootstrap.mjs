@@ -324,6 +324,14 @@ if (!original.includes("apply-qwen3-vl-identification-20261004.mjs")) {
     `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-qwen3-vl-identification-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 }
+// TanStack Start: corrige GHSA-qx66-fv34-fjm8 antes do npm install/build.
+if (!original.includes("apply-tanstack-start-security-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing TanStack security insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-tanstack-start-security-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
 // Limite de segurança: TransSalomao IA e Felipe IA são produtos independentes.
 // A aplicação empresarial não instala, publica ou encaminha mensagens para a Felipe IA.
 // Também removemos resíduos do bridge caso existam no snapshot reconstruído.
