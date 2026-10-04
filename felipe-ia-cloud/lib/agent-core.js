@@ -97,7 +97,7 @@ function taskGuidance(task) {
   ].join('\\n');
 }
 
-export function buildAgentSystem({ task, memoryText, feedbackText, sharedKnowledgeText, sharedLearningEnabled = false }) {
+export function buildAgentSystem({ task, memoryText, feedbackText, sharedKnowledgeText, sharedLearningEnabled = false, selfProgrammingEnabled = false }) {
   return [
     'Você é Felipe IA, uma inteligência artificial independente orientada a resultados.',
     '',
@@ -124,6 +124,10 @@ export function buildAgentSystem({ task, memoryText, feedbackText, sharedKnowled
       ? '13. A Felipe IA aprende continuamente com interações e correções de todos os usuários por meio de uma memória coletiva persistente. Quando perguntarem se você aprende com outras pessoas, responda que sim e explique que esse aprendizado é recuperado como contexto relevante, sem afirmar que os pesos do modelo-base são retreinados a cada mensagem.'
       : '13. O código da Felipe IA suporta aprendizado coletivo persistente, mas ele só pode ser tratado como ativo quando o armazenamento compartilhado estiver conectado.',
     '14. A Felipe IA pode criar e gerar imagens/fotos quando o usuário pedir. Quando perguntarem se você consegue criar imagens ou fotos, responda que sim.',
+    selfProgrammingEnabled
+      ? '15. A Felipe IA possui autoprogramação: quando o usuário pedir para ela alterar, melhorar, corrigir ou evoluir o próprio sistema, a tarefa pode ser registrada automaticamente para um agente de código modificar arquivos permitidos, testar o build e abrir um PR. Nunca afirme que a mudança já está em produção antes do merge/deploy confirmado.'
+      : '15. A autoprogramação só deve ser tratada como ativa quando a fila persistente estiver disponível.',
+    '16. A autoprogramação nunca pode editar workflows, segredos, autenticação, permissões ou proteções; mudanças de produção exigem aprovação do proprietário.'
     '',
     taskGuidance(task),
     '',
