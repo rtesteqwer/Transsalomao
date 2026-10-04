@@ -166,7 +166,7 @@ if (!original.includes("apply-fixed-photo-batch-20260925.mjs")) {
   original = original.replace(dailyMarker, `const fixedPhotoBatch = path.join(repo, 'render-overrides', 'apply-fixed-photo-batch-20260925.mjs');\nif (!fs.existsSync(fixedPhotoBatch)) throw new Error('Missing fixed photo batch patch');\nexecFileSync(process.execPath, [fixedPhotoBatch, work], { cwd: repo, stdio: 'inherit' });\n\n${dailyMarker}`);
 }
 
-// Upload múltiplo de tickets: ChatGPT em lote na Gerência e no modo Motorista.
+// Upload múltiplo de tickets: leitura inteligente em lote na Gerência e no modo Motorista.
 if (!original.includes("apply-batch-photo-management-20260926.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error('Ponto de injeção do lote de tickets da Gerência não encontrado');
   original = original.replace(dailyMarker, `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-batch-photo-management-20260926.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`);
@@ -303,25 +303,21 @@ if (!original.includes("apply-data-integrity-20260929.mjs")) {
   );
 }
 
-// Compartilhamento manual de fotos/PDFs com o app ChatGPT via Android Web Share API.
-// Este recurso pertence somente ao projeto Trans Salomão; o mesmo repositório também alimenta outro projeto Vercel.
-const installChatGptShare = process.env.VERCEL !== '1' || String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').toLowerCase().includes('transsalomao.vercel.app');
-if (installChatGptShare && !original.includes("apply-share-to-chatgpt-20260929.mjs")) {
-  if (!original.includes(dailyMarker)) throw new Error("Missing ChatGPT share insertion point");
-  original = original.replace(
-    dailyMarker,
-    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-share-to-chatgpt-20260929.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
-  );
-} else if (!installChatGptShare) {
-  console.log('[share-to-chatgpt] skipped: Vercel project is not Trans Salomao');
-}
-
 // Qwen3-VL: motor padrão para identificação de fotos e PDFs em todos os fluxos operacionais.
 if (!original.includes("apply-qwen3-vl-identification-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing Qwen3-VL visual identification insertion point");
   original = original.replace(
     dailyMarker,
     `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-qwen3-vl-identification-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
+// Limpeza final: remove integrações/termos legados do ChatGPT e usa apenas Qwen3-VL via Vercel AI Gateway.
+if (!original.includes("apply-ai-cleanup-gateway-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing AI cleanup insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-ai-cleanup-gateway-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 }
 // Motorista: Diária, Cegonha e Caixinha com valor por viagem + quantidade.
