@@ -64,3 +64,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 fix only clipped section title in PDF c08a9c0b
 2026-10-04 expense documents auto-fill every field per uploaded file
 2026-10-04 retry expense document autofill after Qwen OIDC async fix
+2026-10-04 fix Android PDF/Excel download without blob URL 1d20c3f8
