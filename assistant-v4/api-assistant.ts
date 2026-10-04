@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { authenticateAssistantRequest } from "@/lib/assistant-auth.server";
-import { askFelipeIa, felipeIaConfigured, getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
+import { askFelipeIa, felipeIaConfigured } from "@/lib/salomao-ai.server";
 
 export const Route = createFileRoute("/api/assistant")({
   server: {
@@ -112,7 +112,6 @@ type Snapshot = { drivers: Row[]; fleets: Row[]; trips: Row[]; fuelings: Row[]; 
 function out(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }
-function modelName() { return salomaoModel(); }
 function n(v: unknown) { const x = Number(v ?? 0); return Number.isFinite(x) ? x : 0; }
 function norm(v: unknown) { return String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim(); }
 function brl(v: number) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v); }
@@ -767,57 +766,6 @@ async function executeAssistantTool(name:string,args:Row,actor:string,userMessag
   }
   throw new Error("Ferramenta não autorizada.");
 }
-
-async function gptAnswer(message:string,history:Turn[],key:string,actor:string){
-  const prior=history.map((x)=>`${x.role==="user"?"Usuário":"Salomão"}: ${x.role==="user"?redactSecrets(x.content):x.content}`).join("\n")||"(sem histórico)";
-  const instructions=`Você é Trans Salomão IA, agente operacional autônomo da transportadora Trans Salomão. Fale em português do Brasil, natural, curto e preciso.
-
-MISSÃO:
-- Trate cada mensagem como um OBJETIVO a ser concluído, não como uma única ação.
-- Faça internamente um plano de execução, consulte o estado real do sistema, execute quantas ferramentas forem necessárias, confira os resultados e continue até concluir.
-- Preserve o contexto da conversa para referências como "ele", "essa viagem", "o mesmo motorista" e "agora lance o abastecimento".
-- Não exponha cadeia de raciocínio interna. Na resposta final, informe somente o que fez, resultados e qualquer pendência objetiva.
-
-REGRAS OPERACIONAIS:
-1. Dados reais sempre vêm das ferramentas. Nunca invente valores, IDs, nomes, placas, preços, datas ou totais.
-2. Antes de alterar um registro existente, consulte o registro quando precisar completar campos ou resolver qual registro é.
-3. Depois de cada gravação, use o retorno de verificação. Só diga que concluiu se verification.verified não for false.
-4. Você pode encadear consultas e alterações no mesmo pedido. Exemplo: encontrar motorista → encontrar conjunto → lançar viagem → consultar e confirmar que apareceu.
-5. Use padrões já definidos pelo sistema quando forem inequívocos: data ausente pode ser hoje; preços de Diária/Cegonha/Caixinha vêm da configuração global. Não invente modalidade, peso, litros, preço por litro, motorista ou conjunto.
-6. Se faltar um dado realmente obrigatório e ele não puder ser obtido do sistema nem do histórico, faça UMA pergunta objetiva. Não peça dados opcionais.
-7. Se uma ferramenta der erro, tente diagnosticar consultando o sistema e corrigir o plano quando houver uma solução segura. Não repita a mesma ação cegamente.
-8. Para Caixa, você pode corrigir um pendente com update_pending_report e depois aceitar/rejeitar. Para vários tickets, use process_pending_reports_bulk quando apropriado.
-9. Para despesas: categoria "Adiantamento" pertence ao motorista; "Mecânica" e demais despesas operacionais normalmente pertencem ao conjunto.
-10. Nunca escolha entre motoristas ou conjuntos ambíguos. Consulte candidatos e peça identificação somente se ainda houver mais de uma possibilidade real.
-11. Exclusões continuam exigindo confirmação explícita NO PEDIDO ATUAL. Não use confirmação antiga do histórico.
-12. Nunca revele, repita ou registre senhas ou segredos na resposta.
-13. Se o usuário pedir várias ações, execute todas as que forem independentes e seguras; não pare depois da primeira.
-14. Ao final, faça uma resposta curta com: o que foi executado, o que foi verificado e, se houver, o único item que ainda precisa de informação.
-
-Usuário autenticado: ${actor}. Hoje: ${todayBR()}.`;
-  const common={model:modelName(),reasoning:{effort:"high"},instructions,tools:assistantTools,tool_choice:"auto",parallel_tool_calls:false,max_output_tokens:4000};
-  let response=await openAI(key,{...common,input:`Histórico:\n${prior}\n\nPedido atual:\n${message}`});
-  for(let i=0;i<24;i++){
-    const calls=(Array.isArray(response.output)?response.output:[]).filter((x:any)=>x?.type==="function_call");
-    if(!calls.length){const text=outputText(response);if(text)return text;throw new Error("Resposta vazia");}
-    const call=calls[0];
-    let args:Row={};
-    try{args=JSON.parse(call.arguments||"{}");}catch{throw new Error("A OpenAI retornou argumentos inválidos.");}
-    let result:any;
-    try{
-      result=await executeAssistantTool(call.name,args,actor,message);
-    }catch(error:any){
-      result={ok:false,error:String(error?.message||error)};
-    }
-    response=await openAI(key,{...common,previous_response_id:response.id,input:[{type:"function_call_output",call_id:call.call_id,output:JSON.stringify(result)}]});
-  }
-  throw new Error("Limite de ferramentas excedido");
-}
-async function openAI(key:string,payload:Row){
-  const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});
-  const data=await r.json();if(!r.ok)throw new Error(`OpenAI ${r.status}: ${JSON.stringify(data).slice(0,800)}`);return data as any;
-}
-function outputText(r:any){if(typeof r?.output_text==="string"&&r.output_text.trim())return r.output_text.trim();const p:string[]=[];for(const x of Array.isArray(r?.output)?r.output:[])if(x?.type==="message")for(const c of Array.isArray(x.content)?x.content:[])if(c?.type==="output_text"&&typeof c.text==="string")p.push(c.text);return p.join("\n").trim();}
 
 function parseLoginCommand(message:string){
   const t=norm(message);
