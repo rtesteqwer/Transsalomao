@@ -346,6 +346,15 @@ if (!original.includes("apply-multitab-auth-fueling-20261004.mjs")) {
   );
 }
 
+// Painel da Gerência: recupera abas antigas após deploy/chunks e mostra botão de recarga.
+if (!original.includes("apply-panel-load-recovery-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing panel load recovery insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-panel-load-recovery-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Abastecimentos pendentes: mostrar todos e permitir editar/excluir na própria aba.
 if (!original.includes("apply-pending-fuelings-management-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing pending fuelings insertion point");
