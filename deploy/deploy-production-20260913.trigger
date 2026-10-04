@@ -209,3 +209,4 @@ Publicar correção de despesas em lote 2026-10-04:
 - duplicados são ignorados
 
 2026-10-04 financial document date-time from receipt/photo only
+2026-10-04 retry financial document date-time source v2
