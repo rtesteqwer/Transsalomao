@@ -140,3 +140,10 @@ Publicar correção dos relatórios Excel em 2026-10-04:
 - Relatório individual com os mesmos totais e seções detalhadas
 - Colunas ampliadas para eliminar ##### e melhorar a organização
 Commit principal: 2502c6102cb0d2dda9aaee8c125c01ad376918c4
+
+
+Republicar após correção de segurança TanStack em 2026-10-04:
+- força @tanstack/react-start 1.168.60
+- força @tanstack/start-server-core 1.169.39
+- remove package-lock antigo antes da instalação
+Commit: 6fd1a121d70fcb4f774aea038ad6804c3743aac8
