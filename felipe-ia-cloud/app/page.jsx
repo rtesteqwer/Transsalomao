@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getSession, signIn, signOut } from 'next-auth/react';
 
 const CHAT_KEY = 'felipe_ia_cloud_chats_v2';
 const MEMORY_KEY = 'felipe_ia_cloud_memory_v1';
@@ -88,7 +87,6 @@ export default function Home() {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [providers, setProviders] = useState({});
   const [session, setSession] = useState(null);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
@@ -102,13 +100,6 @@ export default function Home() {
     setActiveId(initial[0].id);
     setMemory(loadJson(MEMORY_KEY, []));
     setFeedback(loadJson(FEEDBACK_KEY, []));
-    Promise.all([
-      getSession().catch(() => null),
-      fetch('/api/auth/providers').then(r => r.ok ? r.json() : {}).catch(() => ({}))
-    ]).then(([s, p]) => {
-      setSession(s);
-      setProviders(p || {});
-    });
     setReady(true);
   }, []);
 
@@ -251,21 +242,15 @@ export default function Home() {
     rec.start();
   }
 
-  async function login(provider) {
-    setAuthError('');
-    if (!providers?.[provider]) {
-      setAuthError(
-        provider === 'google'
-          ? 'O login Google está pronto na interface, mas ainda precisa das credenciais OAuth do Google na Vercel.'
-          : 'O login Apple/iCloud está pronto na interface, mas ainda precisa das credenciais Sign in with Apple na Vercel.'
-      );
-      return;
-    }
-    await signIn(provider, { callbackUrl: window.location.origin });
+  function login(provider) {
+    setAuthError(
+      provider === 'google'
+        ? 'Para ativar o login Google, adicione AUTH_GOOGLE_ID e AUTH_GOOGLE_SECRET nas variáveis do projeto Vercel.'
+        : 'Para ativar Apple/iCloud, adicione AUTH_APPLE_ID e AUTH_APPLE_SECRET do Sign in with Apple nas variáveis do projeto Vercel.'
+    );
   }
 
-  async function logout() {
-    await signOut({ redirect: false });
+  function logout() {
     setSession(null);
     setAccountOpen(false);
   }
