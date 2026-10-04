@@ -72,6 +72,18 @@ jobs:
             sed -n "${start},${end}p" /tmp/trans-source/src/lib/api.ts
           done
 
+      - name: Inspect live trip cache ordering
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- useFleet trip mutation/cache ---'
+          grep -nE 'upsertTrip|trip:|invalidateQueries|setQueryData|trips:|useMutation' /tmp/trans-source/src/lib/use-fleet.ts | head -280 || true
+          echo '--- final Viagens ordering state ---'
+          grep -nE 'tripOrder|latest_launch|const rows|compactRows|groupedModeRows|sort\(' /tmp/trans-source/src/routes/dono/viagens.tsx | head -260 || true
+          echo '--- Trip mapping createdAt ---'
+          sed -n '90,135p' /tmp/trans-source/src/lib/api.ts
+          grep -nE 'createdAt|export type Trip|interface Trip' /tmp/trans-source/src/lib/types.ts | head -120 || true
+
       - name: Validate requested changes
         shell: bash
         run: |
