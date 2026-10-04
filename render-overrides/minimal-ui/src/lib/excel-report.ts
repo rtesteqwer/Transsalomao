@@ -86,11 +86,11 @@ export async function downloadFleetExcel({ data, computed, fuelings, period, dri
       sheet.addRow([]);
       const titleRow = sheet.addRow([title]);
       sheet.mergeCells(titleRow.number, 1, titleRow.number, Math.max(8, headers.length));
-      titleRow.height = 34;
+      titleRow.height = 24;
       const cell = sheet.getCell(titleRow.number, 1);
       cell.font = { bold: true, size: 12, color: { argb: black } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: dark } };
-      cell.alignment = { horizontal: "left", vertical: "middle", wrapText: false, shrinkToFit: true };
+      cell.alignment = { horizontal: "left", vertical: "middle" };
       const header = sheet.addRow(headers);
       header.height = 26;
       styleHeader(header);
