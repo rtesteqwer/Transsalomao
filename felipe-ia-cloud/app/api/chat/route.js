@@ -1,4 +1,4 @@
-import { generateText, isStepCount } from 'ai';
+import { generateText, stepCountIs } from 'ai';
 import { executeCode } from 'ai-sdk-tool-code-execution';
 
 export const runtime = 'nodejs';
@@ -143,7 +143,7 @@ export async function POST(request) {
         tools: {
           executeCode: executeCode()
         },
-        stopWhen: isStepCount(4)
+        stopWhen: stepCountIs(4)
       });
 
       return Response.json({
