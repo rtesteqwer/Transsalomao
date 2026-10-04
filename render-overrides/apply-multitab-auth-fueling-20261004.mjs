@@ -88,6 +88,37 @@ function rep(s, before, after, label) {
   write(rel, s);
 }
 
-console.log('[multitab-auth-fueling] per-tab trips, session refresh, unified login and fueling prefill enabled');
+
+// 5) Lançamento de viagem: a Gerência pode lançar em nome do motorista selecionado.
+//    Motorista autenticado continua restrito ao próprio driverId.
+//    Isso permite duas abas simultâneas sem exigir uma sessão de motorista em cada aba.
+{
+  const rel = 'src/lib/api.ts';
+  let s = read(rel);
+  s = rep(s,
+    `  .handler(async ({ data }) => {
+    const session = await requireDriver();
+    const sql = await getSql();
+    const id = newId("rep");`,
+    `  .handler(async ({ data }) => {
+    const access = await fleetAccess();
+    const sql = await getSql();
+    const driverId = access.role === "admin" ? data.driverId : access.driverId;
+    if (!driverId) throw new Error("Escolha o motorista.");
+    if (access.role === "driver" && data.driverId !== driverId) {
+      throw new Error("Motorista inválido para esta sessão.");
+    }
+    const driver = await sql<{ id: string }>\`select id from drivers where id=\${driverId} and status='ativo' limit 1\`;
+    if (!driver[0]) throw new Error("Motorista inválido ou inativo.");
+    const id = newId("rep");`,
+    'manager can submit reports on behalf of selected driver');
+  s = rep(s,
+    `      values (\${id},\${ticket},\${session.driverId},\${data.fleetId},\${data.km},\${data.tons},\${data.dailyValue},\${data.freightMode ?? null},'pendente')`, 
+    `      values (\${id},\${ticket},\${driverId},\${data.fleetId},\${data.km},\${data.tons},\${data.dailyValue},\${data.freightMode ?? null},'pendente')`,
+    'report uses selected driver for management');
+  write(rel, s);
+}
+
+console.log('[multitab-auth-fueling] per-tab trips, session refresh, unified login and fueling prefill enabled; management trip submit enabled');
 
 // Regression coverage: Qwen3-VL reader + independent-tab launch flow.
