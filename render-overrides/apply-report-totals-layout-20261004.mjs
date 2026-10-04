@@ -190,7 +190,9 @@ s = s.replace(
 );
 s = s.replace('        tonSheet.getRow(5).height = 22;', '        tonSheet.getRow(5).height = 42;');
 
-const widthsMarker = '        [12, 12, 20, 17, 17, 20, 18, 16, 14, 14, 14, 15, 15, 12, 15, 15, 15]';
+const legacyWidthsMarker = '        [12, 12, 20, 17, 17, 20, 18, 16, 14, 14, 14, 15, 15, 12, 15, 15, 15]';
+const compactWidthsMarker = '        [12, 14, 22, 18, 19, 14, 14, 14, 16, 15, 12, 15, 15, 16]';
+const widthsMarker = s.includes(compactWidthsMarker) ? compactWidthsMarker : legacyWidthsMarker;
 const widthsPos = s.indexOf(widthsMarker);
 if (widthsPos < 0) throw new Error("report-totals-layout: driver widths marker missing");
 const details = `        const driverTableEndRow = totalRow.number;
@@ -239,14 +241,25 @@ const details = `        const driverTableEndRow = totalRow.number;
 `;
 s = s.slice(0, widthsPos) + details + s.slice(widthsPos);
 
-s = s.replace(
-  '        [12, 12, 20, 17, 17, 20, 18, 16, 14, 14, 14, 15, 15, 12, 15, 15, 15]\n          .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });',
-  '        [17, 18, 28, 24, 24, 24, 22, 22, 18, 18, 18, 22, 24, 17, 24, 24, 24]\n          .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });'
-);
-s = s.replace(
-  '        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, tonSheet.rowCount - 1), column: 17 } };',
-  '        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, driverTableEndRow - 1), column: 17 } };'
-);
+if (widthsMarker === compactWidthsMarker) {
+  s = s.replace(
+    '        [12, 14, 22, 18, 19, 14, 14, 14, 16, 15, 12, 15, 15, 16]\n          .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });',
+    '        [17, 18, 24, 22, 22, 18, 18, 18, 20, 18, 15, 18, 18, 20]\n          .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });'
+  );
+  s = s.replace(
+    '        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, tonSheet.rowCount - 1), column: 14 } };',
+    '        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, driverTableEndRow - 1), column: 14 } };'
+  );
+} else {
+  s = s.replace(
+    '        [12, 12, 20, 17, 17, 20, 18, 16, 14, 14, 14, 15, 15, 12, 15, 15, 15]\n          .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });',
+    '        [17, 18, 28, 24, 24, 24, 22, 22, 18, 18, 18, 22, 24, 17, 24, 24, 24]\n          .forEach((width, index) => { tonSheet.getColumn(index + 1).width = width; });'
+  );
+  s = s.replace(
+    '        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, tonSheet.rowCount - 1), column: 17 } };',
+    '        tonSheet.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, driverTableEndRow - 1), column: 17 } };'
+  );
+}
 
 s = s.replace(
   '    workbook.eachSheet((excelSheet: any) => { excelSheet.eachRow({ includeEmpty: true }, (excelRow: any) => { excelRow.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = { ...(cell.font ?? {}), color: { argb: "111111" } }; }); }); });',
