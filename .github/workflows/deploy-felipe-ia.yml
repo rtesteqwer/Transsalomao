@@ -1,0 +1,73 @@
+name: Deploy Felipe IA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'felipe-ia-cloud/**'
+      - '.github/workflows/deploy-felipe-ia.yml'
+      - 'deploy/deploy-felipe-ia.trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: felipe-ia-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate Vercel token
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${VERCEL_TOKEN:-}" || { echo "VERCEL_TOKEN ausente"; exit 1; }
+
+      - name: Link Felipe IA project
+        working-directory: felipe-ia-cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_5J9tpQrlU27PsKdOY2N7QzBaFyn9"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+
+      - name: Deploy production from correct source directory
+        working-directory: felipe-ia-cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN" 2>&1 | tee /tmp/felipe-ia-deploy.log
+          grep -Eo 'https://[^ ]+\.vercel\.app' /tmp/felipe-ia-deploy.log | tail -1 || true
+
+      - name: Verify collective learning
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..12}; do
+            if curl -fsS 'https://felipe-ia.vercel.app/api/learn' -o /tmp/learn.json; then
+              break
+            fi
+            sleep 5
+          done
+          cat /tmp/learn.json
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync("/tmp/learn.json","utf8")); if(x.enabled!==true) { console.error("Aprendizado coletivo não está ativo"); process.exit(1) }'
+
+          body='{"mode":"assistant","messages":[{"role":"user","content":"Você aprende com mais pessoas usando a Felipe IA? Responda em uma frase."}],"attachments":[],"memory":[],"feedback":[]}'
+          curl -fsS -X POST 'https://felipe-ia.vercel.app/api/chat' -H 'content-type: application/json' --data "$body" -o /tmp/chat.json
+          cat /tmp/chat.json
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync("/tmp/chat.json","utf8")); if(!x.text || x.sharedLearning?.enabled!==true || x.sharedLearning?.saved!==true) { console.error("Memória coletiva não confirmou leitura/gravação"); process.exit(1) }'
