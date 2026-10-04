@@ -33,3 +33,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 fix management panel stale deploy loading 6b0c95c1
 2026-10-04 restore management data load after latest-trip ordering ae977a26
 2026-10-04 viagens filters with latest-launch order 1bf1d19e
+2026-10-04 deploy viagens caixa real launch order + clean layout
