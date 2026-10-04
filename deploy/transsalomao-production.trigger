@@ -20,3 +20,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 \n2026-10-04 Felipe IA Cloud brain for Trans Salomao 29d618dd83a6936b887786cf4a0d2b411f1dcabc\n
 2026-10-04 final deploy after legacy OpenAI credentials disabled
 2026-10-04 deploy stable ChatGPT-free Qwen gateway build
+2026-10-04 deploy after removing direct OpenAI assistant code
