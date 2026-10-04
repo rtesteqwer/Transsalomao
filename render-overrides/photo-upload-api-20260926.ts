@@ -101,12 +101,33 @@ export const Route = createFileRoute("/api/photo-upload")({
             return json({ ok: false, message: "O upload ficou incompleto. Selecione a foto novamente." }, 409);
           }
 
+          let sourceImage = original;
+          const originalName = String(session.file_name || "");
+          const originalMime = String(session.mime_type || "").toLowerCase();
+          const needsHeicDecode = /\.(?:heic|heif)$/i.test(originalName) || /image\/hei[cf]/i.test(originalMime);
+
+          if (needsHeicDecode) {
+            try {
+              const heicModule: any = await import("heic-convert");
+              const convert: any = heicModule.default ?? heicModule;
+              const converted = await convert({
+                buffer: original,
+                format: "JPEG",
+                quality: 0.92,
+              });
+              sourceImage = Buffer.from(converted);
+            } catch (error) {
+              console.error("[photo-upload] HEIC conversion failed", error instanceof Error ? error.message : "unknown");
+              return json({ ok: false, message: "Não foi possível abrir esta foto HEIC. Selecione a imagem novamente para tentar de novo." }, 415);
+            }
+          }
+
           let jpeg: Buffer;
           try {
             const sharp = (await import("sharp")).default;
             let width = 1800;
             let quality = 82;
-            jpeg = await sharp(original, { failOn: "none" })
+            jpeg = await sharp(sourceImage, { failOn: "none" })
               .rotate()
               .resize({ width, height: width, fit: "inside", withoutEnlargement: true })
               .jpeg({ quality, mozjpeg: true })
@@ -114,7 +135,7 @@ export const Route = createFileRoute("/api/photo-upload")({
             while (jpeg.toString("base64").length > 2_700_000 && width > 800) {
               width -= 200;
               quality = Math.max(48, quality - 7);
-              jpeg = await sharp(original, { failOn: "none" })
+              jpeg = await sharp(sourceImage, { failOn: "none" })
                 .rotate()
                 .resize({ width, height: width, fit: "inside", withoutEnlargement: true })
                 .jpeg({ quality, mozjpeg: true })
