@@ -89,3 +89,5 @@ function rep(s, before, after, label) {
 }
 
 console.log('[multitab-auth-fueling] per-tab trips, session refresh, unified login and fueling prefill enabled');
+
+// Regression coverage: Qwen3-VL reader + independent-tab launch flow.
