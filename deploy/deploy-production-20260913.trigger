@@ -200,3 +200,10 @@ Correção definitiva da ordem da aba Viagens em 2026-10-04:
 - grupos preservam a ordem do lançamento mais recente
 Commit: 71f3cc42c50f206b211f1ff1cbe4d2c4766cd5de
 Validação completa, build e testes aprovados.
+
+
+Publicar correção de despesas em lote 2026-10-04:
+- seleção múltipla extrai valor/data/hora por arquivo
+- despesas completas podem ser selecionadas e lançadas em lote
+- mantém Preencher individual para conferência
+- duplicados são ignorados
