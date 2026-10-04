@@ -55,3 +55,4 @@ required-fixed-mode-quantity=1
 fixed-mode-one-photo-many-trips=1
 
 2026-10-04 expense-batch-multi-file-fix=1
+2026-10-04 expense-batch-multi-file-fix-retry=2
