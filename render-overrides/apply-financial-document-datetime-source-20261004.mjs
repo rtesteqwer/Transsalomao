@@ -24,18 +24,19 @@ function replaceRequired(text, before, after, label) {
   const rel = "src/routes/dono/despesas.tsx";
   let s = read(rel);
 
-  s = replaceRequired(
-    s,
-    `  const openNew = () => {
-    const today = new Date().toISOString().slice(0, 10);`,
-    `  const openNew = () => {`,
-    "remove current date from new entry",
+  // O layout atual abre o diálogo por um setEditing inline. Remova qualquer
+  // preenchimento automático com a data do sistema, sem depender da versão visual.
+  s = s.replaceAll(
+    'date: new Date().toISOString().slice(0, 10),',
+    'date: "",',
   );
-
-  const beforeDateDefaults = (s.match(/date: today,/g) || []).length;
-  if (beforeDateDefaults > 0) s = s.replace(/date: today,/g, 'date: "",');
-  if (beforeDateDefaults !== 2 && !s.includes('date: "",')) {
-    throw new Error("financial-document-datetime-source: expected new-entry date defaults");
+  s = s.replaceAll('date: today,', 'date: "",');
+  s = s.replace(
+    /\n\s*const today = new Date\(\)\.toISOString\(\)\.slice\(0, 10\);/,
+    "",
+  );
+  if (/date:\s*(?:today|new Date\(\)\.toISOString\(\)\.slice\(0, 10\))/.test(s)) {
+    throw new Error("financial-document-datetime-source: current-date default still present in expense draft");
   }
 
   s = replaceRequired(
