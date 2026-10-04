@@ -180,3 +180,12 @@ HEIC + TanStack clean-lock deploy 2026-10-04
 - HEIC/HEIF server conversion enabled for ticket photos
 - secure TanStack lock rebuilt from scratch
 - final npm install uses matching legacy peer resolution
+
+
+Correção mobile de relatórios em 2026-10-04:
+- PDF geral e PDF por motorista usam salvamento/compartilhamento nativo no Android antes do blob download
+- Excel geral e por motorista usam compartilhamento/salvamento nativo no celular, com fallback de navegação direta
+- remove falso positivo de 'download feito' quando Android ignora o link blob
+- desktop mantém download direto
+Commit: 8797c69a55fe26356a70e2a1b8bf93dcc1bffca4
+Build e testes aprovados no workflow Validate operational UI changes.
