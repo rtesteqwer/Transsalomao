@@ -589,6 +589,7 @@ if (!original.includes("[fix-luis-ton-price]")) {
   if (!fs.existsSync(fixSource)) throw new Error('Luis ton price fix script missing');
   const fixTarget = path.join(work, '.fix-luis-pending-ton-price-20261004.mjs');
   fs.copyFileSync(fixSource, fixTarget);
+  execSync('npm install --no-save --ignore-scripts --no-audit --no-fund @neondatabase/serverless', { cwd: work, stdio: 'inherit', env: process.env });
   execFileSync(process.execPath, [fixTarget], { cwd: work, stdio: 'inherit', env: process.env });
 }
 `;
