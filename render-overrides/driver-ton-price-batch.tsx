@@ -266,11 +266,6 @@ export function DriverTonPriceBatch({ available, upload, read, save, link, onBus
   const groupUnit = selectedModes.size === 1 && selected[0]?.mode === "ton" ? "R$/t" : "R$/viagem";
 
   return <div className="grid gap-4" aria-label="Leitura inteligente de viagens por fotos">
-    <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 text-sm">
-      <strong>Leitura inteligente automática</strong>
-      <p className="mt-1 text-xs text-muted">O ChatGPT cruza layout, empresas, produto, rota, valores, peso, data e hora para identificar a modalidade e o preço. Se a API falhar, o OCR local assume automaticamente.</p>
-    </div>
-
     <div className="grid grid-cols-2 gap-3">
       {[{ label: "Tirar foto", camera: true }, { label: "Selecionar várias fotos", camera: false }].map(option => (
         <label key={option.label} className="relative flex min-h-28 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-bg px-3 py-4 text-center">

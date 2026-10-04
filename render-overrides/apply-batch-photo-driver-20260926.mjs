@@ -277,12 +277,12 @@ const batchUi = [
 '              {batchPhotos.length > 0 ? (',
 '                <div className="grid gap-2 rounded-lg border border-ok/30 bg-ok/10 p-3 text-sm">',
 '                  <p className="font-semibold">{batchPhotos.length} foto{batchPhotos.length === 1 ? "" : "s"} selecionada{batchPhotos.length === 1 ? "" : "s"}</p>',
-'                  <p className="text-xs text-muted">Cada foto é salva primeiro no banco. Depois o ChatGPT lê, cria ou encontra a viagem e vincula a imagem ao lançamento.</p>',
+'                  <p className="text-xs text-muted">Cada foto é salva primeiro no banco. Depois a leitura inteligente identifica os dados, cria ou encontra a viagem e vincula a imagem ao lançamento.</p>',
 '                  <div className="max-h-48 space-y-2 overflow-auto">',
 '                    {batchPhotos.map((photo, index) => (',
 '                      <div key={index} className="rounded-md border border-border/70 bg-bg/70 p-2 text-xs">',
 '                        <p className="truncate font-medium">{index + 1}. {photo.fileName}</p>',
-'                        <p className="mt-1 text-[11px] font-semibold text-muted">{photo.status === "queued" ? "Na fila" : photo.status === "uploading" ? "Salvando foto no banco…" : photo.status === "saved" ? "Foto salva no banco" : photo.status === "reading" ? "Lendo com ChatGPT…" : photo.status === "sending" ? "Enviando ao Caixa…" : photo.status === "linked" ? "Vinculada ao lançamento existente" : photo.status === "sent" ? "Enviada ao Caixa" : "Erro"}</p>',
+'                        <p className="mt-1 text-[11px] font-semibold text-muted">{photo.status === "queued" ? "Na fila" : photo.status === "uploading" ? "Salvando foto no banco…" : photo.status === "saved" ? "Foto salva no banco" : photo.status === "reading" ? "Lendo com IA…" : photo.status === "sending" ? "Enviando ao Caixa…" : photo.status === "linked" ? "Vinculada ao lançamento existente" : photo.status === "sent" ? "Enviada ao Caixa" : "Erro"}</p>',
 '                        {photo.error ? <p className="mt-1 text-danger">{photo.error}</p> : photo.data ? (',
 '                          <p className="mt-1 text-muted">',
 '                            Ticket {photo.data.numero_ticket || "—"}',
@@ -322,12 +322,12 @@ s = s.replace(
 );
 s = s.replace(
   'O OCR lê número do ticket, peso líquido, placas, transportadora, operadora, destinatário, data e horário quando estiverem no ticket.',
-  'Selecione uma ou várias fotos. O ChatGPT lê cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência.',
+  'Selecione uma ou várias fotos. A leitura inteligente processa cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência.',
 );
 s = s.replace(
   'Neste modo o OCR lê número do ticket, placas, transportadora, destinatário, data e horário; pesos e pesagens são ignorados.',
-  'Selecione uma ou várias fotos. O ChatGPT lê os dados de cada documento; pesos são ignorados neste modo.',
+  'Selecione uma ou várias fotos. A leitura inteligente extrai os dados de cada documento; pesos são ignorados neste modo.',
 );
 
 fs.writeFileSync(p, s);
-console.log("[batch-photo-driver] all modes now support multi-photo ChatGPT extraction");
+console.log("[batch-photo-driver] all modes now support multi-photo intelligent extraction");

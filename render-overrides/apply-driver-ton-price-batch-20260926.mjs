@@ -25,8 +25,8 @@ edit('src/routes/motorista.tsx', [
   ['disabled={isLoading || fleets.length === 0}', 'disabled={isLoading || fleets.length === 0 || priceBatchPending}'],
   ['                  aria-pressed={freightMode === mode}', '                  aria-pressed={freightMode === mode}\n                  disabled={priceBatchPending}'],
   ['    e.preventDefault();\n    const tonsN', '    e.preventDefault();\n    if (priceBatchMode) return;\n    const tonsN'],
-  ['Escolha motorista, conjunto e o modo de frete. Em Cegonha e Caixinha você pode lançar várias viagens de uma vez.', 'Escolha motorista e conjunto. No leitor inteligente, o ChatGPT identifica automaticamente modalidade, preço, peso, data e hora de cada foto.'],
-  ['? "Selecione uma ou várias fotos. O ChatGPT lê cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência."', '? (priceBatchMode ? "Leia as fotos, confira as viagens e aplique o preço do grupo antes de enviar ao Caixa." : "Selecione uma ou várias fotos. Cada ticket válido é enviado automaticamente ao Caixa para a gerência definir o preço.")'],
+  ['Escolha motorista, conjunto e o modo de frete. Em Cegonha e Caixinha você pode lançar várias viagens de uma vez.', 'Escolha motorista e conjunto. No leitor inteligente, a IA identifica automaticamente modalidade, preço, peso, data e hora de cada foto.'],
+  ['? "Selecione uma ou várias fotos. A leitura inteligente processa cada uma e envia automaticamente cada ticket válido ao Caixa da Gerência."', '? (priceBatchMode ? "Leia as fotos, confira as viagens e aplique o preço do grupo antes de enviar ao Caixa." : "Selecione uma ou várias fotos. Cada ticket válido é enviado automaticamente ao Caixa para a gerência definir o preço.")'],
   ['              <TicketPhotoAccess onAccess={setTicketAccess} />\n              <div className="grid grid-cols-2 gap-3">', `              <TicketPhotoAccess onAccess={setTicketAccess} />
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button
