@@ -59,10 +59,10 @@ const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
 const packageEntries = Object.entries(lock.packages ?? {});
 const reactStartCopies = packageEntries
   .filter(([name]) => name === "node_modules/@tanstack/react-start" || name.endsWith("/node_modules/@tanstack/react-start"))
-  .map(([name, meta]) => ({ name, version: String((meta as any)?.version ?? "") }));
+  .map(([name, meta]) => ({ name, version: String(meta?.version ?? "") }));
 const serverCoreCopies = packageEntries
   .filter(([name]) => name === "node_modules/@tanstack/start-server-core" || name.endsWith("/node_modules/@tanstack/start-server-core"))
-  .map(([name, meta]) => ({ name, version: String((meta as any)?.version ?? "") }));
+  .map(([name, meta]) => ({ name, version: String(meta?.version ?? "") }));
 const unsafeReactStart = reactStartCopies.filter((item) => item.version !== "1.168.60");
 const unsafeServerCore = serverCoreCopies.filter((item) => item.version !== "1.169.39");
 if (!reactStartCopies.length || !serverCoreCopies.length || unsafeReactStart.length || unsafeServerCore.length) {
