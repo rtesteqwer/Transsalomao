@@ -382,6 +382,15 @@ if (!original.includes("apply-trips-latest-order-20261004.mjs")) {
   );
 }
 
+// Segurança da ordenação de viagens: não deixa created_at quebrar o carregamento da Gerência.
+if (!original.includes("apply-trips-created-at-safety-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing trips created_at safety insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-trips-created-at-safety-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // TanStack Start: corrige GHSA-qx66-fv34-fjm8 antes do npm install/build.
 if (!original.includes("apply-tanstack-start-security-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing TanStack security insertion point");
