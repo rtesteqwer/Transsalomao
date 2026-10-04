@@ -579,6 +579,17 @@ console.log("[fueling-ocr-assets-injector] installed");
   console.log("[tanstack-secure-install] final npm install will use regenerated secure lock");
 }
 
+// Correção pontual de 04/10: preço/t dos lançamentos pendentes recentes do Luis.
+if (!original.includes("[fix-luis-ton-price]")) {
+  const buildMarker = "execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });";
+  if (!original.includes(buildMarker)) throw new Error("Build marker not found for Luis ton price fix");
+  const fixSource = path.join(repo, 'render-overrides', 'fix-luis-pending-ton-price-20261004.mjs');
+  if (!fs.existsSync(fixSource)) throw new Error("Luis ton price fix script missing");
+  const fixTarget = path.join(work, '.fix-luis-pending-ton-price-20261004.mjs');
+  const fixRun = `fs.copyFileSync(${JSON.stringify(fixSource)}, ${JSON.stringify(fixTarget)});\nexecFileSync(process.execPath, [${JSON.stringify(fixTarget)}], { cwd: work, stdio: 'inherit', env: process.env });\n`;
+  original = original.replace(buildMarker, fixRun + buildMarker);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
