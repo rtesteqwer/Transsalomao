@@ -347,6 +347,15 @@ if (!original.includes("apply-qwen-oidc-runtime-20261004.mjs")) {
   );
 }
 
+// Despesas: extrai e preenche automaticamente todos os campos de cada comprovante.
+if (!original.includes("apply-expense-document-autofill-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing expense document autofill insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-expense-document-autofill-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Motorista: Diária, Cegonha e Caixinha com valor por viagem + quantidade.
 if (!original.includes("apply-driver-fixed-trip-price-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing driver fixed trip price insertion point");
