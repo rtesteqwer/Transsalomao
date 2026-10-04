@@ -320,6 +320,15 @@ if (!original.includes("apply-ai-cleanup-gateway-20261004.mjs")) {
     `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-ai-cleanup-gateway-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 }
+// Autenticação do AI Gateway: obtém OIDC no contexto da função Vercel, sem depender de chave OpenAI.
+if (!original.includes("apply-qwen-oidc-runtime-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing Qwen OIDC runtime insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-qwen-oidc-runtime-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Motorista: Diária, Cegonha e Caixinha com valor por viagem + quantidade.
 if (!original.includes("apply-driver-fixed-trip-price-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing driver fixed trip price insertion point");
