@@ -109,11 +109,28 @@ jobs:
           git commit -m "Felipe IA: autoprogramação ${task}"
           git push origin "$branch"
 
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('felipe-ia-cloud/.self-program-result.json','utf8'));
+          const body=[
+            'Alteração criada autonomamente pela Felipe IA.',
+            '',
+            'Tarefa: '+String(r.summary||'Melhoria autônoma'),
+            '',
+            'Risco estimado: '+String(r.risk||'medium'),
+            '',
+            'Arquivos: '+(Array.isArray(r.files)?r.files.join(', '):''),
+            '',
+            'O build passou. Este PR exige aprovação do proprietário antes de entrar em produção.'
+          ].join('\n');
+          fs.writeFileSync('/tmp/felipe-ia-pr-body.md', body);
+          NODE
+
           url="$(gh pr create \
             --base main \
             --head "$branch" \
             --title "Felipe IA • autoprogramação ${task}" \
-            --body "Alteração criada autonomamente pela Felipe IA.\n\nTarefa: ${{ steps.generate.outputs.summary }}\n\nRisco estimado: ${{ steps.generate.outputs.risk }}\n\nO build passou. Este PR exige aprovação do proprietário antes de entrar em produção.")"
+            --body-file /tmp/felipe-ia-pr-body.md)"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "$url"
 
