@@ -167,3 +167,10 @@ HEIC/HEIF ticket upload fix 2026-10-04
 - Convert Samsung/Android HEIC photos server-side before ticket reading
 - Accept HEIC/HEIF in multi-photo and ZIP driver batches
 - Keep original photo stored and normalize reading copy to JPEG
+
+
+Publicação com detecção TanStack segura na raiz (2026-10-04):
+- package.json raiz declara @tanstack/react-start 1.168.60
+- package.json raiz declara @tanstack/start-server-core 1.169.39
+- aplicação reconstruída e output já validados sem 1.168.49
+Commit: 7a712d990f66b3cc25a49ee26c76b6be889e472f
