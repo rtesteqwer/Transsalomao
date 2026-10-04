@@ -53,13 +53,6 @@ function replaceRequired(text, before, after, label) {
     "submit date without today fallback",
   );
 
-  s = replaceRequired(
-    s,
-    '            const parsedAmount = parseLocaleNumberOrZero(amount);',
-    '            if (!date) return toast.error("A data deve ser lida do comprovante/foto ou informada após conferência.");\n            const parsedAmount = parseLocaleNumberOrZero(amount);',
-    "require verified date",
-  );
-
   s = s.replace(
     '<Field label="Data"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></Field>',
     '<Field label="Data do documento"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></Field>',
