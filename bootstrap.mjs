@@ -293,6 +293,15 @@ if (!original.includes("apply-expense-batch-20261004.mjs")) {
   );
 }
 
+// Data/hora de despesas e adiantamentos: usar exclusivamente o que foi lido no documento/foto.
+if (!original.includes("apply-financial-document-datetime-source-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing financial document datetime source insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-financial-document-datetime-source-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Abastecimentos: persistir e exibir desconto + total final pago do MESMO ticket.
 if (!original.includes("apply-fueling-net-fields-20260929.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing fueling net fields insertion point");
