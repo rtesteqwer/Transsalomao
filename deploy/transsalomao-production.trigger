@@ -60,3 +60,5 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 fix clipped Excel section title text b769ab1e
 2026-10-04 deploy Trans Salomao IA operational agent full authority 78c39699
 2026-10-04 redeploy expanded natural commands Trans Salomao IA 65a7a204
+
+2026-10-04 fix only clipped section title in PDF c08a9c0b
