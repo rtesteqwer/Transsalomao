@@ -59,6 +59,19 @@ jobs:
           echo '--- Excel download tail ---'
           tail -n 90 /tmp/trans-source/src/lib/excel-report.ts
 
+      - name: Inspect trip creation ordering paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- trip insert/update/query paths ---'
+          grep -nE 'insert into trips|update trips set|select \* from trips|created_at|acceptReports|saveTrip|upsertTrip' /tmp/trans-source/src/lib/api.ts | head -260 || true
+          echo '--- contexts around trip inserts ---'
+          grep -n 'insert into trips' /tmp/trans-source/src/lib/api.ts | cut -d: -f1 | while read -r line; do
+            start=$((line>18 ? line-18 : 1)); end=$((line+38));
+            echo "### lines $start-$end"
+            sed -n "${start},${end}p" /tmp/trans-source/src/lib/api.ts
+          done
+
       - name: Validate requested changes
         shell: bash
         run: |
