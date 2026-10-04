@@ -35,12 +35,29 @@ jobs:
           printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
           npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
 
-      - name: Deploy production
+      - name: Deploy Trans Salomao production
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
           URL="$(npx --yes vercel@latest deploy --force --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
-          echo "Published: $URL"
+          echo "Published Trans Salomao: $URL"
 
-# Felipe IA routing deploy 2026-10-03
+      - name: Link Felipe IA Cloud project
+        working-directory: felipe-ia-cloud
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_5J9tpQrlU27PsKdOY2N7QzBaFyn9"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+
+      - name: Deploy Felipe IA Cloud production
+        working-directory: felipe-ia-cloud
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="$(npx --yes vercel@latest deploy --force --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
+          echo "Published Felipe IA Cloud: $URL"
