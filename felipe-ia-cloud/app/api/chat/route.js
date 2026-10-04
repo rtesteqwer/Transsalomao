@@ -16,6 +16,7 @@ export const maxDuration = 120;
 
 const NORMAL_MODEL = process.env.FELIPE_MODEL || 'alibaba/qwen3-vl-thinking';
 const CODE_MODEL = process.env.FELIPE_CODE_MODEL || 'alibaba/qwen3-coder-next';
+const IMAGE_MODEL = process.env.FELIPE_IMAGE_MODEL || 'google/gemini-3-pro-image';
 
 function cleanString(value, max = 12000) {
   return String(value ?? '').slice(0, max);
@@ -105,6 +106,31 @@ function hasVisualAttachment(attachments = []) {
   });
 }
 
+function generatedImages(files = []) {
+  return (Array.isArray(files) ? files : [])
+    .filter(file => String(file?.mediaType || '').startsWith('image/'))
+    .slice(0, 4)
+    .map((file, index) => {
+      const mediaType = String(file.mediaType || 'image/png');
+      let base64 = '';
+
+      if (typeof file.base64 === 'string' && file.base64) {
+        base64 = file.base64;
+      } else if (file.uint8Array) {
+        base64 = Buffer.from(file.uint8Array).toString('base64');
+      }
+
+      if (!base64) return null;
+
+      return {
+        id: 'generated-' + Date.now() + '-' + index,
+        mediaType,
+        dataUrl: `data:${mediaType};base64,${base64}`
+      };
+    })
+    .filter(Boolean);
+}
+
 async function reviewDraft({ task, draft, contextText }) {
   if (!shouldReview(task, contextText)) {
     return { answer: draft, reviewed: false, changed: false };
@@ -169,10 +195,26 @@ export async function POST(request) {
       sharedLearningEnabled: sharedLearning.enabled
     });
     let draft = '';
+    let images = [];
     let toolSteps = 0;
     let verifiedByExecution = false;
 
-    if (task === TASK.CODE) {
+    if (task === TASK.IMAGE_GENERATION) {
+      const result = await generateText({
+        model: IMAGE_MODEL,
+        system,
+        messages
+      });
+
+      images = generatedImages(result.files);
+      draft = String(result.text || '').trim() || (images.length ? 'Imagem gerada.' : '');
+
+      if (!images.length) {
+        throw new Error('O modelo de imagem não retornou uma imagem.');
+      }
+
+      verifiedByExecution = true;
+    } else if (task === TASK.CODE) {
       const result = await generateText({
         model: CODE_MODEL,
         system,
@@ -216,6 +258,7 @@ export async function POST(request) {
       verified: reviewed.reviewed || verifiedByExecution,
       corrected: reviewed.changed,
       toolSteps,
+      images,
       sharedLearning: {
         enabled: sharedLearning.enabled,
         used: sharedLearning.items.length,
