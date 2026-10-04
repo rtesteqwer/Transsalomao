@@ -105,10 +105,10 @@ function replaceOnce(source, before, after, label, required = true) {
     s = s.replace(marker, helper + marker);
   }
 
-  if (!/const pending =[\\s\\S]{0,500}reportLaunchTime\\(b\\)/.test(s)) {
+  if (!/const pending =[\s\S]{0,500}reportLaunchTime\(b\)/.test(s)) {
     const pendingStart = s.indexOf("  const pending =");
     if (pendingStart < 0) throw new Error("viagens-caixa-clean-latest: Caixa pending declaration missing");
-    const pendingEnd = s.indexOf(";\\n", pendingStart);
+    const pendingEnd = s.indexOf(";\n", pendingStart);
     if (pendingEnd < 0) throw new Error("viagens-caixa-clean-latest: Caixa pending declaration end missing");
     const statement = s.slice(pendingStart, pendingEnd + 1);
     const equalAt = statement.indexOf("=");
@@ -146,7 +146,7 @@ function replaceOnce(source, before, after, label, required = true) {
   {
     const compactStart = s.indexOf("  const compactRows =");
     if (compactStart < 0) throw new Error("viagens-caixa-clean-latest: compactRows declaration missing");
-    const compactEnd = s.indexOf(";\\n", compactStart);
+    const compactEnd = s.indexOf(";\n", compactStart);
     if (compactEnd < 0) throw new Error("viagens-caixa-clean-latest: compactRows declaration end missing");
     const statement = s.slice(compactStart, compactEnd + 1);
     if (statement !== "  const compactRows = rows;") {
