@@ -14,15 +14,66 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Pull Felipe IA production environment
+        working-directory: felipe-ia-cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_5J9tpQrlU27PsKdOY2N7QzBaFyn9"}' > .vercel/project.json
+          npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          if [ -n "${VERCEL_OIDC_TOKEN:-}" ]; then
+            echo "VERCEL_OIDC_TOKEN=PRESENT"
+          else
+            echo "VERCEL_OIDC_TOKEN=MISSING"
+          fi
+
+      - name: Test AI Gateway directly
+        working-directory: felipe-ia-cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          if [ -z "${VERCEL_OIDC_TOKEN:-}" ]; then
+            echo "Cannot test gateway: VERCEL_OIDC_TOKEN missing"
+            exit 1
+          fi
+          payload='{"model":"alibaba/qwen3-vl-thinking","messages":[{"role":"user","content":"Responda apenas OK"}],"max_tokens":32}'
+          code="$(curl -sS -o /tmp/gateway.json -w '%{http_code}' \
+            -X POST 'https://ai-gateway.vercel.sh/v1/chat/completions' \
+            -H "Authorization: Bearer $VERCEL_OIDC_TOKEN" \
+            -H 'content-type: application/json' \
+            --data "$payload")"
+          echo "AI_GATEWAY_HTTP=$code"
+          cat /tmp/gateway.json
+          echo
+          test "$code" = "200"
+
       - name: Verify Felipe IA text response
         shell: bash
         run: |
           set -euo pipefail
           body='{"mode":"assistant","messages":[{"role":"user","content":"Responda apenas: OK"}],"attachments":[],"memory":[],"feedback":[]}'
-          code="$(curl -sS -o /tmp/felipe-response.json -w '%{http_code}'             -X POST 'https://felipe-ia.vercel.app/api/chat'             -H 'content-type: application/json'             --data "$body")"
-          echo "HTTP=$code"
+          code="$(curl -sS -o /tmp/felipe-response.json -w '%{http_code}' \
+            -X POST 'https://felipe-ia.vercel.app/api/chat' \
+            -H 'content-type: application/json' \
+            --data "$body")"
+          echo "FELIPE_HTTP=$code"
           cat /tmp/felipe-response.json
           echo
           test "$code" = "200"
