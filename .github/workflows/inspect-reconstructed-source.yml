@@ -28,6 +28,28 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
+      - name: Inspect TanStack dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- reconstructed package.json ---'
+          cat /tmp/trans-source/package.json
+          echo '--- lockfile TanStack entries ---'
+          if [ -f /tmp/trans-source/package-lock.json ]; then
+            node - <<'NODE'
+          const fs = require('fs');
+          const lock = JSON.parse(fs.readFileSync('/tmp/trans-source/package-lock.json','utf8'));
+          const p = lock.packages || {};
+          for (const [k,v] of Object.entries(p)) {
+            if (k.includes('@tanstack/react-start') || k.includes('@tanstack/start-server-core')) {
+              console.log(k, v.version, v.resolved || '');
+            }
+          }
+          NODE
+          else
+            echo 'NO PACKAGE LOCK'
+          fi
+
       - name: Validate requested changes
         shell: bash
         run: |
