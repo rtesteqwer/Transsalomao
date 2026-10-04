@@ -355,6 +355,15 @@ if (!original.includes("apply-fueling-pump-fallback-20261004.mjs")) {
   );
 }
 
+// Aba Viagens: últimos lançamentos primeiro.
+if (!original.includes("apply-trips-latest-order-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing trips latest order insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-trips-latest-order-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // TanStack Start: corrige GHSA-qx66-fv34-fjm8 antes do npm install/build.
 if (!original.includes("apply-tanstack-start-security-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing TanStack security insertion point");
