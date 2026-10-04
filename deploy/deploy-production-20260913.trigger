@@ -161,3 +161,9 @@ Publicação final após validação completa (2026-10-04):
 - build completo e testes de tickets aprovados
 - inclui correções da Planilha Geral e relatório por motorista
 Commit de segurança validado: 08d52fa9b4dd9a25e350d5fc02dc984334cc96e8
+
+
+HEIC/HEIF ticket upload fix 2026-10-04
+- Convert Samsung/Android HEIC photos server-side before ticket reading
+- Accept HEIC/HEIF in multi-photo and ZIP driver batches
+- Keep original photo stored and normalize reading copy to JPEG
