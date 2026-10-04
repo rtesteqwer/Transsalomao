@@ -12,12 +12,14 @@ Versão da Felipe IA independente do notebook Ubuntu.
 - Aprendizado coletivo: perguntas/respostas e correções são anonimizadas/redigidas e salvas em Vercel Blob privado; a Felipe IA recupera aprendizado relevante de todos os usuários antes de responder.
 - Correções explícitas têm prioridade sobre interações aprendidas.
 - Arquivos: imagens, PDFs e arquivos de texto podem ser anexados.
+- Criação de imagens: pedidos como "crie uma foto..." ou "gere uma imagem..." são roteados para um modelo de imagem pelo Vercel AI Gateway e exibidos diretamente na conversa.
 - Não há integração com Trans Salomão, banco da empresa, Ollama, Ubuntu ou Cloudflare Tunnel.
 
 ## Variáveis
 
 - FELIPE_MODEL: substitui o modelo principal.
 - FELIPE_CODE_MODEL: substitui o modelo de programação.
+- FELIPE_IMAGE_MODEL: substitui o modelo de criação de imagens; padrão: `google/gemini-3-pro-image`.
 - BLOB_READ_WRITE_TOKEN: opção de autenticação estática para a memória coletiva.
 - FELIPE_LEARNING_STORE_ID: opcional; substitui o store privado padrão da memória coletiva.
 - Em produção na Vercel, a memória coletiva usa preferencialmente autenticação OIDC automática com o Blob privado `felipe-ia-learning`, sem segredo exposto no frontend.
