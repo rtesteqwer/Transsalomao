@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import { generateText, stepCountIs } from 'ai';
 import { executeCode } from 'ai-sdk-tool-code-execution';
 
@@ -33,6 +32,16 @@ function buildContext(memory = [], feedback = []) {
   };
 }
 
+function dataUrlToBuffer(dataUrl) {
+  const comma = String(dataUrl || '').indexOf(',');
+  if (comma < 0) return null;
+  try {
+    return Buffer.from(dataUrl.slice(comma + 1), 'base64');
+  } catch {
+    return null;
+  }
+}
+
 function prepareMessages(messages = [], attachments = []) {
   const safe = messages
     .slice(-24)
@@ -53,7 +62,12 @@ function prepareMessages(messages = [], attachments = []) {
   }
   if (lastUser < 0) return safe;
 
-  const parts = [{ type: 'text', text: safe[lastUser].content || 'Analise os arquivos anexados.' }];
+  const parts = [
+    {
+      type: 'text',
+      text: safe[lastUser].content || 'Analise os arquivos anexados.'
+    }
+  ];
 
   for (const file of attachments.slice(0, 4)) {
     const name = cleanString(file?.name, 180);
@@ -62,14 +76,24 @@ function prepareMessages(messages = [], attachments = []) {
     const text = typeof file?.text === 'string' ? file.text.slice(0, 60000) : '';
 
     if (type.startsWith('image/') && dataUrl.startsWith('data:image/')) {
-      parts.push({ type: 'image', image: dataUrl });
+      const image = dataUrlToBuffer(dataUrl);
+      if (image) {
+        parts.push({
+          type: 'image',
+          image,
+          mediaType: type
+        });
+      }
     } else if (type === 'application/pdf' && dataUrl.startsWith('data:application/pdf')) {
-      parts.push({
-        type: 'file',
-        mediaType: 'application/pdf',
-        data: dataUrl,
-        filename: name || 'documento.pdf'
-      });
+      const data = dataUrlToBuffer(dataUrl);
+      if (data) {
+        parts.push({
+          type: 'file',
+          mediaType: 'application/pdf',
+          data,
+          filename: name || 'documento.pdf'
+        });
+      }
     } else if (text) {
       parts.push({
         type: 'text',
@@ -125,74 +149,6 @@ CORREÇÕES APROVADAS:
 ${feedbackText}`;
 }
 
-function buildResponsesInput(messages = [], attachments = []) {
-  const history = messages
-    .slice(-18)
-    .map(m => `${m.role === 'assistant' ? 'Felipe IA' : 'Usuário'}: ${cleanString(m.content, 14000)}`)
-    .join('\n\n');
-
-  const content = [
-    {
-      type: 'input_text',
-      text: history || 'Usuário: Analise os arquivos anexados.'
-    }
-  ];
-
-  for (const file of attachments.slice(0, 4)) {
-    const name = cleanString(file?.name, 180);
-    const type = cleanString(file?.type, 120);
-    const dataUrl = typeof file?.dataUrl === 'string' ? file.dataUrl : '';
-    const text = typeof file?.text === 'string' ? file.text.slice(0, 60000) : '';
-
-    if (type.startsWith('image/') && dataUrl.startsWith('data:image/')) {
-      content.push({
-        type: 'input_image',
-        image_url: dataUrl,
-        detail: 'auto'
-      });
-    } else if (type === 'application/pdf' && dataUrl.startsWith('data:application/pdf')) {
-      content.push({
-        type: 'input_file',
-        filename: name || 'documento.pdf',
-        file_data: dataUrl
-      });
-    } else if (text) {
-      content.push({
-        type: 'input_text',
-        text: `\n--- ARQUIVO: ${name || 'texto'} ---\n${text}\n--- FIM DO ARQUIVO ---`
-      });
-    }
-  }
-
-  return [
-    {
-      role: 'user',
-      content
-    }
-  ];
-}
-
-function gatewayClient(request) {
-  const runtimeOidc = request.headers.get('x-vercel-oidc-token');
-  const apiKey =
-    process.env.AI_GATEWAY_API_KEY ||
-    runtimeOidc ||
-    process.env.VERCEL_OIDC_TOKEN;
-
-  if (!apiKey) {
-    const error = new Error(
-      'OIDC não disponível no runtime. Verifique o header x-vercel-oidc-token e a configuração OIDC do projeto.'
-    );
-    error.code = 'missing_gateway_auth';
-    throw error;
-  }
-
-  return new OpenAI({
-    apiKey,
-    baseURL: 'https://ai-gateway.vercel.sh/v1'
-  });
-}
-
 function friendlyError(error) {
   const status = Number(error?.status || error?.response?.status || 0);
   const code = cleanString(error?.code || error?.error?.code || '', 120).toLowerCase();
@@ -200,7 +156,7 @@ function friendlyError(error) {
     .replace(/(?:sk|vcp|vercel_[a-z0-9_-]*)-[A-Za-z0-9_-]{12,}/gi, '[segredo ocultado]');
 
   if (code.includes('missing_gateway_auth')) {
-    return 'A Felipe IA está publicada, mas o Vercel AI Gateway não recebeu a autenticação OIDC deste deploy.';
+    return 'A autenticação automática do Vercel AI Gateway não ficou disponível neste deploy.';
   }
   if (status === 401 || status === 403) {
     return 'O Vercel AI Gateway recusou a autenticação deste deploy. Vou manter o erro identificado para corrigir a autorização do Gateway.';
@@ -250,15 +206,16 @@ export async function POST(request) {
       });
     }
 
-    const client = gatewayClient(request);
-    const response = await client.responses.create({
+    const messages = prepareMessages(baseMessages, attachments);
+    const result = await generateText({
       model: NORMAL_MODEL,
-      instructions: normalSystem(memoryText, feedbackText),
-      input: buildResponsesInput(baseMessages, attachments)
+      system: normalSystem(memoryText, feedbackText),
+      messages,
+      reasoning: 'high'
     });
 
     return Response.json({
-      text: response.output_text || 'Não consegui gerar uma resposta.',
+      text: result.text || 'Não consegui gerar uma resposta.',
       model: NORMAL_MODEL,
       mode
     });
