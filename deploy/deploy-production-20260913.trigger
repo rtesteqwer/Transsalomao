@@ -133,3 +133,10 @@ Salomao IA v5.3 ZIP document intake — 2026-09-26
 - extrai valores, litros, preço/L, placas, motorista, ticket e peso quando visíveis
 - não inventa campos ausentes e indica o módulo correto
 Commits: df8ba23e / ad05c63d / 2e7cb4da / fe9219bb
+
+
+Publicar correção dos relatórios Excel em 2026-10-04:
+- Planilha Geral com totais por motorista de adiantamentos, abastecimentos e despesas
+- Relatório individual com os mesmos totais e seções detalhadas
+- Colunas ampliadas para eliminar ##### e melhorar a organização
+Commit principal: 2502c6102cb0d2dda9aaee8c125c01ad376918c4
