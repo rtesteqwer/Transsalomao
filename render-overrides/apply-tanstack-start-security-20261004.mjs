@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
 const target = path.resolve(process.argv[2] || "");
 if (!process.argv[2] || !fs.existsSync(path.join(target, "package.json"))) {
@@ -38,4 +39,25 @@ pkg.overrides = {
   "@tanstack/start-server-core": "1.169.39",
 };
 fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
-console.log("[tanstack-security] forced patched TanStack versions: react-start=1.168.60, start-server-core=1.169.39; existing lock retained for peer compatibility" + (changed ? "" : " (already patched)"));
+
+// Refresh the lockfile itself before the normal install/build. Vercel's package
+// security scanner also evaluates lockfile metadata, so leaving 1.168.49 there
+// causes a deployment block even when package.json already requests 1.168.60.
+execFileSync(
+  "npm",
+  ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund", "--legacy-peer-deps"],
+  { cwd: target, stdio: "inherit", env: process.env },
+);
+
+const lockPath = path.join(target, "package-lock.json");
+if (!fs.existsSync(lockPath)) throw new Error("tanstack-security: package-lock.json was not generated");
+const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+const installedReactStart = lock.packages?.["node_modules/@tanstack/react-start"]?.version;
+const installedServerCore = lock.packages?.["node_modules/@tanstack/start-server-core"]?.version;
+if (installedReactStart !== "1.168.60" || installedServerCore !== "1.169.39") {
+  throw new Error(
+    "tanstack-security: lockfile still unsafe (react-start=" + installedReactStart +
+    ", start-server-core=" + installedServerCore + ")",
+  );
+}
+console.log("[tanstack-security] package.json + lockfile secured: react-start=1.168.60, start-server-core=1.169.39" + (changed ? "" : " (already pinned)"));
