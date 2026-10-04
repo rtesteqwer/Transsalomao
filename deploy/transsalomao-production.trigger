@@ -36,3 +36,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 deploy viagens caixa real launch order + clean layout
 2026-10-04 redeploy viagens caixa after bootstrap escape fix
 2026-10-04 final deploy viagens caixa robust latest-order cleanup
+2026-10-04 motorista desktop + automatic photo detection + missing ticket fallback 2b0d6379
