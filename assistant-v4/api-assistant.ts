@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { authenticateAssistantRequest } from "@/lib/assistant-auth.server";
-import { getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
+import { askFelipeIa, felipeIaConfigured, getSalomaoOpenAIKeys, salomaoModel } from "@/lib/salomao-ai.server";
 
 export const Route = createFileRoute("/api/assistant")({
   server: {
@@ -15,9 +15,9 @@ export const Route = createFileRoute("/api/assistant")({
           authenticated: true,
           username: auth.username,
           via: auth.via,
-          aiConfigured: true,
-          model: "Felipe IA local",
-          provider: "felipe-ia",
+          aiConfigured: felipeIaConfigured(),
+          model: felipeIaConfigured() ? "Felipe IA Cloud" : "Modo local",
+          provider: felipeIaConfigured() ? "felipe-ia-cloud" : "trans-salomao-local",
           capabilities: ["consultar", "criar", "editar", "lançar", "aprovar", "configurar acesso"],
         });
       },
@@ -39,9 +39,9 @@ export const Route = createFileRoute("/api/assistant")({
             })).filter((x: Turn) => x.content.trim())
           : [];
 
-        // OpenAI saiu do caminho normal. Consultas operacionais usam diretamente
-        // os dados reais do Neon; ações suportadas usam as funções locais seguras.
-        // A interface encaminha perguntas gerais para a Felipe IA do Ubuntu.
+        // A Trans Salomão mantém autenticação, permissões, banco e mutações.
+        // A Felipe IA Cloud recebe apenas o contexto operacional já autorizado
+        // e funciona como o cérebro de linguagem/raciocínio da interface.
         const text = norm(message);
 
         if (isWriteIntent(text)) {
@@ -49,19 +49,56 @@ export const Route = createFileRoute("/api/assistant")({
           if (action) {
             return out({
               ok: true,
-              mode: "felipe-local-action",
-              provider: "felipe-ia",
+              mode: "trans-salomao-action",
+              provider: "trans-salomao-secure-actions",
               ...action,
             });
           }
         }
 
         const local = await localAnswer(message, history);
+
+        if (felipeIaConfigured()) {
+          try {
+            const brain = await askFelipeIa({
+              message,
+              history,
+              task: local.bridgeNeeded ? "general-answer" : "operational-answer",
+              context: local.bridgeNeeded
+                ? {
+                    source: "Trans Salomão IA",
+                    scope: "general",
+                    instruction: "Responda ao pedido sem inventar dados operacionais da empresa e sem afirmar que executou ações.",
+                  }
+                : {
+                    source: "Trans Salomão IA",
+                    scope: "operational",
+                    verifiedAnswer: local.answer,
+                    verifiedData: local.data ?? null,
+                  },
+            });
+
+            return out({
+              ok: true,
+              mode: local.bridgeNeeded ? "felipe-cloud" : "felipe-cloud-with-neon",
+              provider: "felipe-ia-cloud",
+              answer: brain.text,
+              data: local.data,
+              model: brain.model,
+            });
+          } catch (error) {
+            console.error("[felipe-ia-cloud] fallback local:", error);
+          }
+        }
+
         return out({
           ok: true,
-          mode: "neon-local",
-          provider: "felipe-ia",
+          mode: "neon-local-fallback",
+          provider: "trans-salomao-local",
           ...local,
+          answer: local.bridgeNeeded
+            ? "A Felipe IA Cloud está temporariamente indisponível. Tente novamente."
+            : local.answer,
         });
       },
     },
