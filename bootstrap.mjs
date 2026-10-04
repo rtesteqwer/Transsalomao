@@ -337,6 +337,15 @@ if (!original.includes("apply-driver-fixed-trip-price-20261004.mjs")) {
     `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-driver-fixed-trip-price-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 }
+// Abas independentes + sessão do leitor + abastecimento por foto sempre preenche antes de gravar.
+if (!original.includes("apply-multitab-auth-fueling-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing multitab/auth/fueling insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-multitab-auth-fueling-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // TanStack Start: corrige GHSA-qx66-fv34-fjm8 antes do npm install/build.
 if (!original.includes("apply-tanstack-start-security-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing TanStack security insertion point");
