@@ -189,3 +189,14 @@ Correção mobile de relatórios em 2026-10-04:
 - desktop mantém download direto
 Commit: 8797c69a55fe26356a70e2a1b8bf93dcc1bffca4
 Build e testes aprovados no workflow Validate operational UI changes.
+
+
+Correção definitiva da ordem da aba Viagens em 2026-10-04:
+- cada nova viagem grava created_at = now() no momento do lançamento/aceite
+- edição de viagem preserva o horário original do lançamento
+- mapTrip envia createdAt para a interface
+- opção Últimos lançamentos ordena explicitamente por createdAt DESC
+- grupos Diária/Cegonha/Caixinha não são mais reordenados alfabeticamente
+- grupos preservam a ordem do lançamento mais recente
+Commit: 71f3cc42c50f206b211f1ff1cbe4d2c4766cd5de
+Validação completa, build e testes aprovados.
