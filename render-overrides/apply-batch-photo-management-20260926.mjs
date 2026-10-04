@@ -80,7 +80,7 @@ const replacement = [
 '    });',
 '    if (response.status === 429 && attempt < 6) { await new Promise((resolve) => setTimeout(resolve, 61_000)); return readTicketImage(imageData, fileName, attempt + 1); }',
 '    const result = await response.json().catch(() => ({ erro: "Resposta inválida do servidor." }));',
-'    if (!response.ok) throw new Error(result?.erro || "O ChatGPT não conseguiu interpretar a foto.");',
+'    if (!response.ok) throw new Error(result?.erro || "A leitura inteligente não conseguiu interpretar a foto.");',
 '    return result as ReadTicketData;',
 '  }',
 '',
@@ -313,10 +313,10 @@ s = s.slice(0, saveStart) + replacement + s.slice(saveEnd);
 
 s = s.replace(
   "Salve a foto enviada pelo motorista e relacione manualmente à viagem correta. Esta área é somente da Gerência e não usa IA.",
-  "Selecione quantas fotos quiser. O ChatGPT extrai os dados; se já existir a viagem, relaciona a foto. Se não existir, cria um lançamento pendente no Caixa para a Gerência conferir e fechar.",
+  "Selecione quantas fotos quiser. A leitura inteligente extrai os dados; se já existir a viagem, relaciona a foto. Se não existir, cria um lançamento pendente no Caixa para a Gerência conferir e fechar.",
 );
 s = s.replace('Field label="Relacionar foto à viagem"', 'Field label="Vínculo manual (para fotos sem correspondência automática)"');
-s = s.replace("Selecione uma ou várias fotos do ticket recebidas do motorista.", "Selecione várias fotos. Todas serão lidas pelo ChatGPT em lote.");
+s = s.replace("Selecione uma ou várias fotos do ticket recebidas do motorista.", "Selecione várias fotos. Todas serão lidas automaticamente em lote.");
 
 
 s = s.replace(
@@ -390,4 +390,4 @@ const resultUi = [
 
 s = s.replace(savedMarker, resultUi + savedMarker);
 fs.writeFileSync(p, s);
-console.log("[batch-photo-management] multi-photo ChatGPT extraction and safe auto-link applied");
+console.log("[batch-photo-management] multi-photo intelligent extraction and safe auto-link applied");
