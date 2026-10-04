@@ -147,3 +147,9 @@ Republicar após correção de segurança TanStack em 2026-10-04:
 - força @tanstack/start-server-core 1.169.39
 - remove package-lock antigo antes da instalação
 Commit: 6fd1a121d70fcb4f774aea038ad6804c3743aac8
+
+
+Republicação 2 — manter lockfile para compatibilidade de peers (2026-10-04):
+- mantém package-lock existente
+- mantém overrides de segurança TanStack
+Commit: ffb570ae4d8dcaaf632743a8c50527f2c95874be
