@@ -3,10 +3,14 @@ const TASK = Object.freeze({
   CODE: 'CODE',
   VISION: 'VISION',
   DOCUMENT: 'DOCUMENT',
+  IMAGE_GENERATION: 'IMAGE_GENERATION',
   MIXED: 'MIXED'
 });
 
 const CODE_PATTERN = /\\b(código|code|programa(?:ção|r)|javascript|typescript|python|java|sql|html|css|react|next(?:\\.js)?|node|api|endpoint|bug|erro|stack trace|refator|função|classe|regex|git|github|vercel|deploy|build|npm|pnpm|yarn|terminal|shell|bash|script)\\b/i;
+
+const IMAGE_GENERATION_PATTERN = /(?:\\b(?:crie|gere|faça|desenhe|produza|renderize)\\b[\\s\\S]{0,100}\\b(?:imagem|foto|ilustração|ilustracao|desenho|arte|render)\\b)|(?:\\b(?:imagem|foto|ilustração|ilustracao|desenho|arte|render)\\b[\\s\\S]{0,80}\\b(?:de|com|mostrando|que mostre)\\b)/i;
+const IMAGE_CAPABILITY_QUESTION = /\\b(?:consegue|pode|é capaz|e capaz|tem capacidade)\\b[\\s\\S]{0,80}\\b(?:criar|gerar|fazer|produzir|desenhar)\\b[\\s\\S]{0,50}\\b(?:imagem|foto|ilustração|ilustracao|desenho|arte|render)\\b/i;
 
 function lastUserText(messages = []) {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -20,14 +24,17 @@ export function classifyTask({ messages = [], attachments = [], requestedMode = 
 
   const text = lastUserText(messages);
   const hasCodeIntent = CODE_PATTERN.test(text);
+  const wantsImageGeneration =
+    IMAGE_GENERATION_PATTERN.test(text) && !IMAGE_CAPABILITY_QUESTION.test(text);
   const hasPdf = attachments.some(file => file?.type === 'application/pdf');
   const hasImage = attachments.some(file => String(file?.type || '').startsWith('image/'));
   const hasAttachment = hasPdf || hasImage || attachments.length > 0;
 
   if (hasAttachment && hasCodeIntent) return TASK.MIXED;
+  if (hasCodeIntent) return TASK.CODE;
+  if (wantsImageGeneration) return TASK.IMAGE_GENERATION;
   if (hasPdf) return TASK.DOCUMENT;
   if (hasImage) return TASK.VISION;
-  if (hasCodeIntent) return TASK.CODE;
   return TASK.CHAT;
 }
 
@@ -44,6 +51,15 @@ function taskGuidance(task) {
       '- Se o teste falhar, leia o erro, corrija e teste novamente.',
       '- Prefira mudanças pequenas, reversíveis e verificáveis.',
       '- Não diga que publicou, alterou GitHub/Vercel ou mexeu no computador do usuário sem uma ferramenta específica que confirme isso.'
+    ].join('\\n');
+  }
+  if (task === TASK.IMAGE_GENERATION) {
+    return [
+      'MODO CRIAÇÃO DE IMAGEM:',
+      '- Gere de fato a imagem solicitada; não responda apenas com uma descrição quando a geração estiver disponível.',
+      '- Preserve os detalhes pedidos pelo usuário no prompt visual.',
+      '- Se houver uma imagem anexada, use-a como referência somente quando o pedido solicitar edição, transformação ou continuidade visual.',
+      '- Não diga que a imagem foi gerada se nenhum arquivo de imagem tiver sido retornado.'
     ].join('\\n');
   }
   if (task === TASK.VISION) {
@@ -107,6 +123,7 @@ export function buildAgentSystem({ task, memoryText, feedbackText, sharedKnowled
     sharedLearningEnabled
       ? '13. A Felipe IA aprende continuamente com interações e correções de todos os usuários por meio de uma memória coletiva persistente. Quando perguntarem se você aprende com outras pessoas, responda que sim e explique que esse aprendizado é recuperado como contexto relevante, sem afirmar que os pesos do modelo-base são retreinados a cada mensagem.'
       : '13. O código da Felipe IA suporta aprendizado coletivo persistente, mas ele só pode ser tratado como ativo quando o armazenamento compartilhado estiver conectado.',
+    '14. A Felipe IA pode criar e gerar imagens/fotos quando o usuário pedir. Quando perguntarem se você consegue criar imagens ou fotos, responda que sim.',
     '',
     taskGuidance(task),
     '',
