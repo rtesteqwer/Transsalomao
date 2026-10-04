@@ -1,11 +1,15 @@
-import { createHash } from "node:crypto";
+import { getVercelOidcToken } from "@vercel/oidc";
 
 export function salomaoModel() {
   return process.env.QWEN3_VL_MODEL?.trim() || "alibaba/qwen3-vl-instruct";
 }
 
 export async function getSalomaoOpenAIKeys() {
-  const token = process.env.AI_GATEWAY_API_KEY?.trim();
+  const token =
+    process.env.QWEN3_VL_API_KEY?.trim() ||
+    process.env.AI_GATEWAY_API_KEY?.trim() ||
+    process.env.VERCEL_OIDC_TOKEN?.trim() ||
+    "";
   return token ? [token] : [];
 }
 
@@ -13,17 +17,8 @@ export function felipeIaUrl() {
   return (process.env.FELIPE_IA_URL?.trim() || "https://felipe-ia-transsalomao.vercel.app").replace(/\/$/, "");
 }
 
-function felipeIaSecret() {
-  const explicit = process.env.FELIPE_IA_SHARED_SECRET?.trim();
-  if (explicit) return explicit;
-
-  const base = process.env.TICKET_TOKEN?.trim();
-  if (!base) return "";
-  return createHash("sha256").update("felipe-ia:" + base).digest("hex");
-}
-
 export function felipeIaConfigured() {
-  return Boolean(felipeIaSecret());
+  return true;
 }
 
 type FelipeTurn = { role: "user" | "assistant"; content: string };
@@ -34,15 +29,16 @@ export async function askFelipeIa(input: {
   context?: unknown;
   task?: string;
 }) {
-  const secret = felipeIaSecret();
-  if (!secret) throw new Error("FELIPE_IA_NOT_CONFIGURED");
+  const oidcToken = (await getVercelOidcToken())?.trim();
+  if (!oidcToken) throw new Error("VERCEL_OIDC_TOKEN_UNAVAILABLE");
 
   const response = await fetch(felipeIaUrl() + "/api/transsalomao", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${secret}`,
+      Authorization: `Bearer ${oidcToken}`,
       "Content-Type": "application/json",
       "X-Trans-Salomao": "1",
+      "x-vercel-trusted-oidc-idp-token": oidcToken,
     },
     body: JSON.stringify({
       message: String(input.message || "").slice(0, 12000),
