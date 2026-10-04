@@ -38,3 +38,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 final deploy viagens caixa robust latest-order cleanup
 2026-10-04 motorista desktop + automatic photo detection + missing ticket fallback 2b0d6379
 2026-10-04 redeploy final viagens caixa after robust patch escaping fix
+2026-10-04 redeploy driver page after source-drift build hardening 3af955b3
