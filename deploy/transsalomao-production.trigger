@@ -40,3 +40,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 redeploy final viagens caixa after robust patch escaping fix
 2026-10-04 redeploy driver page after source-drift build hardening 3af955b3
 2026-10-04 deploy fail-safe viagens caixa cleanup
+2026-10-04 driver automatic mode copy and optional manual mode d2e68a60
