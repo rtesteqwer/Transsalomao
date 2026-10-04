@@ -50,6 +50,15 @@ jobs:
             echo 'NO PACKAGE LOCK'
           fi
 
+      - name: Inspect report download implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- PDF download function ---'
+          grep -nE 'downloadDriverReportPdf|\.save\(|output\(|Blob|createObjectURL|download' /tmp/trans-source/src/lib/pdf.ts | head -160 || true
+          echo '--- Excel download tail ---'
+          tail -n 90 /tmp/trans-source/src/lib/excel-report.ts
+
       - name: Validate requested changes
         shell: bash
         run: |
