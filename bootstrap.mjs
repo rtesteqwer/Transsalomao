@@ -346,6 +346,15 @@ if (!original.includes("apply-multitab-auth-fueling-20261004.mjs")) {
   );
 }
 
+// Motorista: layout responsivo no PC, leitura automática por padrão e fallback seguro quando o número do ticket não for legível.
+if (!original.includes("apply-driver-auto-pc-ticket-fix-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing driver auto/pc/ticket fix insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-driver-auto-pc-ticket-fix-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Painel da Gerência: recupera abas antigas após deploy/chunks e mostra botão de recarga.
 if (!original.includes("apply-panel-load-recovery-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing panel load recovery insertion point");
