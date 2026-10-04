@@ -140,6 +140,10 @@ jobs:
           cd /tmp/trans-source
           echo '--- installed package versions ---'
           node -e "console.log('react-start', require('./node_modules/@tanstack/react-start/package.json').version); console.log('start-server-core', require('./node_modules/@tanstack/start-server-core/package.json').version)"
+          echo '--- every installed @tanstack/react-start copy ---'
+          find node_modules -type f -path '*/@tanstack/react-start/package.json' -print -exec node -e "const p=require('./{}'); console.log(p.name,p.version)" \; || true
+          echo '--- npm dependency tree for react-start ---'
+          npm ls @tanstack/react-start @tanstack/start-server-core --all || true
           echo '--- vulnerable version references in generated Vercel output ---'
           grep -RIl --binary-files=without-match '1\.168\.49' .vercel/output | head -100 || true
           echo '--- react-start references in generated package manifests ---'
