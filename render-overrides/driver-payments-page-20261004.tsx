@@ -30,6 +30,55 @@ function firstDayOfMonth() {
   return today.slice(0, 8) + "01";
 }
 
+function currentMonthKey() {
+  return isoToday().slice(0, 7);
+}
+
+function monthBounds(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return { start: firstDayOfMonth(), end: isoToday() };
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  return {
+    start: `${year}-${String(monthNumber).padStart(2, "0")}-01`,
+    end: `${year}-${String(monthNumber).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function monthLabel(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return month;
+  return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(Date.UTC(year, monthNumber - 1, 1)));
+}
+
+function periodReferenceLabel(start: string, end: string) {
+  const startMonth = start.slice(0, 7);
+  const endMonth = end.slice(0, 7);
+  if (startMonth === endMonth) return monthLabel(startMonth);
+  return `${monthLabel(startMonth)} a ${monthLabel(endMonth)}`;
+}
+
+function monthsBetween(start: string, end: string) {
+  const result: string[] = [];
+  const startMonth = start.slice(0, 7);
+  const endMonth = end.slice(0, 7);
+  const [sy, sm] = startMonth.split("-").map(Number);
+  const [ey, em] = endMonth.split("-").map(Number);
+  if (!sy || !sm || !ey || !em) return result;
+  let year = sy;
+  let month = sm;
+  while (year < ey || (year === ey && month <= em)) {
+    result.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+    if (result.length > 120) break;
+  }
+  return result;
+}
+
 function parseMoney(value: string) {
   const clean = value.trim().replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
   const amount = Number(clean);
@@ -93,8 +142,10 @@ function DriverPaymentsPage() {
   });
 
   const [driverId, setDriverId] = useState("");
-  const [periodStart, setPeriodStart] = useState(firstDayOfMonth);
-  const [periodEnd, setPeriodEnd] = useState(isoToday);
+  const [periodMode, setPeriodMode] = useState<"monthly" | "custom">("monthly");
+  const [monthKey, setMonthKey] = useState(currentMonthKey);
+  const [periodStart, setPeriodStart] = useState(() => monthBounds(currentMonthKey()).start);
+  const [periodEnd, setPeriodEnd] = useState(() => monthBounds(currentMonthKey()).end);
   const [paymentDate, setPaymentDate] = useState(isoToday);
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -104,6 +155,13 @@ function DriverPaymentsPage() {
   useEffect(() => {
     if (!driverId && data?.drivers?.[0]?.id) setDriverId(data.drivers[0].id);
   }, [data, driverId]);
+
+  useEffect(() => {
+    if (periodMode !== "monthly") return;
+    const bounds = monthBounds(monthKey);
+    setPeriodStart(bounds.start);
+    setPeriodEnd(bounds.end);
+  }, [periodMode, monthKey]);
 
   const selectedDriver = data?.drivers.find((driver) => driver.id === driverId) ?? null;
 
@@ -134,8 +192,8 @@ function DriverPaymentsPage() {
     const payments = (paymentsQuery.data ?? [])
       .filter((payment) =>
         payment.driverId === driverId &&
-        payment.periodStart === periodStart &&
-        payment.periodEnd === periodEnd
+        payment.periodStart <= periodEnd &&
+        payment.periodEnd >= periodStart
       )
       .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
 
@@ -153,6 +211,48 @@ function DriverPaymentsPage() {
       remaining: commission - totalReceived,
       tripCount: trips.length,
     };
+  }, [data, driverId, periodStart, periodEnd, paymentsQuery.data]);
+
+  const monthSummary = useMemo(() => {
+    if (!data || !driverId) return [];
+    return monthsBetween(periodStart, periodEnd).map((month) => {
+      const bounds = monthBounds(month);
+      const start = bounds.start < periodStart ? periodStart : bounds.start;
+      const end = bounds.end > periodEnd ? periodEnd : bounds.end;
+
+      const trips = data.trips
+        .filter((trip) => trip.driverId === driverId && inRange(trip.date, start, end))
+        .map((trip) => enrichTrip(trip, data.drivers, data.fleets));
+      const commission = trips.reduce((sum, trip: any) => sum + Number(trip.commissionValue ?? 0), 0);
+
+      const advances = data.expenses
+        .filter((expense) =>
+          expense.driverId === driverId &&
+          expense.category === "Adiantamento" &&
+          inRange(expense.date, start, end)
+        )
+        .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+
+      const monthlyPayments = (paymentsQuery.data ?? [])
+        .filter((payment) => {
+          if (payment.driverId !== driverId) return false;
+          const paymentStartMonth = payment.periodStart.slice(0, 7);
+          const paymentEndMonth = payment.periodEnd.slice(0, 7);
+          if (paymentStartMonth === paymentEndMonth) return paymentStartMonth === month;
+          return payment.date.slice(0, 7) === month;
+        })
+        .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+      return {
+        month,
+        label: monthLabel(month),
+        commission,
+        advances,
+        payments: monthlyPayments,
+        received: advances + monthlyPayments,
+        remaining: commission - advances - monthlyPayments,
+      };
+    });
   }, [data, driverId, periodStart, periodEnd, paymentsQuery.data]);
 
   async function savePayment() {
@@ -211,7 +311,13 @@ function DriverPaymentsPage() {
       doc.setFontSize(18);
       doc.text("TRANS SALOMÃO", 15, y);
       doc.setFontSize(13);
-      doc.text("TERMO DE ACERTO E RECIBO DO MOTORISTA", 15, y + 8);
+      doc.text(
+        periodMode === "monthly"
+          ? "RECIBO MENSAL E TERMO DE ACERTO DO MOTORISTA"
+          : "TERMO DE ACERTO POR COMPETÊNCIAS",
+        15,
+        y + 8,
+      );
       doc.setDrawColor(...blue);
       doc.setLineWidth(0.6);
       doc.line(15, y + 12, 195, y + 12);
@@ -221,12 +327,18 @@ function DriverPaymentsPage() {
       doc.setFontSize(10);
       doc.setTextColor(...gray);
       doc.text("Motorista", 15, y);
-      doc.text("Período do acerto", 112, y);
+      doc.text(periodMode === "monthly" ? "Competência" : "Período do acerto", 112, y);
       doc.setTextColor(...black);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
       doc.text(selectedDriver.name, 15, y + 6);
-      doc.text(`${humanDate(periodStart)} a ${humanDate(periodEnd)}`, 112, y + 6);
+      doc.text(
+        periodMode === "monthly"
+          ? monthLabel(monthKey)
+          : `${humanDate(periodStart)} a ${humanDate(periodEnd)}`,
+        112,
+        y + 6,
+      );
       y += 16;
 
       const cards = [
@@ -252,9 +364,63 @@ function DriverPaymentsPage() {
       });
       y += 28;
 
+      if (monthSummary.length > 0) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.text(monthSummary.length === 1 ? "Resumo da competência" : "Resumo por competência", 15, y);
+        y += 5;
+
+        doc.setFillColor(238, 242, 248);
+        doc.rect(15, y, 180, 8, "F");
+        doc.setFontSize(7.4);
+        doc.text("COMPETÊNCIA", 17, y + 5.2);
+        doc.text("COMISSÃO", 71, y + 5.2, { align: "right" });
+        doc.text("ADIANT.", 101, y + 5.2, { align: "right" });
+        doc.text("PAGAMENTOS", 137, y + 5.2, { align: "right" });
+        doc.text("SALDO", 192, y + 5.2, { align: "right" });
+        y += 8;
+
+        for (const row of monthSummary) {
+          if (y > 235) {
+            doc.addPage();
+            y = 18;
+          }
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8.2);
+          doc.setTextColor(...black);
+          doc.text(row.label, 17, y + 5.4);
+          doc.text(money(row.commission), 71, y + 5.4, { align: "right" });
+          doc.text(money(row.advances), 101, y + 5.4, { align: "right" });
+          doc.text(money(row.payments), 137, y + 5.4, { align: "right" });
+          doc.setFont("helvetica", "bold");
+          doc.text(
+            row.remaining > 0.005 ? money(row.remaining) : row.remaining < -0.005 ? "-" + money(Math.abs(row.remaining)) : "QUITADO",
+            192,
+            y + 5.4,
+            { align: "right" },
+          );
+          doc.setDrawColor(226, 229, 235);
+          doc.line(15, y + 8, 195, y + 8);
+          y += 8;
+        }
+        y += 8;
+      }
+
       const rows = [
-        ...settlement.advances.map((row) => ({ type: "Adiantamento", date: row.date, note: row.note, amount: row.amount })),
-        ...settlement.payments.map((row) => ({ type: "Pagamento", date: row.date, note: row.note || "Pagamento ao motorista", amount: row.amount })),
+        ...settlement.advances.map((row) => ({
+          type: "Adiantamento",
+          date: row.date,
+          reference: monthLabel(row.date.slice(0, 7)),
+          note: row.note,
+          amount: row.amount,
+        })),
+        ...settlement.payments.map((row) => ({
+          type: "Pagamento",
+          date: row.date,
+          reference: periodReferenceLabel(row.periodStart, row.periodEnd),
+          note: row.note || "Pagamento ao motorista",
+          amount: row.amount,
+        })),
       ].sort((a, b) => a.date.localeCompare(b.date));
 
       const drawTableHeader = () => {
@@ -264,9 +430,10 @@ function DriverPaymentsPage() {
         doc.setFontSize(8.5);
         doc.setTextColor(...black);
         doc.text("DATA", 17, y + 5.3);
-        doc.text("TIPO", 42, y + 5.3);
-        doc.text("NOTA / REFERÊNCIA", 78, y + 5.3);
-        doc.text("VALOR", 174, y + 5.3, { align: "right" });
+        doc.text("TIPO", 40, y + 5.3);
+        doc.text("COMPETÊNCIA / REFERÊNCIA", 68, y + 5.3);
+        doc.text("NOTA", 112, y + 5.3);
+        doc.text("VALOR", 192, y + 5.3, { align: "right" });
         y += 8;
       };
 
@@ -289,16 +456,18 @@ function DriverPaymentsPage() {
             y = 18;
             drawTableHeader();
           }
-          const noteLines = doc.splitTextToSize(row.note || "—", 88);
-          const rowHeight = Math.max(9, 5 + noteLines.length * 4);
+          const referenceLines = doc.splitTextToSize(row.reference || "—", 39);
+          const noteLines = doc.splitTextToSize(row.note || "—", 68);
+          const rowHeight = Math.max(9, 5 + Math.max(referenceLines.length, noteLines.length) * 4);
           doc.setDrawColor(226, 229, 235);
           doc.line(15, y + rowHeight, 195, y + rowHeight);
           doc.setFont("helvetica", "normal");
-          doc.setFontSize(8.5);
+          doc.setFontSize(8.1);
           doc.setTextColor(...black);
           doc.text(humanDate(row.date), 17, y + 5.5);
-          doc.text(row.type, 42, y + 5.5);
-          doc.text(noteLines, 78, y + 5.5);
+          doc.text(row.type, 40, y + 5.5);
+          doc.text(referenceLines, 68, y + 5.5);
+          doc.text(noteLines, 112, y + 5.5);
           doc.setFont("helvetica", "bold");
           doc.text(money(row.amount), 192, y + 5.5, { align: "right" });
           y += rowHeight;
@@ -315,11 +484,14 @@ function DriverPaymentsPage() {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(...black);
+      const referenceText = periodMode === "monthly"
+        ? `competência ${monthLabel(monthKey)}`
+        : `período de ${humanDate(periodStart)} a ${humanDate(periodEnd)}`;
       const declaration = settlement.remaining > 0.005
-        ? `Declaro que recebi, até a presente data, o total de ${money(totalAlreadyReceived)} referente aos adiantamentos e pagamentos discriminados neste documento. Para o período acima, a comissão apurada é de ${money(settlement.commission)}, restando ainda ${money(settlement.remaining)} a receber.`
+        ? `Declaro que recebi, até a presente data, o total de ${money(totalAlreadyReceived)} referente aos adiantamentos e pagamentos discriminados neste documento, relativos à ${referenceText}. A comissão apurada é de ${money(settlement.commission)}, restando ainda ${money(settlement.remaining)} a receber.`
         : settlement.remaining < -0.005
-          ? `Declaro que recebi o total de ${money(totalAlreadyReceived)}. Esse valor supera em ${money(Math.abs(settlement.remaining))} a comissão apurada de ${money(settlement.commission)} para o período, ficando o acerto sujeito à conferência da Gerência.`
-          : `Declaro que recebi o total de ${money(totalAlreadyReceived)}, correspondente ao valor apurado de ${money(settlement.commission)} para o período acima, dando quitação dos valores discriminados neste termo.`;
+          ? `Declaro que recebi o total de ${money(totalAlreadyReceived)} referente à ${referenceText}. Esse valor supera em ${money(Math.abs(settlement.remaining))} a comissão apurada de ${money(settlement.commission)}, ficando o acerto sujeito à conferência da Gerência.`
+          : `Declaro que recebi o total de ${money(totalAlreadyReceived)}, correspondente ao valor apurado de ${money(settlement.commission)} referente à ${referenceText}, dando quitação dos valores discriminados neste termo.`;
       const declarationLines = doc.splitTextToSize(declaration, 178);
       doc.text(declarationLines, 15, y);
       y += declarationLines.length * 5 + 9;
@@ -370,7 +542,9 @@ function DriverPaymentsPage() {
       }
 
       const blob = doc.output("blob");
-      const fileName = `Acerto_${safeName(selectedDriver.name)}_${periodStart}_a_${periodEnd}.pdf`;
+      const fileName = periodMode === "monthly"
+        ? `Recibo_Mensal_${safeName(selectedDriver.name)}_${monthKey}.pdf`
+        : `Acerto_${safeName(selectedDriver.name)}_${periodStart}_a_${periodEnd}.pdf`;
       await deliverPdf(blob, fileName);
       toast.success("Termo de acerto gerado para assinatura.");
     } catch (error) {
@@ -410,20 +584,39 @@ function DriverPaymentsPage() {
             <p>Os adiantamentos são puxados automaticamente da aba Despesas.</p>
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <Field label="Motorista">
             <Select value={driverId} onChange={(event) => setDriverId(event.target.value)}>
               <option value="">Selecione</option>
               {(data?.drivers ?? []).map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
             </Select>
           </Field>
-          <Field label="Início do período">
-            <Input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} />
+          <Field label="Tipo do acerto">
+            <Select value={periodMode} onChange={(event) => setPeriodMode(event.target.value as "monthly" | "custom")}>
+              <option value="monthly">Mensal / por competência</option>
+              <option value="custom">Vários meses / período personalizado</option>
+            </Select>
           </Field>
-          <Field label="Fim do período">
-            <Input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} />
-          </Field>
+          {periodMode === "monthly" ? (
+            <Field label="Mês de referência">
+              <Input type="month" value={monthKey} onChange={(event) => setMonthKey(event.target.value)} />
+            </Field>
+          ) : (
+            <>
+              <Field label="Início do período">
+                <Input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} />
+              </Field>
+              <Field label="Fim do período">
+                <Input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} />
+              </Field>
+            </>
+          )}
         </div>
+        <p className="mt-3 text-xs text-muted">
+          {periodMode === "monthly"
+            ? `O documento será emitido para a competência ${monthLabel(monthKey)}.`
+            : `O documento pode abranger vários meses e mostrará os valores separados por competência.`}
+        </p>
 
         <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Summary label="Comissão apurada" value={brl(settlement.commission)} />
@@ -442,7 +635,10 @@ function DriverPaymentsPage() {
         <div className="panel-heading">
           <div>
             <h2>Novo pagamento</h2>
-            <p>O pagamento fica vinculado ao motorista e ao período do acerto selecionado acima.</p>
+            <p>
+              O pagamento fica vinculado ao motorista e à referência selecionada acima
+              {periodMode === "monthly" ? ` — ${monthLabel(monthKey)}` : ` — ${periodReferenceLabel(periodStart, periodEnd)}`}.
+            </p>
           </div>
           <WalletCards className="size-5 text-muted" />
         </div>
@@ -475,7 +671,7 @@ function DriverPaymentsPage() {
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="text-[10px] uppercase tracking-[0.14em] text-muted">
               <tr>
-                {["Data", "Tipo", "Nota / referência", "Valor", "Ação"].map((label) => (
+                {["Data", "Tipo", "Competência / referência", "Nota", "Valor", "Ação"].map((label) => (
                   <th key={label} className="border-b border-border px-3 py-2 font-medium">{label}</th>
                 ))}
               </tr>
@@ -485,6 +681,7 @@ function DriverPaymentsPage() {
                 <tr key={"advance-" + row.id} className="border-b border-border/70">
                   <td className="px-3 py-3">{formatDateShort(row.date)}</td>
                   <td className="px-3 py-3 font-semibold">Adiantamento</td>
+                  <td className="px-3 py-3">{monthLabel(row.date.slice(0, 7))}</td>
                   <td className="px-3 py-3">{row.note || "Adiantamento"}</td>
                   <td className="px-3 py-3 font-semibold tabular">{brl(row.amount)}</td>
                   <td className="px-3 py-3 text-xs text-muted">Editar em Despesas</td>
@@ -494,6 +691,7 @@ function DriverPaymentsPage() {
                 <tr key={row.id} className="border-b border-border/70">
                   <td className="px-3 py-3">{formatDateShort(row.date)}</td>
                   <td className="px-3 py-3 font-semibold">Pagamento</td>
+                  <td className="px-3 py-3">{periodReferenceLabel(row.periodStart, row.periodEnd)}</td>
                   <td className="px-3 py-3">{row.note || "Pagamento ao motorista"}</td>
                   <td className="px-3 py-3 font-semibold tabular">{brl(row.amount)}</td>
                   <td className="px-3 py-3">
@@ -508,7 +706,7 @@ function DriverPaymentsPage() {
                 </tr>
               ))}
               {settlement.advances.length === 0 && settlement.payments.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-8 text-center text-sm text-muted">Nenhum valor recebido registrado para este período.</td></tr>
+                <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-muted">Nenhum valor recebido registrado para este período.</td></tr>
               ) : null}
             </tbody>
           </table>
