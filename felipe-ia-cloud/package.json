@@ -12,7 +12,6 @@
     "ai-sdk-tool-code-execution": "latest",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest",
-    "next-auth": "latest"
+    "react-dom": "latest"
   }
 }
