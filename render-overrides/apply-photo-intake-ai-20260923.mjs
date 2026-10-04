@@ -41,6 +41,7 @@ copy("render-overrides/photo-upload-api-20260926.ts", "src/routes/api/photo-uplo
   const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
   pkg.dependencies = pkg.dependencies || {};
   pkg.dependencies.sharp = pkg.dependencies.sharp || "^0.34.4";
+  pkg.dependencies["heic-convert"] = pkg.dependencies["heic-convert"] || "^2.1.0";
   fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
 }
 
