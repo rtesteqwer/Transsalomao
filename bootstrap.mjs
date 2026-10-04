@@ -407,8 +407,7 @@ if (!original.includes("apply-report-totals-layout-20261004.mjs")) {
   original = original.replace(
     dailyMarker,
     `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-report-totals-layout-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });
-execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-mobile-report-download-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });
-execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-recent-trips-order-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-mobile-report-download-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 }
 
