@@ -40,65 +40,90 @@ export const Route = createFileRoute("/api/assistant")({
           : [];
 
         // A Trans Salomão mantém autenticação, permissões, banco e mutações.
-        // A Felipe IA Cloud recebe apenas o contexto operacional já autorizado
-        // e funciona como o cérebro de linguagem/raciocínio da interface.
+        // A Felipe IA Cloud funciona como cérebro de linguagem e planejador.
+        // Toda consulta/mutação continua sendo executada e verificada neste backend.
         const text = norm(message);
+        const writeIntent = isWriteIntent(text);
+        const local = writeIntent
+          ? { bridgeNeeded: true, answer: "", data: null as unknown }
+          : await localAnswer(message, history);
 
-        if (isWriteIntent(text)) {
-          const action = await highPriorityAction(message, history, auth.username);
-          if (action) {
-            return out({
-              ok: true,
-              mode: "trans-salomao-action",
-              provider: "trans-salomao-secure-actions",
-              ...action,
-            });
-          }
-        }
-
-        const local = await localAnswer(message, history);
-
-        if (felipeIaConfigured()) {
+        // Consultas simples continuam determinísticas: o banco responde primeiro,
+        // e a Felipe IA apenas formula a resposta a partir dos dados verificados.
+        if (!writeIntent && !local.bridgeNeeded && felipeIaConfigured()) {
           try {
             const brain = await askFelipeIa({
               message,
               history,
-              task: local.bridgeNeeded ? "general-answer" : "operational-answer",
-              context: local.bridgeNeeded
-                ? {
-                    source: "Trans Salomão IA",
-                    scope: "general",
-                    instruction: "Responda ao pedido sem inventar dados operacionais da empresa e sem afirmar que executou ações.",
-                  }
-                : {
-                    source: "Trans Salomão IA",
-                    scope: "operational",
-                    verifiedAnswer: local.answer,
-                    verifiedData: local.data ?? null,
-                  },
+              task: "operational-answer",
+              context: {
+                source: "Trans Salomão IA",
+                scope: "operational",
+                verifiedAnswer: local.answer,
+                verifiedData: local.data ?? null,
+              },
             });
-
             return out({
               ok: true,
-              mode: local.bridgeNeeded ? "felipe-cloud" : "felipe-cloud-with-neon",
+              mode: "felipe-cloud-with-neon",
               provider: "felipe-ia-cloud",
               answer: brain.text,
               data: local.data,
               model: brain.model,
             });
           } catch (error) {
-            console.error("[felipe-ia-cloud] fallback local:", error);
+            console.error("[felipe-ia-cloud] deterministic answer fallback:", error);
+            return out({
+              ok: true,
+              mode: "neon-local-fallback",
+              provider: "trans-salomao-local",
+              ...local,
+            });
           }
         }
 
+        // Pedidos complexos, consultas não cobertas por atalhos e mutações entram
+        // no agente operacional. A Felipe IA escolhe ferramentas; o Trans Salomão
+        // executa, valida permissões, confirma exclusões e verifica o resultado.
+        if (felipeIaConfigured()) {
+          try {
+            const agent = await runFelipeOperationalAgent(message, history, auth.username);
+            return out({
+              ok: true,
+              mode: "felipe-cloud-operational-agent",
+              provider: "felipe-ia-cloud",
+              answer: agent.answer,
+              data: agent.data,
+              model: agent.model,
+              steps: agent.steps,
+            });
+          } catch (error) {
+            console.error("[felipe-ia-cloud] operational agent fallback:", error);
+          }
+        }
+
+        // Fallback sem IA: mantém operações explícitas e consultas locais funcionando.
+        if (writeIntent) {
+          const action = await highPriorityAction(message, history, auth.username);
+          if (action) {
+            return out({
+              ok: true,
+              mode: "trans-salomao-action-fallback",
+              provider: "trans-salomao-secure-actions",
+              ...action,
+            });
+          }
+        }
+
+        const fallbackLocal = writeIntent ? await localAnswer(message, history) : local;
         return out({
           ok: true,
           mode: "neon-local-fallback",
           provider: "trans-salomao-local",
-          ...local,
-          answer: local.bridgeNeeded
+          ...fallbackLocal,
+          answer: fallbackLocal.bridgeNeeded
             ? "A Felipe IA Cloud está temporariamente indisponível. Tente novamente."
-            : local.answer,
+            : fallbackLocal.answer,
         });
       },
     },
@@ -677,7 +702,20 @@ const deleteTool = {
   },required:["entity","id","confirmed"],additionalProperties:false}
 };
 
-const assistantTools=[queryTool,driverTool,fleetTool,tripTool,fuelingTool,expenseTool,pricesTool,userTool,reportTool,reportUpdateTool,bulkReportTool,deleteTool];
+const developerTool = {
+  type:"function",name:"request_system_change",
+  description:"Solicita, consulta ou cancela uma alteração de programação do próprio Trans Salomão. Somente Felipe pode usar. Para publicar em produção, publish_to_production deve refletir um pedido explícito do Felipe.",
+  strict:true,
+  parameters:{type:"object",properties:{
+    action:{type:"string",enum:["request","list","status","cancel"]},
+    title:{type:["string","null"]},request:{type:["string","null"]},
+    scope:{type:["string","null"],enum:["web","android","backend","database","full",null]},
+    publish_to_production:{type:["boolean","null"]},
+    change_id:{type:["string","null"]}
+  },required:["action","title","request","scope","publish_to_production","change_id"],additionalProperties:false}
+};
+
+const assistantTools=[queryTool,driverTool,fleetTool,tripTool,fuelingTool,expenseTool,pricesTool,userTool,reportTool,reportUpdateTool,bulkReportTool,deleteTool,developerTool];
 
 async function verifyMutation(operation:string,result:Row){
   const sql=await getSql();
@@ -757,6 +795,16 @@ async function executeAssistantTool(name:string,args:Row,actor:string,userMessag
     }
     return{ok:results.every((x)=>x.ok!==false),action:args.action,total:results.length,results};
   }
+  if(name==="request_system_change"){
+    return developerSystemChange({
+      action:args.action,
+      title:args.title??"",
+      request:args.request??"",
+      scope:args.scope??"full",
+      publish_to_production:args.publish_to_production===true,
+      change_id:args.change_id??"",
+    },actor);
+  }
   if(name==="delete_trans_salomao_record"){
     if(!explicitlyConfirmed(norm(userMessage)))throw new Error("CONFIRMATION_REQUIRED");
     const map:Record<string,string>={trip:"delete_trip",fueling:"delete_fueling",expense:"delete_expense",report:"delete_report",driver:"delete_driver",fleet:"delete_fleet",all_trips:"delete_all_trips"};
@@ -765,6 +813,109 @@ async function executeAssistantTool(name:string,args:Row,actor:string,userMessag
     return mutateVerified({operation,id:args.id??"",confirmed:true},actor);
   }
   throw new Error("Ferramenta não autorizada.");
+}
+
+type OperationalObservation = { step:number; tool:string; ok:boolean; result?:unknown; error?:string };
+
+function parseOperationalPlan(raw:string){
+  const text=String(raw??"").trim();
+  const candidates=[
+    text,
+    text.replace(/^\`\`\`(?:json)?\s*/i,"").replace(/\`\`\`$/,"").trim(),
+  ];
+  const first=text.indexOf("{"),last=text.lastIndexOf("}");
+  if(first>=0&&last>first)candidates.push(text.slice(first,last+1));
+  for(const candidate of candidates){
+    try{
+      const value:any=JSON.parse(candidate);
+      if(value?.type==="final"&&typeof value.answer==="string")return{type:"final" as const,answer:value.answer.trim()};
+      if(value?.type==="tool"&&typeof value.tool==="string"&&value.args&&typeof value.args==="object"){
+        return{type:"tool" as const,tool:value.tool,args:value.args as Row};
+      }
+    }catch{}
+  }
+  return null;
+}
+
+async function runFelipeOperationalAgent(message:string,history:Turn[],actor:string){
+  const observations:OperationalObservation[]=[];
+  const allowed=new Set(assistantTools.map((tool:any)=>String(tool.name)));
+  let lastModel="Felipe IA Cloud";
+
+  for(let step=1;step<=5;step++){
+    const brain=await askFelipeIa({
+      message,
+      history,
+      task:"operation-plan",
+      context:{
+        source:"Trans Salomão IA",
+        scope:"full-operational-control",
+        actor,
+        today:todayBR(),
+        originalMessage:message,
+        tools:assistantTools,
+        observations,
+        rules:[
+          "Use somente as ferramentas listadas.",
+          "Consulte dados reais quando a resposta depender do banco.",
+          "Nunca invente IDs, nomes, valores ou confirmações.",
+          "Ações destrutivas exigem confirmação explícita na mensagem original.",
+          "Programação/publicação do sistema usa request_system_change e continua restrita à identidade Felipe."
+        ]
+      },
+    });
+    lastModel=brain.model;
+    const plan=parseOperationalPlan(brain.text);
+    if(!plan){
+      const fallback=await askFelipeIa({
+        message,
+        history,
+        task:"operational-answer",
+        context:{
+          source:"Trans Salomão IA",
+          scope:"operational",
+          observations,
+          instruction:"Responda usando somente os resultados verificados. Se ainda faltar um dado, peça somente esse dado."
+        }
+      });
+      return{answer:fallback.text,data:{observations},model:fallback.model,steps:observations.length};
+    }
+    if(plan.type==="final"){
+      return{answer:plan.answer||"Concluído.",data:{observations},model:lastModel,steps:observations.length};
+    }
+    if(!allowed.has(plan.tool)){
+      observations.push({step,tool:plan.tool,ok:false,error:"Ferramenta não autorizada."});
+      continue;
+    }
+    try{
+      const result=await executeAssistantTool(plan.tool,plan.args,actor,message);
+      observations.push({step,tool:plan.tool,ok:true,result});
+    }catch(error:any){
+      const errorText=String(error?.message||error);
+      observations.push({step,tool:plan.tool,ok:false,error:errorText});
+      if(errorText==="CONFIRMATION_REQUIRED"){
+        return{
+          answer:"Essa ação é destrutiva. Se realmente quiser executar, repita o pedido incluindo “confirmo”.",
+          data:{observations},
+          model:lastModel,
+          steps:observations.length
+        };
+      }
+    }
+  }
+
+  const finalBrain=await askFelipeIa({
+    message,
+    history,
+    task:"operational-answer",
+    context:{
+      source:"Trans Salomão IA",
+      scope:"operational",
+      verifiedData:{observations},
+      instruction:"Dê a resposta final com base somente nas observações verificadas. Não alegue execução que não esteja confirmada."
+    }
+  });
+  return{answer:finalBrain.text,data:{observations},model:finalBrain.model,steps:observations.length};
 }
 
 function parseLoginCommand(message:string){
@@ -874,7 +1025,7 @@ async function localAnswer(message:string,history:Turn[]){
     return{answer:r.rows.length?`Há ${r.rows.length} login(s) de gerenciamento: ${r.rows.map((x:any)=>x.username+" ("+x.status+")").join(", ")}.`:"Não há logins cadastrados."};
   }
 
-  if((text.includes("quantos")||text.includes("quantas"))&&hasAny(text,["motorista","motoristas"])){
+  if((text.includes("quantos")||text.includes("quantas"))&&hasAny(text,["motorista","motoristas"])&&!hasAny(text,["viagem","viagens","frete","fretes"])){
     const active=s.drivers.filter((x)=>x.status==="ativo");
     return{answer:`Há ${active.length} motorista(s) ativo(s) cadastrado(s).`,data:{rows:active.map((x)=>({name:x.name,status:x.status}))}};
   }
