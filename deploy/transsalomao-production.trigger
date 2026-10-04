@@ -22,3 +22,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 deploy stable ChatGPT-free Qwen gateway build
 2026-10-04 deploy after removing direct OpenAI assistant code
 2026-10-04 Felipe IA brain deploy after driver advances compatibility fix f50326d8
+2026-10-04 Felipe IA Cloud manifest fixed 642409c3
