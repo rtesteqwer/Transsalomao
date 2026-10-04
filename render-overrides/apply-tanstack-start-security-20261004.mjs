@@ -29,5 +29,19 @@ if (!pkg.dependencies?.["@tanstack/react-start"] && !pkg.devDependencies?.["@tan
   throw new Error("tanstack-security: @tanstack/react-start dependency not found");
 }
 
+// Force every occurrence in the dependency graph to the patched versions.
+// The reconstructed app can carry an older package-lock/transitive resolution,
+// so package.json pinning alone is not sufficient for Vercel's security scanner.
+pkg.overrides = {
+  ...(pkg.overrides ?? {}),
+  "@tanstack/react-start": "1.168.60",
+  "@tanstack/start-server-core": "1.169.39",
+};
+const lockPath = path.join(target, "package-lock.json");
+if (fs.existsSync(lockPath)) {
+  fs.rmSync(lockPath, { force: true });
+  changed = true;
+}
+
 fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
-console.log("[tanstack-security] @tanstack/react-start pinned to patched 1.168.60" + (changed ? "" : " (already patched)"));
+console.log("[tanstack-security] forced patched TanStack versions: react-start=1.168.60, start-server-core=1.169.39; stale lock removed" + (changed ? "" : " (already patched)"));
