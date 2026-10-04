@@ -119,6 +119,112 @@ function rep(s, before, after, label) {
   write(rel, s);
 }
 
+
+// 6) Abastecimentos já gravados: botão de remoção no próprio cartão da foto.
+//    A exclusão usa a mesma rotina segura da lista de abastecimentos, solta o
+//    vínculo da foto e mantém o cartão disponível para corrigir/lançar novamente.
+{
+  const rel = 'src/components/fueling-photo-reader.tsx';
+  let s = read(rel);
+
+  s = rep(s,
+    'import { AlertTriangle, Camera, CheckCircle2, Fuel, LoaderCircle, Upload } from "lucide-react";',
+    'import { AlertTriangle, Camera, CheckCircle2, Fuel, LoaderCircle, Trash2, Upload } from "lucide-react";',
+    'trash icon for saved fueling');
+
+  s = rep(s,
+    'import { fleetKey, useFleet } from "@/lib/use-fleet";',
+    'import { fleetKey, useFleet, useFleetMutations } from "@/lib/use-fleet";',
+    'fueling delete mutation import');
+
+  s = rep(s,
+    '  visualFingerprint?: string;\n  saving?: boolean;',
+    '  visualFingerprint?: string;\n  fuelingId?: string | null;\n  saving?: boolean;',
+    'fueling id on read item');
+
+  s = rep(s,
+    '  const queryClient = useQueryClient();\n  const galleryRef = useRef<HTMLInputElement | null>(null);',
+    '  const queryClient = useQueryClient();\n  const { removeFueling } = useFleetMutations();\n  const galleryRef = useRef<HTMLInputElement | null>(null);',
+    'delete mutation hook');
+
+  s = rep(s,
+    '  const [reading, setReading] = useState(false);\n  const [progress, setProgress] = useState("");',
+    '  const [reading, setReading] = useState(false);\n  const [removingId, setRemovingId] = useState<string | null>(null);\n  const [progress, setProgress] = useState("");',
+    'removing state');
+
+  s = rep(s,
+    '              saved: true,\n              pending: Boolean(payload?.pending),',
+    '              saved: true,\n              fuelingId: payload?.fuelingId ? String(payload.fuelingId) : null,\n              pending: Boolean(payload?.pending),',
+    'capture saved fueling id');
+
+  s = rep(s,
+    '  async function saveSafe() {',
+    `  async function removeSavedItem(item: ReadItem) {
+    if (!item.saved || !item.fuelingId || removingId) return;
+    const fuelName = String(item.reading.fuel_type || "").toLowerCase().includes("diesel")
+      ? "este lançamento de diesel"
+      : "este abastecimento";
+    if (!window.confirm("Remover " + fuelName + "? A foto continuará disponível para corrigir e lançar novamente.")) return;
+
+    setRemovingId(item.id);
+    try {
+      await removeFueling.mutateAsync(item.fuelingId);
+      setItems((current) => current.map((row) =>
+        row.id === item.id
+          ? {
+              ...row,
+              saved: false,
+              pending: true,
+              fuelingId: null,
+              message: "Lançamento removido. A foto foi mantida para você corrigir e lançar novamente.",
+            }
+          : row
+      ));
+      await queryClient.invalidateQueries({ queryKey: fleetKey });
+      await queryClient.refetchQueries({ queryKey: fleetKey, type: "active" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível remover o lançamento.";
+      setErrors((current) => [...current, item.fileName + ": " + message]);
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  async function saveSafe() {`,
+    'remove saved fueling directly from photo card');
+
+  s = rep(s,
+    '              onSave={() => void saveItem(item)}\n            />',
+    '              onSave={() => void saveItem(item)}\n              onRemove={() => void removeSavedItem(item)}\n              removing={removingId === item.id}\n            />',
+    'pass removal action');
+
+  s = rep(s,
+    '  onSave,\n}: {\n  item: ReadItem;\n  onChange: (patch: Partial<FuelingReading>) => void;\n  onSave: () => void;\n}) {',
+    '  onSave,\n  onRemove,\n  removing,\n}: {\n  item: ReadItem;\n  onChange: (patch: Partial<FuelingReading>) => void;\n  onSave: () => void;\n  onRemove: () => void;\n  removing: boolean;\n}) {',
+    'card removal props');
+
+  s = rep(s,
+    '        {item.message ? (\n          <span className={"text-xs " + (item.saved ? "text-muted" : "text-danger")}>{item.message}</span>\n        ) : null}',
+    `        {item.saved && item.fuelingId ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="text-danger"
+            onClick={onRemove}
+            disabled={removing}
+          >
+            {removing ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            {removing ? "Removendo…" : "Remover lançamento"}
+          </Button>
+        ) : null}
+        {item.message ? (
+          <span className={"text-xs " + (item.saved ? "text-muted" : "text-danger")}>{item.message}</span>
+        ) : null}`,
+    'remove button on saved card');
+
+  write(rel, s);
+}
+
 console.log('[multitab-auth-fueling] per-tab trips, session refresh, unified login and fueling prefill enabled; management trip submit enabled');
 
 // Regression coverage: Qwen3-VL reader + independent-tab launch flow.
