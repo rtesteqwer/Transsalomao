@@ -396,7 +396,8 @@ if (!original.includes("apply-trips-filter-order-20261004.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing trips filter insertion point");
   original = original.replace(
     dailyMarker,
-    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-trips-filter-order-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-trips-filter-order-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });
+execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-trip-launch-order-v2-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 }
 
