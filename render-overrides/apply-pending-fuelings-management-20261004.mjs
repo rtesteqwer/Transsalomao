@@ -21,8 +21,8 @@ const rep = (s, before, after, label) => {
 
   s = rep(
     s,
-    "            order by r.created_at desc\\n            limit 25\\n          `;",
-    "            order by r.created_at desc\\n          `;",
+    "            order by r.created_at desc\n            limit 25\n          `;",
+    "            order by r.created_at desc\n          `;",
     "list every pending fueling",
   );
 
