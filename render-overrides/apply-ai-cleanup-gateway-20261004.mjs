@@ -56,26 +56,9 @@ for (const rel of [
   if (fs.existsSync(file)) fs.rmSync(file, { force: true });
 }
 
-// Keep the existing assistant contract, but route its model/key through Qwen3-VL + Vercel AI Gateway.
-// The compatibility export name is preserved only so older generated imports keep compiling.
-const salomaoAi = path.join(target, "src/lib/salomao-ai.server.ts");
-fs.writeFileSync(
-  salomaoAi,
-  [
-    'import { qwen3VlModel, qwen3VlToken } from "@/lib/qwen3-vl.server";',
-    "",
-    "export function salomaoModel() {",
-    "  return qwen3VlModel();",
-    "}",
-    "",
-    "export async function getSalomaoOpenAIKeys() {",
-    "  const token = qwen3VlToken();",
-    "  return token ? [token] : [];",
-    "}",
-    "",
-  ].join("\n"),
-);
-
+// O assistente usa Felipe IA Cloud como cérebro; Qwen3-VL continua responsável
+// pelos leitores visuais e pelo legado de ferramentas que ainda depende do AI Gateway.
+// salomao-ai.server.ts já vem da fonte assistant-v4 com a ponte segura da Felipe IA.
 edit("src/routes/api/assistant.ts", (s) => {
   s = addImport(
     s,
@@ -93,13 +76,6 @@ edit("src/routes/api/assistant.ts", (s) => {
 });
 
 edit("src/routes/api/assistant/status.ts", (s) => {
-  s = addImport(
-    s,
-    'import { qwen3VlModel, qwen3VlToken } from "@/lib/qwen3-vl.server";',
-    'from "@/lib/qwen3-vl.server"',
-  );
-  s = s.replaceAll("process.env.OPENAI_API_KEY?.trim()", "qwen3VlToken()");
-  s = s.replaceAll('process.env.OPENAI_ASSISTANT_MODEL?.trim() || "gpt-5.6-sol"', "qwen3VlModel()");
   s = s.replaceAll("OpenAI", "IA");
   return s;
 });
@@ -144,4 +120,4 @@ if (leftovers.length) {
   throw new Error("ai-cleanup: forbidden legacy references remain: " + leftovers.join(", "));
 }
 
-console.log("[ai-cleanup] ChatGPT share UI removed; assistant and document readers use Qwen3-VL through Vercel AI Gateway");
+console.log("[ai-cleanup] legacy ChatGPT UI removed; Trans Salomão IA uses Felipe IA Cloud for reasoning and Qwen3-VL for visual readers");
