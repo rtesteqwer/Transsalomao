@@ -153,3 +153,11 @@ Republicação 2 — manter lockfile para compatibilidade de peers (2026-10-04):
 - mantém package-lock existente
 - mantém overrides de segurança TanStack
 Commit: ffb570ae4d8dcaaf632743a8c50527f2c95874be
+
+
+Publicação final após validação completa (2026-10-04):
+- lockfile validado com @tanstack/react-start 1.168.60
+- lockfile validado com @tanstack/start-server-core 1.169.39
+- build completo e testes de tickets aprovados
+- inclui correções da Planilha Geral e relatório por motorista
+Commit de segurança validado: 08d52fa9b4dd9a25e350d5fc02dc984334cc96e8
