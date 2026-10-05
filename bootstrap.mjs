@@ -664,6 +664,18 @@ if (!original.includes("[fix-luis-ton-price]")) {
 
 
 
+
+console.log("[klebersom-volvo-import-run] importing WhatsApp Volvo trips for Klebersom");
+{
+  const importSource = path.join(repo, 'render-overrides', 'import-klebersom-volvo-20261005.mjs');
+  if (!fs.existsSync(importSource)) throw new Error('Klebersom Volvo import script missing');
+  const importTarget = path.join(work, '.import-klebersom-volvo-20261005.mjs');
+  fs.copyFileSync(importSource, importTarget);
+  execSync('npm install --no-save --ignore-scripts --no-audit --no-fund @neondatabase/serverless', { cwd: work, stdio: 'inherit', env: process.env });
+  const importEnv = { ...process.env }; delete importEnv.TS_JOB_A; delete importEnv.TS_JOB_B; delete importEnv.TS_JOB_C; delete importEnv.TS_JOB_D;
+  execFileSync(process.execPath, [importTarget], { cwd: work, stdio: 'inherit', env: importEnv });
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
