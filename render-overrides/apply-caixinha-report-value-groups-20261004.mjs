@@ -106,7 +106,15 @@ patchFile("src/lib/pdf.ts", (input) => {
     'kind: "group", mode, unitValue: mode === "caixinha" ? caixinhaUnitValue : null, count: 0,'
   );
 
-  if (changes < 2) throw new Error("caixinha-report-value-groups: PDF markers incomplete (" + changes + ")");
+  if (changes < 2) {
+    const lines = s.split("\n");
+    const hits = lines
+      .map((line, i) => ({ i, line }))
+      .filter(({ line }) => /caixinha|freightMode|grouped|rows|rowForTrip|compact/i.test(line))
+      .slice(0, 120);
+    console.error("[caixinha-report-value-groups][pdf-diagnostic] " + hits.map(({ i, line }) => (i + 1) + ":" + line).join("\n"));
+    throw new Error("caixinha-report-value-groups: PDF markers incomplete (" + changes + ")");
+  }
   if (!s.includes('mode === "caixinha"') || !s.includes("unitValue")) throw new Error("caixinha-report-value-groups: PDF value grouping missing");
   return s;
 });
