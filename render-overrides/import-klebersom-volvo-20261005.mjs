@@ -200,7 +200,7 @@ for (const r of rows.filter((x) => x.mode === "ton" && x.client === "Buaiz" && x
   const codeNorm = norm(r.code);
   const updated = await sql`
     update trips
-    set client='Buaiz', origin='Galpão', destination='Vitória', freight_mode='ton', price_per_ton=11
+    set client='Buaiz', origin='Galpão', destination='Vitória', date=${r.date}::date, loaded_tons=${r.tons}, net_weight=${r.tons}, freight_mode='ton', price_per_ton=11
     where driver_id=${driver.id}
       and (
         regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
@@ -251,6 +251,61 @@ const buaizFinalAfter = await sql`
 console.log("[klebersom-volvo-reconcile] RESULT " + JSON.stringify(reconcile));
 console.log("[klebersom-volvo-reconcile] INSERTED " + JSON.stringify(reconcileInserted));
 console.log("[klebersom-volvo-reconcile] SOURCE_COVERAGE " + JSON.stringify({matched:matchedSource,source:rows.length,totalTrips:Number(totalTripsAfter[0]?.n||0),buaizEnforced,buaiz11:buaizFinalAfter[0]||{}}));
+const tonSourceRows = rows.filter((r) => r.mode === "ton");
+let tonMatchedFinal = 0;
+const tonMissingFinal = [];
+for (const r of tonSourceRows) {
+  const codeNorm = norm(r.code);
+  const hit = await sql`
+    select id from trips
+    where driver_id=${driver.id}
+      and (
+        regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+        or regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${"VOLVO"+codeNorm}
+        or (date=${r.date}::date and abs(coalesce(net_weight,loaded_tons,0)::float8-${r.tons})<0.011)
+      )
+    limit 1
+  `;
+  if (hit[0]) tonMatchedFinal++; else tonMissingFinal.push({code:r.code,date:r.date,tons:r.tons});
+}
+
+let fixedSourceFinal = 0;
+let fixedAccountedFinal = 0;
+const fixedAuditFinal = [];
+for (const [key, group] of fixedGroups) {
+  const sample = group[0];
+  const ex = await sql`
+    select count(*)::int as n from trips
+    where driver_id=${driver.id}
+      and date=${sample.date}::date
+      and freight_mode=${sample.mode}
+      and abs(coalesce(price_per_trip,0)::float8-${sample.price})<0.01
+  `;
+  const n = Number(ex[0]?.n || 0);
+  fixedSourceFinal += group.length;
+  fixedAccountedFinal += Math.min(n, group.length);
+  fixedAuditFinal.push({key,source:group.length,existing:n,ok:n>=group.length});
+}
+
+const buaizFinalAudit = await sql`
+  select count(*)::int as n, coalesce(sum(net_weight),0)::float8 as tons, coalesce(sum(net_weight*price_per_ton),0)::float8 as gross
+  from trips
+  where driver_id=${driver.id} and client='Buaiz' and origin='Galpão' and destination='Vitória' and price_per_ton=11
+    and date between '2026-09-24'::date and '2026-09-29'::date
+`;
+const totalTripsFinalAudit = await sql`select count(*)::int as n from trips where driver_id=${driver.id}`;
+console.log("[klebersom-volvo-audit] FINAL " + JSON.stringify({
+  source:rows.length,
+  tonSource:tonSourceRows.length,
+  tonMatched:tonMatchedFinal,
+  tonMissing:tonMissingFinal,
+  fixedSource:fixedSourceFinal,
+  fixedAccounted:fixedAccountedFinal,
+  fixedGroups:fixedAuditFinal,
+  totalTrips:Number(totalTripsFinalAudit[0]?.n||0),
+  buaiz11:buaizFinalAudit[0]||{}
+}));
+
 if (reconcile.errors.length) throw new Error("Klebersom Volvo reconciliation had errors: " + JSON.stringify(reconcile.errors));
 
 
@@ -277,6 +332,9 @@ for (const r of buaizRows) {
       set client='Buaiz',
           origin='Galpão',
           destination='Vitória',
+          date=${r.date}::date,
+          loaded_tons=${r.tons},
+          net_weight=${r.tons},
           freight_mode='ton',
           price_per_ton=11
       where driver_id=${driver.id}
