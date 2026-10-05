@@ -107,6 +107,15 @@ jobs:
           console.log('Latest application source reconstructed and branded for Trans Israel.');
           NODE
 
+      - name: Validate reconstructed source and refresh dependencies
+        working-directory: site
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f src/lib/qwen3-vl.server.ts
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); if(!p.dependencies?.['@vercel/oidc']) throw new Error('@vercel/oidc missing from reconstructed dependencies');"
+          npm install --ignore-scripts --no-audit --no-fund
+
       - name: Link independent Trans Israel project
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
