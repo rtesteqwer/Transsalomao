@@ -46,13 +46,6 @@ const helper = [
 if (!auth.includes(marker)) throw new Error('management-password-fix: helper marker missing');
 auth = auth.replace(marker, helper + marker);
 
-// [murillo-password-20261004] Keep the frozen security patch source intact,
-// then replace only Murillo's pinned server-side credential in the generated file.
-const murilloPasswordHash = "6c20f4fc5cdd174189431a656907d2a3ab641ee1f7a1abc71bf12744cf47a94c";
-const murilloHashPattern = /(\{\s*username:\s*"Murillo",\s*passwordHash:\s*")[0-9a-f]{64}("\s*\},?)/;
-if (!murilloHashPattern.test(auth)) throw new Error("management-password-fix: Murillo credential marker missing");
-auth = auth.replace(murilloHashPattern, (_match, prefix, suffix) => prefix + murilloPasswordHash + suffix);
-console.log("[management-password-fix] Murillo credential updated");
 
 fs.writeFileSync(authFile, auth);
 
