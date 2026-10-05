@@ -35,24 +35,6 @@ jobs:
           printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
           npx --yes vercel@latest pull --yes --environment=production --scope=transsalomao --token="$VERCEL_TOKEN"
 
-      - name: Run one-time database maintenance
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          set -euo pipefail
-          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @neondatabase/serverless bcryptjs
-          npx --yes vercel@latest env run -e production --scope=transsalomao --token="$VERCEL_TOKEN" -- sh -c '
-            export TS_JOB_A="$TS_MAINT_A2"
-            export TS_JOB_B="$TS_MAINT_B2"
-            export TS_JOB_C="$TS_MAINT_C2"
-            export TS_JOB_D="$TS_MAINT_D2"
-            for key in TS_JOB_A TS_JOB_B TS_JOB_C TS_JOB_D; do
-              eval "value=\${$key:-}"
-              printf "%s" "$value" | grep -Eq "^-?[0-9]+$" || { echo "maintenance value unavailable: $key"; exit 1; }
-            done
-            node render-overrides/fix-luis-pending-ton-price-20261004.mjs
-          '
-
       - name: Deploy Trans Salomao production
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
