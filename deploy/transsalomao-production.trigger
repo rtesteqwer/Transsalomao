@@ -82,3 +82,5 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-05 retry Klebersom Volvo import after bootstrap scope fix
 
 2026-10-05 retry Klebersom Volvo import with legacy date casts
+
+2026-10-05 final Klebersom Volvo import normalized legacy dates
