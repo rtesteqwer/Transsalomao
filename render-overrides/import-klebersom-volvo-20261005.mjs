@@ -120,6 +120,139 @@ const buaiz = await sql`select count(*)::int as n, coalesce(sum(net_weight),0)::
 console.log("[klebersom-volvo-import] RESULT " + JSON.stringify(result));
 console.log("[klebersom-volvo-import] INSERTED " + JSON.stringify(inserted));
 console.log("[klebersom-volvo-import] SKIPPED " + JSON.stringify(skipped));
+// Segunda passada: ticket existente nao equivale a viagem existente.
+// Garante uma viagem real para cada um dos 94 registros, sem duplicar.
+const reconcile = { inserted: 0, alreadyTrip: 0, fixedInserted: 0, errors: [] };
+const reconcileInserted = [];
+
+for (const r of rows.filter((x) => x.mode === "ton")) {
+  try {
+    const codeNorm = norm(r.code);
+    const byTrip = await sql`
+      select id from trips
+      where driver_id=${driver.id}
+        and (
+          regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+          or regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${"VOLVO"+codeNorm}
+          or (date=${r.date}::date and abs(coalesce(net_weight,loaded_tons,0)::float8-${r.tons})<0.011)
+        )
+      limit 1
+    `;
+    if (byTrip[0]) { reconcile.alreadyTrip++; continue; }
+    const suffix = createHash("sha256").update(["reconcile",r.code,r.date,r.tons,r.price,r.client].join("|")).digest("hex").slice(0,16);
+    const id = "trip_volvo_rec_" + suffix;
+    const storedCode = "VOLVO-" + String(r.code).replace(/^VOLVO-/,"").slice(0,60);
+    await sql`
+      insert into trips (id,code,date,client,origin,destination,driver_id,fleet_id,loaded_tons,gross_weight,net_weight,freight_mode,price_per_ton,price_per_trip,km_start,km_end,diesel_liters,diesel_price)
+      values (${id},${storedCode},${r.date}::date,${r.client},${r.origin},${r.destination},${driver.id},${fleet.id},${r.tons},0,${r.tons},'ton',${r.price},0,0,0,0,0)
+      on conflict (id) do nothing
+    `;
+    reconcile.inserted++;
+    reconcileInserted.push({code:r.code,date:r.date,tons:r.tons,mode:r.mode,price:r.price});
+  } catch (e) {
+    reconcile.errors.push({code:r.code,error:e instanceof Error ? e.message : String(e)});
+  }
+}
+
+for (const [key, group] of fixedGroups) {
+  try {
+    const sample = group[0];
+    const existing = await sql`
+      select count(*)::int as n from trips
+      where driver_id=${driver.id}
+        and date=${sample.date}::date
+        and freight_mode=${sample.mode}
+        and abs(coalesce(price_per_trip,0)::float8-${sample.price})<0.01
+    `;
+    let need = Math.max(0, group.length - Number(existing[0]?.n || 0));
+    if (!need) { reconcile.alreadyTrip += group.length; continue; }
+    for (const r of group) {
+      if (need <= 0) break;
+      const codeNorm = norm(r.code);
+      const exact = await sql`
+        select id from trips
+        where driver_id=${driver.id}
+          and (
+            regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+            or regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${"VOLVO"+codeNorm}
+          )
+        limit 1
+      `;
+      if (exact[0]) continue;
+      const suffix = createHash("sha256").update(["reconcile",r.code,r.date,r.mode,r.price,r.client].join("|")).digest("hex").slice(0,16);
+      const id = "trip_volvo_rec_" + suffix;
+      const storedCode = "VOLVO-" + String(r.code).replace(/^VOLVO-/,"").slice(0,60);
+      await sql`
+        insert into trips (id,code,date,client,origin,destination,driver_id,fleet_id,loaded_tons,gross_weight,net_weight,freight_mode,price_per_ton,price_per_trip,km_start,km_end,diesel_liters,diesel_price)
+        values (${id},${storedCode},${r.date}::date,${r.client},${r.origin},${r.destination},${driver.id},${fleet.id},0,0,0,${r.mode},0,${r.price},0,0,0,0)
+        on conflict (id) do nothing
+      `;
+      reconcile.inserted++; reconcile.fixedInserted++; need--;
+      reconcileInserted.push({code:r.code,date:r.date,tons:0,mode:r.mode,price:r.price});
+    }
+  } catch (e) {
+    reconcile.errors.push({group:key,error:e instanceof Error ? e.message : String(e)});
+  }
+}
+
+let buaizEnforced = 0;
+for (const r of rows.filter((x) => x.mode === "ton" && x.client === "Buaiz" && x.origin === "Galpão" && x.destination === "Vitória")) {
+  const codeNorm = norm(r.code);
+  const updated = await sql`
+    update trips
+    set client='Buaiz', origin='Galpão', destination='Vitória', freight_mode='ton', price_per_ton=11
+    where driver_id=${driver.id}
+      and (
+        regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+        or regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${"VOLVO"+codeNorm}
+        or (date=${r.date}::date and abs(coalesce(net_weight,loaded_tons,0)::float8-${r.tons})<0.011)
+      )
+    returning id
+  `;
+  buaizEnforced += updated.length;
+}
+
+let matchedSource = 0;
+for (const r of rows) {
+  const codeNorm = norm(r.code);
+  let hit;
+  if (r.mode === "ton") {
+    hit = await sql`
+      select id from trips
+      where driver_id=${driver.id}
+        and (
+          regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+          or regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${"VOLVO"+codeNorm}
+          or (date=${r.date}::date and abs(coalesce(net_weight,loaded_tons,0)::float8-${r.tons})<0.011)
+        )
+      limit 1
+    `;
+  } else {
+    hit = await sql`
+      select id from trips
+      where driver_id=${driver.id}
+        and (
+          regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+          or regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${"VOLVO"+codeNorm}
+        )
+      limit 1
+    `;
+  }
+  if (hit?.[0]) matchedSource++;
+}
+
+const totalTripsAfter = await sql`select count(*)::int as n from trips where driver_id=${driver.id}`;
+const buaizFinalAfter = await sql`
+  select count(*)::int as n, coalesce(sum(net_weight),0)::float8 as tons, coalesce(sum(net_weight*price_per_ton),0)::float8 as gross
+  from trips
+  where driver_id=${driver.id} and client='Buaiz' and origin='Galpão' and destination='Vitória' and price_per_ton=11
+    and date between '2026-09-24'::date and '2026-09-29'::date
+`;
+console.log("[klebersom-volvo-reconcile] RESULT " + JSON.stringify(reconcile));
+console.log("[klebersom-volvo-reconcile] INSERTED " + JSON.stringify(reconcileInserted));
+console.log("[klebersom-volvo-reconcile] SOURCE_COVERAGE " + JSON.stringify({matched:matchedSource,source:rows.length,totalTrips:Number(totalTripsAfter[0]?.n||0),buaizEnforced,buaiz11:buaizFinalAfter[0]||{}}));
+if (reconcile.errors.length) throw new Error("Klebersom Volvo reconciliation had errors: " + JSON.stringify(reconcile.errors));
+
 
 const buaizRows = rows.filter((r) => r.mode === "ton" && r.client === "Buaiz" && r.origin === "Galpão" && r.destination === "Vitória");
 let buaizUpdated = 0;
