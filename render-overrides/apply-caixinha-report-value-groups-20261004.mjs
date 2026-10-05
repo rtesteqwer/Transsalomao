@@ -67,55 +67,51 @@ patchFile("src/lib/excel-report.ts", (input) => {
 patchFile("src/lib/pdf.ts", (input) => {
   let s = input;
   let changes = 0;
-  const rep = (before, after) => {
-    if (s.includes(before)) {
-      s = s.replace(before, after);
-      changes += 1;
-    }
-  };
 
-  // PDF completo: grupos por motorista/modalidade também recebem o preço da Caixinha na chave.
-  rep(
-    '      const key = driverKey + "|" + mode;\n      const current = grouped.get(key) ?? {\n        kind: "group", mode, label: modeLabelCompact(mode), count: 0, driverName: rowDriverName,',
-    '      const caixinhaUnitValue = mode === "caixinha" ? Number(trip.pricePerTrip ?? trip.freight ?? 0) : 0;\n      const key = driverKey + "|" + mode + (mode === "caixinha" ? "|" + caixinhaUnitValue.toFixed(2) : "");\n      const current = grouped.get(key) ?? {\n        kind: "group", mode, label: modeLabelCompact(mode), count: 0, driverName: rowDriverName, unitValue: mode === "caixinha" ? caixinhaUnitValue : null,'
-  );
+  const compactStart = s.indexOf('  const compactRows = (() => {');
+  if (compactStart < 0) throw new Error("caixinha-report-value-groups: compactRows not found");
 
-  rep(
-    '${item.label} · ${item.count} viagens',
-    '${item.label}${item.mode === "caixinha" ? " · " + brl(Number(item.unitValue ?? 0)) + " cada" : ""} · ${item.count} viagens'
-  );
+  // Chave do grupo: motorista + modalidade + valor unitário da Caixinha.
+  const keyStart = s.indexOf('      const key = ', compactStart);
+  if (keyStart < 0) throw new Error("caixinha-report-value-groups: PDF group key not found");
+  const keyEnd = s.indexOf("\n", keyStart);
+  if (keyEnd < 0) throw new Error("caixinha-report-value-groups: PDF group key line end not found");
+  const oldKeyLine = s.slice(keyStart, keyEnd);
+  if (!oldKeyLine.includes("mode")) throw new Error("caixinha-report-value-groups: unexpected PDF group key");
+  const newKeyLines =
+    '      const caixinhaUnitValue = mode === "caixinha" ? Number(trip.pricePerTrip ?? trip.freight ?? 0) : 0;\n' +
+    '      const key = String(trip.driverId ?? name) + "|" + mode + (mode === "caixinha" ? "|" + caixinhaUnitValue.toFixed(2) : "");';
+  s = s.slice(0, keyStart) + newKeyLines + s.slice(keyEnd);
+  changes += 1;
 
-  // PDF do motorista em snapshots que agrupam Cegonha/Caixinha diretamente por modalidade.
-  rep(
-    '      const current = grouped.get(mode) ?? { kind: "group", mode, count: 0, fleets: new Set<string>(), firstDate: String(trip.date ?? ""), lastDate: String(trip.date ?? ""), billing: 0, commission: 0 };',
-    '      const caixinhaUnitValue = mode === "caixinha" ? Number(trip.pricePerTrip ?? trip.freight ?? 0) : 0;\n      const groupKey = mode + (mode === "caixinha" ? "|" + caixinhaUnitValue.toFixed(2) : "");\n      const current = grouped.get(groupKey) ?? { kind: "group", mode, unitValue: mode === "caixinha" ? caixinhaUnitValue : null, count: 0, fleets: new Set<string>(), firstDate: String(trip.date ?? ""), lastDate: String(trip.date ?? ""), billing: 0, commission: 0 };'
-  );
-  rep('      grouped.set(mode, current);', '      grouped.set(groupKey, current);');
-  rep(
-    '${label} · ${item.count} viagens',
-    '${label}${item.mode === "caixinha" ? " · " + brl(Number(item.unitValue ?? 0)) + " cada" : ""} · ${item.count} viagens'
-  );
+  const currentOld = '      const current = grouped.get(key) ?? { mode, name, count: 0, firstDate: reportDateKey(trip.date), lastDate: reportDateKey(trip.date), freight: 0, commission: 0, after: 0 };';
+  const currentNew = '      const current = grouped.get(key) ?? { mode, name, unitValue: mode === "caixinha" ? caixinhaUnitValue : null, count: 0, firstDate: reportDateKey(trip.date), lastDate: reportDateKey(trip.date), freight: 0, commission: 0, after: 0 };';
+  if (!s.includes(currentOld)) throw new Error("caixinha-report-value-groups: PDF current group not found");
+  s = s.replace(currentOld, currentNew);
+  changes += 1;
 
-  // Outra forma usada pelo PDF final: Map por key=mode.
-  rep(
-    '    const key = mode;\n    const group = grouped.get(key) ?? {',
-    '    const caixinhaUnitValue = mode === "caixinha" ? Number(trip.pricePerTrip ?? trip.freight ?? 0) : 0;\n    const key = mode + (mode === "caixinha" ? "|" + caixinhaUnitValue.toFixed(2) : "");\n    const group = grouped.get(key) ?? {'
-  );
-  rep(
-    'kind: "group", mode, count: 0,',
-    'kind: "group", mode, unitValue: mode === "caixinha" ? caixinhaUnitValue : null, count: 0,'
-  );
+  const groupedOld = '    grouped.forEach((item) => { const dateText = item.firstDate === item.lastDate ? formatDate(item.firstDate) : \`${formatDate(item.firstDate)} a ${formatDate(item.lastDate)}\`; rows.push([dateText, \`${modeLabelCompact(item.mode)} • ${item.count} fretes\`, item.name, \`${item.count} fretes\`, brl(item.freight), brl(item.commission), brl(item.after)]); });';
+  const groupedNew = '    grouped.forEach((item) => { const dateText = item.firstDate === item.lastDate ? formatDate(item.firstDate) : \`${formatDate(item.firstDate)} a ${formatDate(item.lastDate)}\`; const unitText = item.mode === "caixinha" ? " • " + brl(Number(item.unitValue ?? 0)) + " cada" : ""; rows.push([dateText, \`${modeLabelCompact(item.mode)}${unitText} • ${item.count} fretes\`, item.name, \`${item.count} fretes${unitText}\`, brl(item.freight), brl(item.commission), brl(item.after)]); });';
+  if (!s.includes(groupedOld)) throw new Error("caixinha-report-value-groups: PDF grouped row not found");
+  s = s.replace(groupedOld, groupedNew);
+  changes += 1;
 
-  if (changes < 2) {
-    const lines = s.split("\n");
-    const hits = lines
-      .map((line, i) => ({ i, line }))
-      .filter(({ line }) => /caixinha|freightMode|grouped|rows|rowForTrip|compact/i.test(line))
-      .slice(0, 120);
-    console.error("[caixinha-report-value-groups][pdf-diagnostic] " + hits.map(({ i, line }) => (i + 1) + ":" + line).join("\n"));
-    throw new Error("caixinha-report-value-groups: PDF markers incomplete (" + changes + ")");
+  // No PDF geral, também explicita o valor quando a linha for Caixinha.
+  const rowOld = '    return [formatDate(trip.date), \`${String(trip.code ?? "—")} • ${modeLabelCompact(mode)}\`, String(trip.driverName ?? driverName ?? "—"), details, brl(Number(trip.freight ?? 0)), brl(Number(trip.commissionValue ?? trip.commission ?? 0)), brl(Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))))];';
+  const rowNew = '    return [formatDate(trip.date), \`${String(trip.code ?? "—")} • ${modeLabelCompact(mode)}${mode === "caixinha" ? " • " + brl(Number(trip.pricePerTrip ?? trip.freight ?? 0)) + " cada" : ""}\`, String(trip.driverName ?? driverName ?? "—"), details, brl(Number(trip.freight ?? 0)), brl(Number(trip.commissionValue ?? trip.commission ?? 0)), brl(Number(trip.afterCommission ?? (Number(trip.freight ?? 0) - Number(trip.commissionValue ?? trip.commission ?? 0))))];';
+  if (s.includes(rowOld)) {
+    s = s.replace(rowOld, rowNew);
+    changes += 1;
   }
-  if (!s.includes('mode === "caixinha"') || !s.includes("unitValue")) throw new Error("caixinha-report-value-groups: PDF value grouping missing");
+
+  // Usa as linhas compactas em PDF geral e individual: tonelada/diária seguem individuais;
+  // Cegonha/Caixinha ficam agrupadas, e Caixinha é separada por valor.
+  const rowsOld = '  const rows = isGeneralReport ? generalRows : compactRows;';
+  if (!s.includes(rowsOld)) throw new Error("caixinha-report-value-groups: PDF rows selector not found");
+  s = s.replace(rowsOld, '  const rows = compactRows;');
+  changes += 1;
+
+  if (changes < 4) throw new Error("caixinha-report-value-groups: PDF changes incomplete (" + changes + ")");
   return s;
 });
 
