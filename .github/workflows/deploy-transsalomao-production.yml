@@ -40,7 +40,10 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          URL="$(npx --yes vercel@latest deploy --force --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          URL="$(npx --yes vercel@latest deploy --force --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN" --build-env TS_JOB_A="$TS_JOB_A" --build-env TS_JOB_B="$TS_JOB_B" --build-env TS_JOB_C="$TS_JOB_C" --build-env TS_JOB_D="$TS_JOB_D")"
           echo "Published Trans Salomao: $URL"
 
       - name: Link Felipe IA Cloud project
