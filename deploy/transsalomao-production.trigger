@@ -78,3 +78,5 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 deploy bootstrap maintenance env fix
 
 2026-10-05 import Klebersom Volvo trips idempotent Galpao-Vitoria R$11/t
+
+2026-10-05 retry Klebersom Volvo import after bootstrap scope fix
