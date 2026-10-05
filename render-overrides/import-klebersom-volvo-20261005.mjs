@@ -195,6 +195,33 @@ for (const [key, group] of fixedGroups) {
   }
 }
 
+
+// Normaliza os romaneios de modalidades fixas que ja existem por codigo.
+// Nao cria novas viagens; apenas corrige modalidade, data e valor unitario.
+let fixedNormalized = 0;
+for (const r of rows.filter((x) => x.mode !== "ton")) {
+  const codeNorm = norm(r.code);
+  const updated = await sql`
+    update trips
+    set date=${r.date}::date,
+        client=${r.client},
+        origin=${r.origin},
+        destination=${r.destination},
+        freight_mode=${r.mode},
+        price_per_ton=0,
+        price_per_trip=${r.price},
+        loaded_tons=0,
+        net_weight=0
+    where driver_id=${driver.id}
+      and (
+        regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+        or regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${"VOLVO"+codeNorm}
+      )
+    returning id
+  `;
+  fixedNormalized += updated.length;
+}
+console.log("[klebersom-volvo-fixed-normalize] updated=" + fixedNormalized);
 let buaizEnforced = 0;
 for (const r of rows.filter((x) => x.mode === "ton" && x.client === "Buaiz" && x.origin === "Galpão" && x.destination === "Vitória")) {
   const codeNorm = norm(r.code);
