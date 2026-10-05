@@ -92,3 +92,5 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-05 final audit Klebersom 94 source trips + Buaiz R$11
 
 2026-10-05 normalize Klebersom fixed modes cegonha 846
+
+2026-10-05 relink Klebersom orphan ticket photos
