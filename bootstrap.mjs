@@ -457,6 +457,16 @@ execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-mobil
   );
 }
 
+// Android/PDF viewer: o POST cria um link temporário GET para que o visualizador
+// possa refazer a leitura do arquivo sem receber HTML no /api/baixar-relatorio.
+if (!original.includes("apply-mobile-report-retry-get-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing mobile report retry GET insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-mobile-report-retry-get-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Relatórios: despesas operacionais entram no PDF por motorista/cavalo,
  // mas ficam fora das planilhas Excel.
 if (!original.includes("apply-report-expenses-pdf-only-20261004.mjs")) {
