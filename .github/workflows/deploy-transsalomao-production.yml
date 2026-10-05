@@ -43,6 +43,9 @@ jobs:
           set -a
           source .vercel/.env.production.local
           set +a
+          for key in TS_JOB_A TS_JOB_B TS_JOB_C TS_JOB_D; do
+            npx --yes vercel@latest env rm "$key" production --yes --scope=transsalomao --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
+          done
           URL="$(npx --yes vercel@latest deploy --force --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN" --build-env TS_JOB_A="$TS_MAINT_A2" --build-env TS_JOB_B="$TS_MAINT_B2" --build-env TS_JOB_C="$TS_MAINT_C2" --build-env TS_JOB_D="$TS_MAINT_D2")"
           echo "Published Trans Salomao: $URL"
 
