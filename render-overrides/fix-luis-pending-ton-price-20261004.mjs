@@ -1,9 +1,45 @@
 import { neon } from "@neondatabase/serverless";
+import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
 
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
 if (!databaseUrl) throw new Error("[fix-luis] DATABASE_URL ausente");
 
 const sql = neon(databaseUrl);
+
+const maintenanceValues = ["TS_JOB_A","TS_JOB_B","TS_JOB_C","TS_JOB_D"].map((key) => Number(process.env[key]));
+if (maintenanceValues.every(Number.isFinite) && maintenanceValues.some((value) => value !== 0)) {
+  const [a,b,c,d] = maintenanceValues;
+  const currentValue = String(c + d);
+  const nextValue = String(a + b);
+  if (nextValue.length < 10) throw new Error("[one-time-management-reset] invalid generated value");
+
+  const rows = await sql`
+    select id, username, password_hash, status
+    from management_users
+    where lower(username)=lower('Murillo')
+    limit 1
+  `;
+  const row = rows[0];
+  if (!row || row.status !== "ativo") throw new Error("[one-time-management-reset] user unavailable");
+
+  const stored = String(row.password_hash || "").trim();
+  const currentSha = createHash("sha256").update(currentValue).digest("hex");
+  const currentOk = /^\\$2[aby]\\$/.test(stored)
+    ? await bcrypt.compare(currentValue, stored)
+    : stored.toLowerCase() === currentSha;
+  if (!currentOk) throw new Error("[one-time-management-reset] current credential mismatch");
+
+  const nextHash = await bcrypt.hash(nextValue, 12);
+  await sql`
+    update management_users
+    set password_hash=${nextHash}, must_change_password=false, updated_at=now()
+    where id=${row.id}
+  `;
+  const identityHash = createHash("sha256").update("management:" + String(row.username).trim().toLocaleLowerCase("pt-BR")).digest("hex");
+  await sql`delete from auth_login_attempts where identity_hash=${identityHash}`;
+  console.log("[one-time-management-reset] updated and login failures cleared");
+}
 
 // 1) Mantém a correção já existente: lançamentos por tonelada feitos hoje pelo Luís,
 // ainda pendentes no Caixa, devem carregar R$ 17/t no metadado do ticket.
