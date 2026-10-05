@@ -75,3 +75,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04-mobile-pdf-get-fix-53e4964
 2026-10-04-mobile-pdf-get-fix-retry-42f14cf
 2026-10-04 retry Murillo credential maintenance with legacy seed
+2026-10-04 deploy bootstrap maintenance env fix
