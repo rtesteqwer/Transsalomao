@@ -86,3 +86,5 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-05 final Klebersom Volvo import normalized legacy dates
 
 2026-10-05 enforce Klebersom Galpao-Vitoria R$11 per ton
+
+2026-10-05 reconcile Klebersom missing trips from tickets
