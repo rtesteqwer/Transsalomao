@@ -665,15 +665,22 @@ if (!original.includes("[fix-luis-ton-price]")) {
 
 
 
-console.log("[klebersom-volvo-import-run] importing WhatsApp Volvo trips for Klebersom");
+// Importação idempotente de viagens do WhatsApp Volvo/Klebersom roda dentro
+// do bootstrap reconstruído, onde "work" e as dependências da aplicação existem.
+if (!original.includes("[klebersom-volvo-import-inner]")) {
+  const buildMarker = "execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });";
+  if (!original.includes(buildMarker)) throw new Error("Build marker not found for Klebersom Volvo import");
+  const importRun = `
 {
+  console.log("[klebersom-volvo-import-inner] importing WhatsApp Volvo trips for Klebersom");
   const importSource = path.join(repo, 'render-overrides', 'import-klebersom-volvo-20261005.mjs');
   if (!fs.existsSync(importSource)) throw new Error('Klebersom Volvo import script missing');
   const importTarget = path.join(work, '.import-klebersom-volvo-20261005.mjs');
   fs.copyFileSync(importSource, importTarget);
-  execSync('npm install --no-save --ignore-scripts --no-audit --no-fund @neondatabase/serverless', { cwd: work, stdio: 'inherit', env: process.env });
-  const importEnv = { ...process.env }; delete importEnv.TS_JOB_A; delete importEnv.TS_JOB_B; delete importEnv.TS_JOB_C; delete importEnv.TS_JOB_D;
-  execFileSync(process.execPath, [importTarget], { cwd: work, stdio: 'inherit', env: importEnv });
+  execFileSync(process.execPath, [importTarget], { cwd: work, stdio: 'inherit', env: process.env });
+}
+`;
+  original = original.replace(buildMarker, importRun + buildMarker);
 }
 
 fs.writeFileSync(originalPath, original);
