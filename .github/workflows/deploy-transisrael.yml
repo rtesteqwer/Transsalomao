@@ -1,46 +1,125 @@
-name: Deploy independent Trans Israel
+name: Deploy independent Trans Israel (synced from Trans Salomao)
+
 on:
   push:
     branches: [transisrael-production]
   workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: transisrael-production
+  cancel-in-progress: true
+
 jobs:
   deploy:
-    if: ${{ !contains(github.event.head_commit.message, '[cleanup-only]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Trans Israel control branch
+        uses: actions/checkout@v4
+        with:
+          path: transisrael-control
+
+      - name: Checkout latest Trans Salomao source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: upstream
+
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Extract independent source
+
+      - name: Reconstruct latest Trans Salomao application source
+        working-directory: upstream
+        env:
+          TRANS_SOURCE_DUMP: ../site
+          VERCEL: '1'
+          VERCEL_PROJECT_PRODUCTION_URL: transsalomao.vercel.app
+        run: npm run build
+
+      - name: Apply Trans Israel identity without reverting functionality
+        shell: bash
         run: |
-          mkdir site
-          tar -xJf transisrael-source.tar.xz -C site
-      - name: Configure independent project
+          set -euo pipefail
+          if [ -f transisrael-control/transisrael-source.tar.xz ]; then
+            mkdir -p old-site
+            tar -xJf transisrael-control/transisrael-source.tar.xz -C old-site
+            for file in public/favicon.svg public/__grok/icon-180.png; do
+              if [ -f "old-site/$file" ]; then
+                mkdir -p "site/$(dirname "$file")"
+                cp "old-site/$file" "site/$file"
+              fi
+            done
+          fi
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const root = path.resolve('site');
+          const textExt = new Set([
+            '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+            '.json', '.html', '.css', '.svg', '.md', '.txt'
+          ]);
+          const replacements = [
+            ['Trans Salomão', 'Trans Israel'],
+            ['Trans Salomao', 'Trans Israel'],
+            ['TRANS SALOMÃO', 'TRANS ISRAEL'],
+            ['TRANS SALOMAO', 'TRANS ISRAEL'],
+            ['Salomão IA', 'Israel IA'],
+            ['Salomao IA', 'Israel IA'],
+            ['SALOMÃO IA', 'ISRAEL IA'],
+            ['SALOMAO IA', 'ISRAEL IA'],
+          ];
+
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                if (entry.name === 'node_modules' || entry.name === '.vercel') continue;
+                walk(full);
+                continue;
+              }
+              if (!textExt.has(path.extname(entry.name))) continue;
+              let content;
+              try { content = fs.readFileSync(full, 'utf8'); } catch { continue; }
+              let next = content;
+              for (const [from, to] of replacements) next = next.split(from).join(to);
+              if (next !== content) fs.writeFileSync(full, next);
+            }
+          }
+
+          walk(root);
+
+          const pkgPath = path.join(root, 'package.json');
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+          pkg.name = 'transisrael';
+          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+
+          const brandPath = path.join(root, 'src', 'components', 'brand.tsx');
+          if (!fs.existsSync(brandPath)) throw new Error('Brand component missing after reconstruction');
+          const brand = fs.readFileSync(brandPath, 'utf8');
+          if (!brand.includes('Trans Israel')) throw new Error('Trans Israel branding was not applied');
+
+          console.log('Latest application source reconstructed and branded for Trans Israel.');
+          NODE
+
+      - name: Link independent Trans Israel project
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: node deploy.mjs
-      - name: Publish Trans Israel
-        if: ${{ hashFiles('ready') != '' }}
+        run: node transisrael-control/deploy.mjs
+
+      - name: Publish Trans Israel production
         working-directory: site
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: npx --yes vercel@latest deploy --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN"
-      - name: Verify independent login
-        if: ${{ hashFiles('ready') != '' }}
-        run: node verify.mjs
-  finalize:
-    if: ${{ contains(github.event.head_commit.message, '[cleanup-only]') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Protect runtime configuration
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: node finalize.mjs
+        run: |
+          set -euo pipefail
+          URL="$(npx --yes vercel@latest deploy --force --prod --yes --scope=transsalomao --token="$VERCEL_TOKEN")"
+          echo "Published Trans Israel: $URL"
+
+      - name: Verify independent Trans Israel
+        run: node transisrael-control/verify.mjs
