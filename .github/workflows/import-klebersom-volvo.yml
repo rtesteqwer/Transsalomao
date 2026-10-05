@@ -1,0 +1,47 @@
+name: Import Klebersom Volvo Trips
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/import-klebersom-volvo.yml"
+      - "deploy/klebersom-volvo-import.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Pull production database environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_CmpJdXo3MzDAX3TZXFp9am5F","projectId":"prj_jB9N2LQ3grttSuBALVVGp5X5gVdH"}' > .vercel/project.json
+          npx --yes vercel@latest env pull .env.klebersom-import --environment=production --yes --scope=transsalomao --token="$VERCEL_TOKEN"
+
+      - name: Run idempotent Klebersom import
+        run: |
+          set -euo pipefail
+          set -a
+          . ./.env.klebersom-import
+          set +a
+          test -n "${DATABASE_URL:-}"
+          mkdir -p /tmp/klebersom-import
+          cp render-overrides/import-klebersom-volvo-20261005.mjs /tmp/klebersom-import/import.mjs
+          cd /tmp/klebersom-import
+          npm init -y >/dev/null 2>&1
+          npm install --no-audit --no-fund --ignore-scripts @neondatabase/serverless >/dev/null
+          node import.mjs
