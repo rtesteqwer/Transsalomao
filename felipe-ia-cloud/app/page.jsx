@@ -402,6 +402,9 @@ export default function Home() {
         </div>
 
         <div className="sideBottom">
+          <button className="sideAction" onClick={() => { window.location.href = '/plugins'; }}>
+            🔌 Plugins <span>5</span>
+          </button>
           <button className="sideAction" onClick={() => setMemoryOpen(true)}>
             🧠 Memória <span>{memory.length}</span>
           </button>
