@@ -72,11 +72,11 @@ for (const r of rows) {
       if (byTrip[0]) duplicate="trip-date-weight";
     }
     if (!duplicate && r.mode === "ton") {
-      const byReport = await sql`select id from reports where driver_id=${driver.id} and loading_date=${r.date}::date and abs(coalesce(tons,0)::float8-${r.tons})<0.011 limit 1`;
+      const byReport = await sql`select id from reports where driver_id=${driver.id} and loading_date::date=${r.date}::date and abs(coalesce(tons,0)::float8-${r.tons})<0.011 limit 1`;
       if (byReport[0]) duplicate="report-date-weight";
     }
     if (!duplicate && r.mode === "ton") {
-      const byTicketWeight = await sql`select numero_ticket from tickets_balanca where driver_id=${driver.id} and data_pesagem=${r.date}::date and abs(coalesce(peso_liquido_kg,0)::float8-${r.tons*1000})<11 limit 1`;
+      const byTicketWeight = await sql`select numero_ticket from tickets_balanca where driver_id=${driver.id} and data_pesagem::date=${r.date}::date and abs(coalesce(peso_liquido_kg,0)::float8-${r.tons*1000})<11 limit 1`;
       if (byTicketWeight[0]) duplicate="ticket-date-weight";
     }
     if (!duplicate && r.mode === "ton" && !generated) {
