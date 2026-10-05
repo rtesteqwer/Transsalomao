@@ -1,3 +1,4 @@
+import { currentUser } from '../../../../../auth.js';
 import { randomBytes } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
@@ -33,8 +34,9 @@ export async function GET(request, context) {
   }
 
   const state = randomBytes(24).toString('hex');
+  const ownerId = (await currentUser())?.id || 'guest';
   const store = await cookies();
-  store.set('felipe_plugin_oauth_state', provider + ':' + state, {
+  store.set('felipe_plugin_oauth_state', provider + ':' + ownerId + ':' + state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',

@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { EncryptJWT, jwtDecrypt } from 'jose';
 import { cookies } from 'next/headers';
+import { currentUser } from '../auth.js';
+import { ownsPlugin } from './account-policy.js';
 
 const VALID_PROVIDERS = new Set(['gmail', 'youtube', 'github', 'vercel', 'neon']);
 const COOKIE_PREFIX = 'felipe_plugin_';
@@ -62,7 +64,7 @@ export async function readPluginCredential(provider) {
   const store = await cookies();
   const encrypted = store.get(providerCookie(provider))?.value;
   const decoded = await decryptPayload(encrypted);
-  if (decoded?.accessToken || decoded?.refreshToken) {
+  if ((decoded?.accessToken || decoded?.refreshToken) && ownsPlugin(decoded, (await currentUser())?.id)) {
     return decoded;
   }
   return null;
@@ -71,7 +73,7 @@ export async function readPluginCredential(provider) {
 export async function writePluginCredential(provider, payload) {
   if (!VALID_PROVIDERS.has(provider)) throw new Error('Plugin inválido.');
   const store = await cookies();
-  const value = await encryptPayload({ provider, ...payload });
+  const value = await encryptPayload({ provider, ...payload, ownerId: (await currentUser())?.id || 'guest' });
   store.set(providerCookie(provider), value, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

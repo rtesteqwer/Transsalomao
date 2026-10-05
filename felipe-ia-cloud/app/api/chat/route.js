@@ -1,4 +1,5 @@
 import { generateText, stepCountIs } from 'ai';
+import { currentUser } from '../../../auth.js';
 import { executeCode } from 'ai-sdk-tool-code-execution';
 import {
   TASK,
@@ -271,7 +272,7 @@ export async function POST(request) {
     const selfProgramming = wantsSelfProgramming
       ? await enqueueSelfProgrammingTask({
           request: contextText,
-          userId: body?.userId
+          userId: (await currentUser())?.id || 'anonymous'
         })
       : { enabled: selfProgrammingEnabled(), queued: false };
 

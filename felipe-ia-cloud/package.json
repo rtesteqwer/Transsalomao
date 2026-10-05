@@ -8,12 +8,13 @@
     "start": "next start"
   },
   "dependencies": {
+    "@vercel/blob": "latest",
     "ai": "latest",
     "ai-sdk-tool-code-execution": "latest",
-    "next": "latest",
-    "react": "latest",
-    "react-dom": "latest",
     "jose": "latest",
-    "@vercel/blob": "latest"
+    "next": "latest",
+    "next-auth": "5.0.0-beta.32",
+    "react": "latest",
+    "react-dom": "latest"
   }
 }

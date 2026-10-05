@@ -1,3 +1,4 @@
+import { currentUser } from '../../../../../auth.js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { writePluginCredential } from '../../../../../lib/plugin-auth.js';
@@ -15,6 +16,7 @@ export async function GET(request, context) {
     return NextResponse.redirect(new URL('/plugins?error=unsupported_oauth', origin));
   }
 
+  const ownerId = (await currentUser())?.id || 'guest';
   const store = await cookies();
   const expected = String(store.get('felipe_plugin_oauth_state')?.value || '');
 
@@ -26,7 +28,7 @@ export async function GET(request, context) {
     maxAge: 0
   });
 
-  if (!code || !state || expected !== provider + ':' + state) {
+  if (!code || !state || expected !== provider + ':' + ownerId + ':' + state) {
     return NextResponse.redirect(new URL('/plugins?error=oauth_state', origin));
   }
 
