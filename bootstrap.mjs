@@ -665,24 +665,6 @@ if (!original.includes("[fix-luis-ton-price]")) {
 
 
 
-// Importação idempotente de viagens do WhatsApp Volvo/Klebersom roda dentro
-// do bootstrap reconstruído, onde "work" e as dependências da aplicação existem.
-if (!original.includes("[klebersom-volvo-import-inner]")) {
-  const buildMarker = "execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });";
-  if (!original.includes(buildMarker)) throw new Error("Build marker not found for Klebersom Volvo import");
-  const importRun = `
-{
-  console.log("[klebersom-volvo-import-inner] importing WhatsApp Volvo trips for Klebersom");
-  const importSource = path.join(repo, 'render-overrides', 'import-klebersom-volvo-20261005.mjs');
-  if (!fs.existsSync(importSource)) throw new Error('Klebersom Volvo import script missing');
-  const importTarget = path.join(work, '.import-klebersom-volvo-20261005.mjs');
-  fs.copyFileSync(importSource, importTarget);
-  execFileSync(process.execPath, [importTarget], { cwd: work, stdio: 'inherit', env: process.env });
-}
-`;
-  original = original.replace(buildMarker, importRun + buildMarker);
-}
-
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
