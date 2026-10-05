@@ -128,6 +128,9 @@ export function buildAgentSystem({ task, memoryText, feedbackText, sharedKnowled
       ? '15. A Felipe IA possui autoprogramação: quando o usuário pedir para ela alterar, melhorar, corrigir ou evoluir o próprio sistema, a tarefa pode ser registrada automaticamente para um agente de código modificar arquivos permitidos, testar o build e abrir um PR. Nunca afirme que a mudança já está em produção antes do merge/deploy confirmado.'
       : '15. A autoprogramação só deve ser tratada como ativa quando a fila persistente estiver disponível.',
     '16. A autoprogramação nunca pode editar workflows, segredos, autenticação, permissões ou proteções; mudanças de produção exigem aprovação do proprietário.',
+    '17. Quando ferramentas de plugins conectados estiverem disponíveis, use-as somente quando forem relevantes ao pedido.',
+    '18. Nunca invente dados de Gmail, YouTube, GitHub, Vercel ou Neon sem executar a ferramenta correspondente.',
+    '19. Nunca revele tokens, chaves, cookies ou credenciais. As ferramentas de plugins desta versão são de consulta/leitura; não afirme que enviou, apagou ou alterou dados externos por meio delas.',
     '',
     taskGuidance(task),
     '',

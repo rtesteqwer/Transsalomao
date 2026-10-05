@@ -15,6 +15,7 @@ import {
   isSelfProgrammingRequest,
   selfProgrammingEnabled
 } from '../../../lib/self-programming.js';
+import { getPluginTools } from '../../../lib/plugin-tools.js';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -201,6 +202,8 @@ export async function POST(request) {
       sharedLearningEnabled: sharedLearning.enabled,
       selfProgrammingEnabled: selfProgrammingEnabled()
     });
+    const pluginTools = await getPluginTools();
+    const hasPluginTools = Object.keys(pluginTools).length > 0;
     let draft = '';
     let images = [];
     let toolSteps = 0;
@@ -227,7 +230,8 @@ export async function POST(request) {
         system,
         messages,
         tools: {
-          executeCode: executeCode()
+          executeCode: executeCode(),
+          ...pluginTools
         },
         stopWhen: stepCountIs(6)
       });
@@ -240,10 +244,16 @@ export async function POST(request) {
         model: NORMAL_MODEL,
         system,
         messages,
-        reasoning: 'high'
+        reasoning: 'high',
+        ...(hasPluginTools ? {
+          tools: pluginTools,
+          stopWhen: stepCountIs(6)
+        } : {})
       });
 
       draft = result.text || 'Não consegui gerar uma resposta.';
+      toolSteps = Array.isArray(result.steps) ? result.steps.length : 0;
+      verifiedByExecution = toolSteps > 0;
     }
 
     const reviewed = await reviewDraft({
