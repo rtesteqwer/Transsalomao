@@ -73,3 +73,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04-caixinha-report-final-6c2d2e0
 2026-10-04 publish Murillo credential maintenance
 2026-10-04-mobile-pdf-get-fix-53e4964
+2026-10-04-mobile-pdf-get-fix-retry-42f14cf
