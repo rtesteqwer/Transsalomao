@@ -48,6 +48,14 @@ auth = auth.replace(marker, helper + marker);
 
 
 fs.writeFileSync(authFile, auth);
+// [inspect-management-auth-20261004] Temporary CI-only inspection with credential hashes redacted.
+if (process.env.CI === "true") {
+  const redacted = auth
+    .replace(/\$2[aby]\$\d{2}\$[A-Za-z0-9./]{53}/g, "<bcrypt-redacted>")
+    .replace(/[0-9a-f]{64}/g, "<sha256-redacted>");
+  console.log("[inspect-management-auth-20261004]\n" + redacted.slice(0, 14000));
+}
+
 
 const routeFile = path.join(target, 'src/routes/api/management/password.ts');
 fs.mkdirSync(path.dirname(routeFile), { recursive: true });
