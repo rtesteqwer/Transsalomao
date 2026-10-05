@@ -666,24 +666,6 @@ if (!original.includes("[fix-luis-ton-price]")) {
 
 
 
-// One-time repair: relink Klebersom ticket photos whose old trip/report IDs no longer exist.
-if (!original.includes("[orphan-photo-relink-inner]")) {
-  const buildMarker = "execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });";
-  if (!original.includes(buildMarker)) throw new Error("Build marker not found for orphan photo relink");
-  const relinkRun = `
-{
-  console.log("[orphan-photo-relink-inner] relinking Klebersom orphan ticket photos");
-  const source = path.join(repo, 'render-overrides', 'relink-klebersom-orphan-photos-20261005.mjs');
-  if (!fs.existsSync(source)) throw new Error('orphan photo relink script missing');
-  const target = path.join(work, '.relink-klebersom-orphan-photos-20261005.mjs');
-  fs.copyFileSync(source, target);
-  execSync('npm install --no-save --ignore-scripts --no-audit --no-fund @neondatabase/serverless', { cwd: work, stdio: 'inherit', env: process.env });
-  execFileSync(process.execPath, [target], { cwd: work, stdio: 'inherit', env: process.env });
-}
-`;
-  original = original.replace(buildMarker, relinkRun + buildMarker);
-}
-
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
