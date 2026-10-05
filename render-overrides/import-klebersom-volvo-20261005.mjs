@@ -120,5 +120,90 @@ const buaiz = await sql`select count(*)::int as n, coalesce(sum(net_weight),0)::
 console.log("[klebersom-volvo-import] RESULT " + JSON.stringify(result));
 console.log("[klebersom-volvo-import] INSERTED " + JSON.stringify(inserted));
 console.log("[klebersom-volvo-import] SKIPPED " + JSON.stringify(skipped));
+
+const buaizRows = rows.filter((r) => r.mode === "ton" && r.client === "Buaiz" && r.origin === "Galpão" && r.destination === "Vitória");
+let buaizUpdated = 0;
+const buaizAudit = { trip: 0, report: 0, ticket: 0, missing: 0 };
+for (const r of buaizRows) {
+  const codeNorm = norm(r.code);
+  const tripMatches = await sql`
+    select id
+    from trips
+    where driver_id=${driver.id}
+      and (
+        regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+        or (
+          date=${r.date}::date
+          and abs(coalesce(net_weight,loaded_tons,0)::float8-${r.tons})<0.011
+        )
+      )
+  `;
+  if (tripMatches.length) {
+    const updated = await sql`
+      update trips
+      set client='Buaiz',
+          origin='Galpão',
+          destination='Vitória',
+          freight_mode='ton',
+          price_per_ton=11
+      where driver_id=${driver.id}
+        and (
+          regexp_replace(upper(coalesce(code,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+          or (
+            date=${r.date}::date
+            and abs(coalesce(net_weight,loaded_tons,0)::float8-${r.tons})<0.011
+          )
+        )
+      returning id
+    `;
+    buaizUpdated += updated.length;
+    buaizAudit.trip++;
+    continue;
+  }
+
+  const reportMatches = await sql`
+    select id
+    from reports
+    where driver_id=${driver.id}
+      and (
+        regexp_replace(upper(coalesce(ticket,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+        or (
+          (case
+            when loading_date::text ~ '^\\d{2}/\\d{2}/\\d{4}' then to_date(substr(loading_date::text,1,10),'DD/MM/YYYY')
+            when loading_date::text ~ '^\\d{4}-\\d{2}-\\d{2}' then substr(loading_date::text,1,10)::date
+            else null
+          end)=${r.date}::date
+          and abs(coalesce(tons,0)::float8-${r.tons})<0.011
+        )
+      )
+      limit 1
+  `;
+  if (reportMatches[0]) {
+    buaizAudit.report++;
+    continue;
+  }
+
+  const ticketMatches = await sql`
+    select numero_ticket
+    from tickets_balanca
+    where driver_id=${driver.id}
+      and (
+        regexp_replace(upper(coalesce(numero_ticket,'')), '[^A-Z0-9]', '', 'g')=${codeNorm}
+        or (
+          (case
+            when data_pesagem::text ~ '^\\d{2}/\\d{2}/\\d{4}' then to_date(substr(data_pesagem::text,1,10),'DD/MM/YYYY')
+            when data_pesagem::text ~ '^\\d{4}-\\d{2}-\\d{2}' then substr(data_pesagem::text,1,10)::date
+            else null
+          end)=${r.date}::date
+          and abs(coalesce(peso_liquido_kg,0)::float8-${r.tons*1000})<11
+        )
+      )
+      limit 1
+  `;
+  if (ticketMatches[0]) buaizAudit.ticket++;
+  else buaizAudit.missing++;
+}
+console.log("[klebersom-volvo-import] BUAIZ_CORRECTION " + JSON.stringify({source:buaizRows.length,updated:buaizUpdated,audit:buaizAudit}));
+
 console.log("[klebersom-volvo-import] BUAIZ11 " + JSON.stringify(buaiz[0] || {}));
 if (result.errors.length) throw new Error("Klebersom Volvo import had errors: " + JSON.stringify(result.errors));
