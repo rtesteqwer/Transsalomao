@@ -28,14 +28,6 @@ jobs:
         run: |
           set -euo pipefail
           TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
-      - name: Inspect reconstructed management auth
-        shell: bash
-        run: |
-          set -euo pipefail
-          AUTH=/tmp/trans-source/src/lib/management-auth.server.ts
-          echo '--- management auth (hashes redacted) ---'
-          sed -E 's/\$2[aby]\$[0-9]{2}\$[A-Za-z0-9.\/]{53}/<bcrypt-redacted>/g; s/[0-9a-f]{64}/<sha256-redacted>/g' "$AUTH" | sed -n '1,260p'
-
       - name: Inspect TanStack dependency resolution
         shell: bash
         run: |
@@ -165,7 +157,6 @@ jobs:
             /tmp/trans-source/src/lib/api.ts
             /tmp/trans-source/src/lib/types.ts
             /tmp/trans-source/src/lib/use-fleet.ts
-            /tmp/trans-source/src/lib/management-auth.server.ts
           retention-days: 1
 
       - name: Compile final source
