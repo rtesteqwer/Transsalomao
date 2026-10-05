@@ -643,6 +643,26 @@ if (!original.includes("[fix-luis-ton-price]")) {
   original = original.replace(buildMarker, fixRun + buildMarker);
 }
 
+
+// Reset único e seguro da senha do Murillo. A senha vem somente de variável
+// sensível da Vercel e nunca é gravada no repositório ou nos logs.
+if (!original.includes("[reset-murillo-password-20261004]")) {
+  const buildMarker = "execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });";
+  if (!original.includes(buildMarker)) throw new Error("Build marker not found for Murillo password reset");
+  const resetRun = \`
+{
+  console.log("[reset-murillo-password-20261004] executing secure DB reset");
+  const resetSource = path.join(repo, 'render-overrides', 'reset-murillo-password-20261004.mjs');
+  if (!fs.existsSync(resetSource)) throw new Error('Murillo password reset script missing');
+  const resetTarget = path.join(work, '.reset-murillo-password-20261004.mjs');
+  fs.copyFileSync(resetSource, resetTarget);
+  execSync('npm install --no-save --ignore-scripts --no-audit --no-fund @neondatabase/serverless bcryptjs', { cwd: work, stdio: 'inherit', env: process.env });
+  execFileSync(process.execPath, [resetTarget], { cwd: work, stdio: 'inherit', env: process.env });
+}
+\`;
+  original = original.replace(buildMarker, resetRun + buildMarker);
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
