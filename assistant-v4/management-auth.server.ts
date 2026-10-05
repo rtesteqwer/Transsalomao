@@ -7,7 +7,7 @@ const SESSION_SECONDS = 60 * 60 * 12;
 const LEGACY_ADMINS = [
   { username: "Felipe", passwordHash: "3d14c2d4e4ced81e459e4ace7c01466a700000fb94a3bbe944a55fb92693e879" },
   { username: "Emanuel", passwordHash: "0013fa1710b8b0e4816d6eaad9668dab6dfa7ea9f1d07291fa5072e857e94522" },
-  { username: "Murillo", passwordHash: "0013fa1710b8b0e4816d6eaad9668dab6dfa7ea9f1d07291fa5072e857e94522" },
+  { username: "Murillo", passwordHash: "6c20f4fc5cdd174189431a656907d2a3ab641ee1f7a1abc71bf12744cf47a94c" },
 ] as const;
 
 export function passwordHash(value: string) {
