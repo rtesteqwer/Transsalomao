@@ -467,6 +467,15 @@ if (!original.includes("apply-report-expenses-pdf-only-20261004.mjs")) {
   );
 }
 
+// Relatórios de Caixinha: mostra o valor unitário no PDF/Excel e separa os grupos por preço.
+if (!original.includes("apply-caixinha-report-value-groups-20261004.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing Caixinha report value grouping insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-caixinha-report-value-groups-20261004.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 // Pagamentos de motoristas: lançamentos de pagamentos separados, consolidação de
 // adiantamentos e geração de termo de acerto/recibo para assinatura.
 if (!original.includes("apply-driver-payments-tab-20261004.mjs")) {
