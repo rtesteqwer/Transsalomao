@@ -67,3 +67,4 @@ deploy-share-to-chatgpt-no-api-20260929-1
 2026-10-04 fix Android PDF/Excel download without blob URL 1d20c3f8
 2026-10-04 redeploy Android report download syntax fix ec593957
 2026-10-04 update Murillo management password
+2026-10-04 retry Murillo password update after security hardening
