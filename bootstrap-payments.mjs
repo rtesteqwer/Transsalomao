@@ -50,7 +50,21 @@ if (!original.includes("apply-payments-button-extract-20261006.mjs")) {
 
 `;
 
-const patched = source.replace(marker, injection + accountingInjection + statementInjection + marker);
+
+const totalReaderInjection = `
+// Payment period/report UX: add Total history mode and reuse the financial
+// document reader for Novo pagamento without auto-launching as an advance.
+if (!original.includes("apply-payments-total-reader-20261006.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing payments total/reader insertion point");
+  original = original.replace(
+    dailyMarker,
+    \`execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-payments-total-reader-20261006.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n\${dailyMarker}\`
+  );
+}
+
+`;
+
+const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {
