@@ -36,7 +36,21 @@ if (!original.includes("apply-payments-advances-days-20261005.mjs")) {
 
 `;
 
-const patched = source.replace(marker, injection + accountingInjection + marker);
+
+const statementInjection = `
+// Payment UX: Novo pagamento uses the same modal-button pattern as Novo adiantamento,
+// and the bottom of the page shows the full payment/advance statement.
+if (!original.includes("apply-payments-button-extract-20261006.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing payments button/extract insertion point");
+  original = original.replace(
+    dailyMarker,
+    \`execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-payments-button-extract-20261006.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n\${dailyMarker}\`
+  );
+}
+
+`;
+
+const patched = source.replace(marker, injection + accountingInjection + statementInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {
