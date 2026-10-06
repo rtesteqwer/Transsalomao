@@ -56,7 +56,7 @@ public class MainActivity extends AppCompatActivity {
 
         Button create = new Button(this);
         create.setText("+ Criar novo álbum");
-        create.setTextAllCaps(false);
+        create.setAllCaps(false);
         create.setTextSize(17);
         LinearLayout.LayoutParams createLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(58));
