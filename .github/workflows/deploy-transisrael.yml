@@ -25,7 +25,7 @@ jobs:
       - name: Checkout current Trans Salomao production source
         uses: actions/checkout@v4
         with:
-          ref: 89ccf9ab6057d4cc9254427da779531c839eed0a
+          ref: main
           path: upstream
 
       - uses: actions/setup-node@v4
