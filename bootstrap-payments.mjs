@@ -64,7 +64,20 @@ if (!original.includes("apply-payments-total-reader-20261006.mjs")) {
 
 `;
 
-const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + marker);
+
+const paidOverLabelInjection = `
+// Correct Portuguese label shown when advances/payments exceed commission due.
+if (!original.includes("apply-paid-over-label-20261006.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing paid-over label insertion point");
+  original = original.replace(
+    dailyMarker,
+    \`execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-paid-over-label-20261006.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n\${dailyMarker}\`
+  );
+}
+
+`;
+
+const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {
