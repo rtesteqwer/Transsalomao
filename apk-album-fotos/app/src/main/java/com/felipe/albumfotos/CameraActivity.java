@@ -109,12 +109,12 @@ public class CameraActivity extends AppCompatActivity {
 
         Button flip = new Button(this);
         flip.setText("Trocar câmera");
-        flip.setTextAllCaps(false);
+        flip.setAllCaps(false);
         actions.addView(flip, new LinearLayout.LayoutParams(0, dp(52), 1f));
 
         Button done = new Button(this);
         done.setText("Concluir");
-        done.setTextAllCaps(false);
+        done.setAllCaps(false);
         LinearLayout.LayoutParams doneLp = new LinearLayout.LayoutParams(0, dp(52), 1f);
         doneLp.leftMargin = dp(12);
         actions.addView(done, doneLp);
