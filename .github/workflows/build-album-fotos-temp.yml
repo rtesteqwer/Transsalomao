@@ -17,13 +17,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android 36
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
+          echo "y" | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
       - name: Gradle 8.13
