@@ -19,7 +19,7 @@ try {
   execFileSync('xz', ['-t', archivePath], { stdio: 'inherit' });
   const patch = execFileSync('xz', ['-dc', archivePath]);
   fs.writeFileSync(patchPath, patch);
-  execFileSync('patch', ['-p1', '--forward', '--batch', '-i', patchPath], { cwd: work, stdio: 'inherit' });
+  execFileSync('git', ['apply', '--no-index', '--unsafe-paths', '--whitespace=nowarn', patchPath], { cwd: work, stdio: 'inherit' });
 } finally {
   fs.rmSync(archivePath, { force: true });
   fs.rmSync(patchPath, { force: true });
