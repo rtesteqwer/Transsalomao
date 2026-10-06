@@ -77,7 +77,20 @@ if (!original.includes("apply-paid-over-label-20261006.mjs")) {
 
 `;
 
-const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + marker);
+
+const sessionSecurityInjection = `
+// Security hardening must run last, after every source/payment overlay.
+if (!original.includes("apply-session-security-20261006.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing session security insertion point");
+  original = original.replace(
+    dailyMarker,
+    \`execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-session-security-20261006.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n\${dailyMarker}\`
+  );
+}
+
+`;
+
+const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {
