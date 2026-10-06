@@ -1,0 +1,35 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+
+const work = process.argv[2];
+if (!work || !fs.existsSync(work)) throw new Error('Payments button/extract patch: reconstructed work directory is required');
+
+const archive = Buffer.from("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", 'base64');
+const expectedArchiveHash = '9a2544a7885908d4dd067cb4345a331fc4b39cf20c94afffc8a8301f5d8f950a';
+const actualArchiveHash = crypto.createHash('sha256').update(archive).digest('hex');
+if (actualArchiveHash !== expectedArchiveHash) throw new Error('Payments button/extract archive hash mismatch: ' + actualArchiveHash);
+
+const archivePath = path.join(os.tmpdir(), 'transsalomao-payments-extract-' + process.pid + '.patch.xz');
+const patchPath = path.join(os.tmpdir(), 'transsalomao-payments-extract-' + process.pid + '.patch');
+fs.writeFileSync(archivePath, archive);
+try {
+  execFileSync('xz', ['-t', archivePath], { stdio: 'inherit' });
+  const patch = execFileSync('xz', ['-dc', archivePath]);
+  fs.writeFileSync(patchPath, patch);
+  execFileSync('git', ['apply', '--no-index', '--unsafe-paths', '--whitespace=nowarn', patchPath], { cwd: work, stdio: 'inherit' });
+} finally {
+  fs.rmSync(archivePath, { force: true });
+  fs.rmSync(patchPath, { force: true });
+}
+
+const rel = 'src/routes/dono/pagamentos.tsx';
+const file = path.join(work, rel);
+const expected = '73ffaa44c459a39e4f1d1f7cbcdc412fcb7945ca8917acc113612fdbda73cf8c';
+if (!fs.existsSync(file)) throw new Error('Payments button/extract patch missing file: ' + rel);
+const actual = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+if (actual !== expected) throw new Error('Payments button/extract file mismatch: ' + actual);
+
+console.log('[payments-button-extract] Novo pagamento modal button + complete payment/advance statement applied');
