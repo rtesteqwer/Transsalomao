@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "build": "node bootstrap-diagnostic.mjs"
+    "build": "node bootstrap-payments.mjs"
   },
   "engines": {
     "node": ">=22"
