@@ -22,7 +22,20 @@ if (!original.includes("apply-payments-acertos-mobile-20261005.mjs")) {
 
 `;
 
-const patched = source.replace(marker, injection + marker);
+const diagnosticInjection = `
+// Read-only diagnostic for current commission/advance values. Preview branch only.
+if (!original.includes("payments-diagnostic-20261005.mjs")) {
+  const buildMarker = "execSync('npm run build', { cwd: work, stdio: 'inherit', env: process.env });";
+  if (!original.includes(buildMarker)) throw new Error("Payments diagnostic build marker not found");
+  original = original.replace(
+    buildMarker,
+    \`execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'payments-diagnostic-20261005.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n\${buildMarker}\`
+  );
+}
+
+`;
+
+const patched = source.replace(marker, injection + diagnosticInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {
