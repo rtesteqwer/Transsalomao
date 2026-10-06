@@ -22,6 +22,20 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Reconstruct and validate Trans Salomao
+        shell: bash
+        env:
+          VERCEL: "1"
+          VERCEL_PROJECT_PRODUCTION_URL: transsalomao.vercel.app
+          TRANS_UI_ONLY_DEPLOY: "1"
+        run: |
+          set -euo pipefail
+          export TRANS_TEST_APP="$RUNNER_TEMP/transsalomao-predeploy"
+          TRANS_SOURCE_DUMP="$TRANS_TEST_APP" npm run build
+          npm --prefix "$TRANS_TEST_APP" install --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+          TRANS_TEST_APP="$TRANS_TEST_APP" node --test tests/audit-financial-integrity.test.mjs tests/ticket-reader.test.mjs tests/tickets.test.mjs
+          npm --prefix "$TRANS_TEST_APP" run build
+
       - name: Link Trans Salomao production project
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

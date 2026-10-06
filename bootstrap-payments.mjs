@@ -90,7 +90,22 @@ if (!original.includes("apply-session-security-20261006.mjs")) {
 
 `;
 
-const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + marker);
+
+const auditIntegrityInjection = `
+// Final audit hardening: freeze historical trip price/commission snapshots,
+// make critical multi-write operations atomic and enforce full TLS verification.
+// This must run AFTER session security so later auth patches cannot overwrite it.
+if (!original.includes("apply-audit-integrity-20261006.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing audit integrity insertion point");
+  original = original.replace(
+    dailyMarker,
+    \`execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-audit-integrity-20261006.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n\${dailyMarker}\`
+  );
+}
+
+`;
+
+const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {

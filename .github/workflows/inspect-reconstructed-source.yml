@@ -7,6 +7,8 @@ on:
       - 'render-overrides/**'
       - 'whatsapp-v1/**'
       - 'bootstrap.mjs'
+      - 'bootstrap-payments.mjs'
+      - 'tests/**'
   workflow_dispatch:
 
 permissions:
@@ -27,7 +29,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
+          TRANS_SOURCE_DUMP=/tmp/trans-source npm run build
+      - name: Test financial integrity hardening
+        shell: bash
+        env:
+          TRANS_TEST_APP: /tmp/trans-source
+        run: |
+          set -euo pipefail
+          node --test tests/audit-financial-integrity.test.mjs
       - name: Inspect TanStack dependency resolution
         shell: bash
         run: |
@@ -157,6 +166,12 @@ jobs:
             /tmp/trans-source/src/lib/api.ts
             /tmp/trans-source/src/lib/types.ts
             /tmp/trans-source/src/lib/use-fleet.ts
+            /tmp/trans-source/src/lib/calc.ts
+            /tmp/trans-source/src/lib/db.ts
+            /tmp/trans-source/src/lib/management-auth.server.ts
+            /tmp/trans-source/src/lib/password-security.server.ts
+            /tmp/trans-source/package.json
+            /tmp/trans-source/migrations/
           retention-days: 1
 
       - name: Compile final source

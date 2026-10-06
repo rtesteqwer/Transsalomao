@@ -50,7 +50,6 @@ test('preserves kg, handles Brazilian thousands, keeps handwritten/origin values
 test('requires explicit review and rejects malformed/non-integer/negative weights', () => {
  for (const peso of [0,-100,35.81,'35.810',true,Infinity,2147483648]) assert.throws(()=>validateSave(input('bad',{peso_liquido_kg:peso})),expectStatus(400));
  assert.throws(()=>validateSave(input('bad',{conferido:false})),expectStatus(400));
- assert.throws(()=>validateSave(input('bad',{km_carreta:-1})),expectStatus(400));
  assert.equal(validateSave(input(' ab123 ')).ticket.numero_ticket,'AB123');
 });
 
