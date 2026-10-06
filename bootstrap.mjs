@@ -666,6 +666,16 @@ if (!original.includes("[fix-luis-ton-price]")) {
 
 
 
+// Final 2026-10-05 source snapshot: security corrections + complete odometer removal.
+// This intentionally runs after every older source patch so stale overlays cannot restore removed fields.
+if (!original.includes("apply-final-source-overlay-20261005.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing final source overlay insertion point");
+  original = original.replace(
+    dailyMarker,
+    `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-final-source-overlay-20261005.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
 fs.writeFileSync(originalPath, original);
 
 execFileSync(process.execPath, [originalPath], { cwd: repo, stdio: 'inherit', env: process.env });
