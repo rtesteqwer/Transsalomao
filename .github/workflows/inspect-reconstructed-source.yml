@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TRANS_SOURCE_DUMP=/tmp/trans-source node bootstrap.mjs
+          TRANS_SOURCE_DUMP=/tmp/trans-source npm run build
       - name: Inspect TanStack dependency resolution
         shell: bash
         run: |
