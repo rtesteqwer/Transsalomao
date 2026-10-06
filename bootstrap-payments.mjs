@@ -22,7 +22,21 @@ if (!original.includes("apply-payments-acertos-mobile-20261005.mjs")) {
 
 `;
 
-const patched = source.replace(marker, injection + marker);
+
+const accountingInjection = `
+// Final accounting fix: Adiantamentos live in Pagamentos; commission rates are
+// normalized and arbitrary day ranges allocate prior payments without double counting.
+if (!original.includes("apply-payments-advances-days-20261005.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing payments/advances/days insertion point");
+  original = original.replace(
+    dailyMarker,
+    \`execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-payments-advances-days-20261005.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n\${dailyMarker}\`
+  );
+}
+
+`;
+
+const patched = source.replace(marker, injection + accountingInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {
