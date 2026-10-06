@@ -50,7 +50,9 @@ console.log("[payments-diagnostic] " + JSON.stringify({
 }));
 `;
 
-execFileSync(process.execPath, ['--input-type=module', '-e', code], {
+const diagnosticPath = work + '/.payments-db-read.mjs';
+await import('node:fs').then(({ writeFileSync }) => writeFileSync(diagnosticPath, code));
+execFileSync(process.execPath, [work + '/scripts/with-app-env.mjs', process.execPath, diagnosticPath], {
   cwd: work,
   stdio: 'inherit',
   env: process.env,
