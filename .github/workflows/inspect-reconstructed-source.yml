@@ -157,6 +157,12 @@ jobs:
             /tmp/trans-source/src/lib/api.ts
             /tmp/trans-source/src/lib/types.ts
             /tmp/trans-source/src/lib/use-fleet.ts
+            /tmp/trans-source/src/lib/calc.ts
+            /tmp/trans-source/src/lib/db.ts
+            /tmp/trans-source/src/lib/management-auth.server.ts
+            /tmp/trans-source/src/lib/password-security.server.ts
+            /tmp/trans-source/package.json
+            /tmp/trans-source/migrations/
           retention-days: 1
 
       - name: Compile final source
