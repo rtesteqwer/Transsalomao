@@ -112,8 +112,7 @@ if (!original.includes("apply-daily-km-compat-20261008.mjs")) {
   if (!original.includes(dailyMarker)) throw new Error("Missing daily km compatibility insertion point");
   original = original.replace(
     dailyMarker,
-    `const dailyKmCompatibility = path.join(repo, 'render-overrides', 'apply-daily-km-compat-20261008.mjs');\nif (!fs.existsSync(dailyKmCompatibility)) throw new Error('Missing daily km compatibility patch');\nexecFileSync(process.execPath, [dailyKmCompatibility, work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
-  );
+    "const dailyKmCompatibility = path.join(repo, 'render-overrides', 'apply-daily-km-compat-20261008.mjs');\\nif (!fs.existsSync(dailyKmCompatibility)) throw new Error('Missing daily km compatibility patch');\\nexecFileSync(process.execPath, [dailyKmCompatibility, work], { cwd: repo, stdio: 'inherit', env: process.env });\\n\\n" + dailyMarker  );
 }
 
 `;
