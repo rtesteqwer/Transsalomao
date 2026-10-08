@@ -40,7 +40,7 @@ patch('src/lib/api.ts', (s) => {
     'report schema dailyValue');
   s = mustReplace(s,
     "      insert into reports (id, ticket, driver_id, fleet_id, km, tons, freight_mode, status)\n      values (${id}, ${ticket}, ${data.driverId}, ${data.fleetId}, ${data.km}, ${data.tons}, ${data.freightMode ?? null}, 'pendente')",
-    "      insert into reports (id, ticket, driver_id, fleet_id, km, tons, daily_value, freight_mode, status)\n      values (${id}, ${ticket}, ${data.driverId}, ${data.fleetId}, ${data.km}, ${data.tons}, ${data.dailyValue}, ${data.freightMode ?? null}, 'pendente')",
+    "      insert into reports (id, ticket, driver_id, fleet_id, km, tons, daily_value, freight_mode, status)\n      values (${id}, ${ticket}, ${data.driverId}, ${data.fleetId}, ${data.km ?? 0}, ${data.tons}, ${data.dailyValue}, ${data.freightMode ?? null}, 'pendente')",
     'report insert dailyValue');
   const modesBefore = 'const modes = [...new Set(reports.map((report) => nullableFreightMode(report.freight_mode)).filter((mode): mode is "trip" | "cegonha" | "caixinha" => mode === "trip" || mode === "cegonha" || mode === "caixinha"))];';
   const modesAfter = 'const modes = [...new Set(reports.map((report) => nullableFreightMode(report.freight_mode)).filter((mode): mode is "cegonha" | "caixinha" => mode === "cegonha" || mode === "caixinha"))];';
