@@ -107,21 +107,21 @@ if (!original.includes("apply-audit-integrity-20261006.mjs")) {
 
 
 const testeDocumentsInjection = [
-  'if (!original.includes("[teste-document-intake-v1]")) {',
-  '  if (!original.includes(dailyMarker)) throw new Error("Missing TESTE document insertion point");',
-  '  const testePatch = [',
-  '    "console.log(\\'[teste-document-intake-v1] installing TESTE document area\\');",
-  '    "for (const rel of [\\\'src/routes/dono/teste.tsx\\\',\\\'src/routes/api/teste-document-intake.ts\\\',\\\'src/components/owner/shell.tsx\\\',\\\'src/routeTree.gen.ts\\\']) {",
-  '    "  const from = path.join(repo, rel);",
-  '    "  const to = path.join(work, rel);",
-  '    "  if (!fs.existsSync(from)) throw new Error(\\\'Missing TESTE source file: \\\' + rel);",
-  '    "  fs.mkdirSync(path.dirname(to), { recursive: true });",
-  '    "  fs.copyFileSync(from, to);",
-  '    "}"',
-  '  ].join("\\n");',
-  '  original = original.replace(dailyMarker, testePatch + "\\n" + dailyMarker);',
-  '}',
-].join("\\n");
+  "if (!original.includes('[teste-document-intake-v1]')) {",
+  "  if (!original.includes(dailyMarker)) throw new Error('Missing TESTE document insertion point');",
+  "  const testePatch = [
+  "    \\"console.log('[teste-document-intake-v1] installing TESTE document area');\\",
+  "    \\"for (const rel of ['src/routes/dono/teste.tsx','src/routes/api/teste-document-intake.ts','src/components/owner/shell.tsx','src/routeTree.gen.ts']) {\\",
+  "    \\"  const from = path.join(repo, rel);\\",
+  "    \\"  const to = path.join(work, rel);\\",
+  "    \\"  if (!fs.existsSync(from)) throw new Error('Missing TESTE source file: ' + rel);\\",
+  "    \\"  fs.mkdirSync(path.dirname(to), { recursive: true });\\",
+  "    \\"  fs.copyFileSync(from, to);\\",
+  "    \\"}\\"",
+  "  ].join('\\\\n');",
+  "  original = original.replace(dailyMarker, testePatch + '\\\\n' + dailyMarker);",
+  "}",
+].join('\\\\n');
 const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + testeDocumentsInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
