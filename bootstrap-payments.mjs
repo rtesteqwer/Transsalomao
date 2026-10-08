@@ -106,22 +106,7 @@ if (!original.includes("apply-audit-integrity-20261006.mjs")) {
 `;
 
 
-const testeDocumentsInjection = [
-  "if (!original.includes('[teste-document-intake-v1]')) {",
-  "  if (!original.includes(dailyMarker)) throw new Error('Missing TESTE document insertion point');",
-  "  const testePatch = [",
-  "    \"console.log('[teste-document-intake-v1] installing TESTE document area');\",
-  "    \"for (const rel of ['src/routes/dono/teste.tsx','src/routes/api/teste-document-intake.ts','src/components/owner/shell.tsx','src/routeTree.gen.ts']) {\",
-  "      const from = path.join(repo, rel);",
-  "      const to = path.join(work, rel);",
-  "      if (!fs.existsSync(from)) throw new Error('Missing TESTE source file: ' + rel);",
-  "      fs.mkdirSync(path.dirname(to), { recursive: true });",
-  "      fs.copyFileSync(from, to);",
-  "    }",
-  "  ].join('\\n');",
-  "  original = original.replace(dailyMarker, testePatch + '\\n' + dailyMarker);",
-  "}",
-].join('\\n');
+const testeDocumentsInjection = Buffer.from("aWYgKCFvcmlnaW5hbC5pbmNsdWRlcygnW3Rlc3RlLWRvY3VtZW50LWludGFrZS12MV0nKSkgewogIGlmICghb3JpZ2luYWwuaW5jbHVkZXMoZGFpbHlNYXJrZXIpKSB0aHJvdyBuZXcgRXJyb3IoJ01pc3NpbmcgVEVTVEUgZG9jdW1lbnQgaW5zZXJ0aW9uIHBvaW50Jyk7CiAgY29uc3QgdGVzdGVQYXRjaCA9IFsKICAgICJjb25zb2xlLmxvZygnW3Rlc3RlLWRvY3VtZW50LWludGFrZS12MV0gaW5zdGFsbGluZyBURVNURSBkb2N1bWVudCBhcmVhJyk7IiwKICAgICJmb3IgKGNvbnN0IHJlbCBvZiBbJ3NyYy9yb3V0ZXMvZG9uby90ZXN0ZS50c3gnLCdzcmMvcm91dGVzL2FwaS90ZXN0ZS1kb2N1bWVudC1pbnRha2UudHMnLCdzcmMvY29tcG9uZW50cy9vd25lci9zaGVsbC50c3gnLCdzcmMvcm91dGVUcmVlLmdlbi50cyddKSB7IiwKICAgICIgIGNvbnN0IGZyb20gPSBwYXRoLmpvaW4ocmVwbywgcmVsKTsiLAogICAgIiAgY29uc3QgdG8gPSBwYXRoLmpvaW4od29yaywgcmVsKTsiLAogICAgIiAgaWYgKCFmcy5leGlzdHNTeW5jKGZyb20pKSB0aHJvdyBuZXcgRXJyb3IoJ01pc3NpbmcgVEVTVEUgc291cmNlIGZpbGU6ICcgKyByZWwpOyIsCiAgICAiICBmcy5ta2RpclN5bmMocGF0aC5kaXJuYW1lKHRvKSwgeyByZWN1cnNpdmU6IHRydWUgfSk7IiwKICAgICIgIGZzLmNvcHlGaWxlU3luYyhmcm9tLCB0byk7IiwKICAgICJ9IiwKICBdLmpvaW4oJ1xuJyk7CiAgb3JpZ2luYWwgPSBvcmlnaW5hbC5yZXBsYWNlKGRhaWx5TWFya2VyLCB0ZXN0ZVBhdGNoICsgJ1xuJyArIGRhaWx5TWFya2VyKTsKfQo=", "base64").toString("utf8");
 
 const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + testeDocumentsInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
