@@ -59,6 +59,18 @@ const visit = (dir) => {
   }
 };
 visit(srcRoot);
+
+// Legacy production reports keeps km as NOT NULL even though the current UI no longer collects odometer data.
+// Daily reports therefore persist an internal zero only to satisfy that legacy constraint; km is not shown as a user-entered field.
+const reportApi = path.join(srcRoot, 'lib', 'api.ts');
+if (fs.existsSync(reportApi)) {
+  const reportText = fs.readFileSync(reportApi, 'utf8');
+  const oldInsert = `insert into reports (id,ticket,driver_id,fleet_id,tons,daily_value,freight_mode,status)\n      values (\${id},\${ticket},\${driverId},\${data.fleetId},\${data.tons},\${data.dailyValue},\${data.freightMode ?? null},'pendente')`;
+  const newInsert = `insert into reports (id,ticket,driver_id,fleet_id,km,tons,daily_value,freight_mode,status)\n      values (\${id},\${ticket},\${driverId},\${data.fleetId},\${data.km ?? 0},\${data.tons},\${data.dailyValue},\${data.freightMode ?? null},'pendente')`;
+  if (reportText.includes(oldInsert)) fs.writeFileSync(reportApi, reportText.replace(oldInsert, newInsert));
+  else if (!reportText.includes(newInsert)) throw new Error('Final source overlay: daily report km compatibility pattern not found');
+};
+
 if (hits.length) {
   throw new Error('Final source overlay still contains odometer references:\n' + hits.join('\n'));
 }
