@@ -27,7 +27,7 @@ try {
 
 const checks = {
   'src/lib/calc.ts': '11c135bf945b97e33ecc3aa2058a7c62fd587e87dd21508656c63e961b7be044',
-  'src/lib/api.ts': '6e59323459575aa030c8c6863fe32adeddc508fcb2da0ce56837f5af32c1c0e8',
+  'src/lib/api.ts': '2b234ff75d2230bb54189dfca79637101d915c0a94aea60bf6a4a8081d1efced',
   'src/lib/payment-accounting.ts': '0c0192d85efa2ee00fb9d9f0113850111f312b773f3f76e7106aaa26982ec36d',
   'src/routes/dono/despesas.tsx': 'ccab9c6518799deab3ca30ac80be17201062871e9c009e9644bbc7839e800f9d',
   'src/routes/dono/pagamentos.tsx': '21c794f02871d4272b902f2cdc7a4dc3aef904a92ae467c631ee926dc16ed513',
