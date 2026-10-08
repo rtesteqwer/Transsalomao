@@ -92,7 +92,7 @@ jobs:
           const fs=require("fs");
           const j=JSON.parse(fs.readFileSync("/tmp/businesses.json","utf8"));
           for(const x of Array.isArray(j.data)?j.data:[]) if(x?.id) console.log(x.id);
-NODE
+          NODE
 
           : > /tmp/waba_ids.txt
           while IFS= read -r business; do
@@ -105,7 +105,7 @@ NODE
               const fs=require("fs");
               let j={}; try{j=JSON.parse(fs.readFileSync("/tmp/wabas.json","utf8"))}catch{}
               for(const x of Array.isArray(j.data)?j.data:[]) if(x?.id) console.log(x.id);
-NODE
+          NODE
             done
           done < /tmp/business_ids.txt
           sort -u /tmp/waba_ids.txt -o /tmp/waba_ids.txt
@@ -125,7 +125,7 @@ NODE
               const digits=String(x?.display_phone_number||"").replace(/\D/g,"");
               if(digits===target && x?.id){ console.log(x.id); break; }
             }
-NODE
+          NODE
             )"
             if [ -n "$match" ]; then
               found_waba="$waba"
