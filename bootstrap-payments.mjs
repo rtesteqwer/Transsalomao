@@ -122,9 +122,7 @@ const testeDocumentsInjection = [
   '  original = original.replace(dailyMarker, testePatch + "\\n" + dailyMarker);',
   '}',
 ].join("\\n");
-
 const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + testeDocumentsInjection + marker);
-marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {
