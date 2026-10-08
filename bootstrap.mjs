@@ -647,6 +647,11 @@ console.log("[fueling-ocr-assets-injector] installed");
 
 // One-time Luis reconciliation hook removed after completion; it must not run on normal builds.
 
+// TESTE: preserve the document review area after backup-payload reconstruction.
+if (!original.includes('apply-test-document-intake-20261008.mjs')) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing TESTE document insertion point');
+  original = original.replace(dailyMarker, "const testeDocumentPatch = path.join(repo, 'render-overrides', 'apply-test-document-intake-20261008.mjs');\nif (!fs.existsSync(testeDocumentPatch)) throw new Error('Missing TESTE document patch');\nexecFileSync(process.execPath, [testeDocumentPatch, work], { cwd: repo, stdio: 'inherit', env: process.env });\n" + dailyMarker);
+}
 // Final 2026-10-05 source snapshot: security corrections + complete odometer removal.
 // This intentionally runs after every older source patch so stale overlays cannot restore removed fields.
 if (!original.includes("apply-final-source-overlay-20261005.mjs")) {
