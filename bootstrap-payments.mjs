@@ -105,25 +105,7 @@ if (!original.includes("apply-audit-integrity-20261006.mjs")) {
 
 `;
 
-
-const testeDocumentsInjection = [
-  'if (!original.includes("[teste-document-intake-v1]")) {',
-  '  if (!original.includes(dailyMarker)) throw new Error("Missing TESTE document insertion point");',
-  '  const testePatch = [',
-  '    "console.log(\\'[teste-document-intake-v1] installing TESTE document area\\');",
-  '    "for (const rel of [\\\'src/routes/dono/teste.tsx\\\',\\\'src/routes/api/teste-document-intake.ts\\\',\\\'src/components/owner/shell.tsx\\\',\\\'src/routeTree.gen.ts\\\']) {",
-  '    "  const from = path.join(repo, rel);",
-  '    "  const to = path.join(work, rel);",
-  '    "  if (!fs.existsSync(from)) throw new Error(\\\'Missing TESTE source file: \\\' + rel);",
-  '    "  fs.mkdirSync(path.dirname(to), { recursive: true });",
-  '    "  fs.copyFileSync(from, to);",
-  '    "}"',
-  '  ].join("\\\\n");',
-  '  original = original.replace(dailyMarker, testePatch + "\\\\n" + dailyMarker);',
-  '}',
-].join("\\n");
-
-const patched = source.replace(testeDocumentsInjection + marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + marker);
+\nconst testeDocumentsInjection = [\n  'if (!original.includes("[teste-document-intake-v1]")) {',\n  '  if (!original.includes(dailyMarker)) throw new Error("Missing TESTE document insertion point");',\n  '  const testePatch = [\n  '    "console.log(\\'[teste-document-intake-v1] installing TESTE document area\\');",\n  '    "for (const rel of [\\\'src/routes/dono/teste.tsx\\\',\\\'src/routes/api/teste-document-intake.ts\\\',\\\'src/components/owner/shell.tsx\\\',\\\'src/routeTree.gen.ts\\\']) {",\n  '    "  const from = path.join(repo, rel);",\n  '    "  const to = path.join(work, rel);",\n  '    "  if (!fs.existsSync(from)) throw new Error(\\\'Missing TESTE source file: \\\' + rel);",\n  '    "  fs.mkdirSync(path.dirname(to), { recursive: true });",\n  '    "  fs.copyFileSync(from, to);",\n  '    "}"',\n  '  ].join("\\\\n");',\n  '  original = original.replace(dailyMarker, testePatch + "\\\\n" + dailyMarker);',\n  '}',\n].join("\\n");\n\nconst patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + testeDocumentsInjection + marker);\nmarker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {
