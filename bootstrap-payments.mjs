@@ -105,7 +105,20 @@ if (!original.includes("apply-audit-integrity-20261006.mjs")) {
 
 `;
 
-const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + marker);
+const dailyKmCompatibilityInjection = `
+// Final Diária compatibility fix: the production reports table still has legacy km NOT NULL.
+// Run after every security/source overlay so submitReport always supplies a valid internal km value.
+if (!original.includes("apply-daily-km-compat-20261008.mjs")) {
+  if (!original.includes(dailyMarker)) throw new Error("Missing daily km compatibility insertion point");
+  original = original.replace(
+    dailyMarker,
+    `const dailyKmCompatibility = path.join(repo, 'render-overrides', 'apply-daily-km-compat-20261008.mjs');\nif (!fs.existsSync(dailyKmCompatibility)) throw new Error('Missing daily km compatibility patch');\nexecFileSync(process.execPath, [dailyKmCompatibility, work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
+  );
+}
+
+`;
+
+const patched = source.replace(marker, injection + accountingInjection + statementInjection + totalReaderInjection + paidOverLabelInjection + sessionSecurityInjection + auditIntegrityInjection + dailyKmCompatibilityInjection + marker);
 const tempPath = path.join(os.tmpdir(), `transsalomao-bootstrap-payments-${process.pid}.mjs`);
 fs.writeFileSync(tempPath, patched);
 try {
