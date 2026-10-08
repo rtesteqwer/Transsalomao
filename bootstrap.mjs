@@ -656,6 +656,18 @@ if (!original.includes("apply-final-source-overlay-20261005.mjs")) {
     `execFileSync(process.execPath, [path.join(repo, 'render-overrides', 'apply-final-source-overlay-20261005.mjs'), work], { cwd: repo, stdio: 'inherit', env: process.env });\n\n${dailyMarker}`
   );
 }
+// TESTE overlay must run after the final source snapshot so it cannot be overwritten.
+// TESTE: preserve the document review area after the final source overlay.
+if (!original.includes('apply-test-document-intake-20261008.mjs')) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing TESTE document insertion point');
+  original = original.replace(dailyMarker, "const testeDocumentPatch = path.join(repo, 'render-overrides', 'apply-test-document-intake-20261008.mjs');\nif (!fs.existsSync(testeDocumentPatch)) throw new Error('Missing TESTE document patch');\nexecFileSync(process.execPath, [testeDocumentPatch, work], { cwd: repo, stdio: 'inherit', env: process.env });\n" + dailyMarker);
+}
+
+// TESTE shortcut: expose the new document review area from Fotos de Tickets.
+if (!original.includes('apply-test-document-fotos-shortcut-20261008.mjs')) {
+  if (!original.includes(dailyMarker)) throw new Error('Missing TESTE shortcut insertion point');
+  original = original.replace(dailyMarker, "const testeDocumentShortcutPatch = path.join(repo, 'render-overrides', 'apply-test-document-fotos-shortcut-20261008.mjs');\nif (!fs.existsSync(testeDocumentShortcutPatch)) throw new Error('Missing TESTE document shortcut patch');\nexecFileSync(process.execPath, [testeDocumentShortcutPatch, work], { cwd: repo, stdio: 'inherit', env: process.env });\n" + dailyMarker);
+}
 
 fs.writeFileSync(originalPath, original);
 
