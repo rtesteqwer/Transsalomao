@@ -275,8 +275,7 @@ export default function Home() {
           messages: outgoing.map(m => ({ role: m.role, content: m.content })),
           attachments: payloadAttachments,
           memory: relevantMemory,
-          feedback: relevantFeedback,
-          userId: profileId
+          feedback: relevantFeedback
         })
       });
 
@@ -349,6 +348,14 @@ export default function Home() {
         if (typeof data?.enabled === 'boolean') setCollectiveLearning(data.enabled);
       })
       .catch(() => {});
+  }
+
+  async function logout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } finally {
+      window.location.replace('/login');
+    }
   }
 
   function deleteChat(chatId) {
@@ -424,6 +431,7 @@ export default function Home() {
           <div className="modeSwitch">
             <button className={active.mode === 'assistant' ? 'selected' : ''} onClick={() => setMode('assistant')}>Auto</button>
             <button className={active.mode === 'code' ? 'selected' : ''} onClick={() => setMode('code')}>Code</button>
+            <button onClick={logout} title="Encerrar sessão">Sair</button>
           </div>
         </header>
 
