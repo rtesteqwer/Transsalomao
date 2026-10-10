@@ -9,7 +9,7 @@ import {
   publicModeForTask,
   shouldReview
 } from '../../../lib/agent-core.js';
-import { loadRelevantSharedKnowledge, saveSharedLearning } from '../../../lib/shared-learning.js';
+import { loadRelevantSharedKnowledge } from '../../../lib/shared-learning.js';
 import {
   enqueueSelfProgrammingTask,
   isSelfProgrammingRequest,
@@ -262,16 +262,13 @@ export async function POST(request) {
       contextText
     });
 
-    const learned = await saveSharedLearning({
-      question: contextText,
-      answer: reviewed.answer,
-      type: 'interaction'
-    });
+    // Não persistir conversas privadas automaticamente no aprendizado compartilhado.
+    const learned = { saved: false };
 
     const selfProgramming = wantsSelfProgramming
       ? await enqueueSelfProgrammingTask({
           request: contextText,
-          userId: body?.userId
+          userId: 'authenticated-session'
         })
       : { enabled: selfProgrammingEnabled(), queued: false };
 
